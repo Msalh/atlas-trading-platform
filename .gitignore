@@ -1,0 +1,10 @@
+# This repo (atlas-trading-platform) is scoped to live/, frontend/, and docs/ only -
+# pine/, dashboard/, data/, screenshots/, and .claude/ are deliberately not part of it
+# (see docs/monorepo-proposal.md, Decision 1). Listed here as a safety net against an
+# accidental future `git add -A`/`git add .` pulling them in - the actual commits in
+# this repo add live/, frontend/, and docs/ explicitly, not via a wildcard add.
+/pine/
+/dashboard/
+/data/
+/screenshots/
+/.claude/

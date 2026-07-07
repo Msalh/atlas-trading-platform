@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+/*
+ * Atlas is a trading terminal, not a marketing site - it stays dark regardless of the
+ * viewer's OS preference, matching the existing FastAPI dashboard's aesthetic and
+ * what traders expect from Bookmap/Tradovate/TradingView-style tools.
+ */
+:root {
+  --background: #0a0a0f;
+  --surface: #13141a;
+  --surface-raised: #1a1b23;
+  --border: #262832;
+  --foreground: #e5e7eb;
+  --muted: #8b8fa3;
+
+  --long: #22c55e;
+  --short: #ef4444;
+  --open: #3b82f6;
+  --warn: #f59e0b;
+  --danger: #ef4444;
+  --ok: #22c55e;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-long: var(--long);
+  --color-short: var(--short);
+  --color-open: var(--open);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-ok: var(--ok);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+::selection {
+  background: var(--open);
+  color: white;
+}
