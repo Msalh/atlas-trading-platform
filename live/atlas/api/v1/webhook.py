@@ -159,14 +159,27 @@ async def _handle_entry(payload, raw, correlation_id, background_tasks, reposito
     await event_bus.publish(event_types.TRADE_ENTRY_RECEIVED, {"correlation_id": correlation_id})
     raw_body = _sanitize_raw_body(raw.decode("utf-8", errors="replace"))
 
+    # Populated by forward_to_pickmytrade (url, masked payload, status_code,
+    # response_body, exception, duration_ms) whenever it's actually called - stays
+    # empty for a duplicate (forward never attempted) or a risk-enforcement block
+    # (also never attempted). Persisted as a separate, best-effort step below, after
+    # claim_and_forward has already committed - never on the relay's own critical path.
+    pmt_diagnostics: dict[str, Any] = {}
+
     async def do_forward():
         if settings.risk_enforcement:
             blocked_reason = await _risk_enforcement_block_reason(repository)
             if blocked_reason:
                 return False, None, f"blocked by risk engine: {blocked_reason}"
-        return await forward_to_pickmytrade(payload)
+        return await forward_to_pickmytrade(payload, diagnostics=pmt_diagnostics)
 
     result = await repository.claim_and_forward(correlation_id, payload, raw_body, do_forward)
+
+    if pmt_diagnostics:
+        try:
+            await repository.update_pmt_diagnostics(correlation_id, pmt_diagnostics)
+        except Exception:
+            logger.exception("failed to persist pmt relay diagnostics", extra={"correlation_id": correlation_id})
 
     if result.duplicate:
         # Idempotency guard: this is a retry (TradingView redelivery, etc.) of a signal

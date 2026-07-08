@@ -5,6 +5,7 @@ tested against the in-memory double: that PostgresTradeRepository.claim_and_forw
 safe under true concurrency, not just sequential idempotency.
 """
 import asyncio
+import json
 
 BASE_ENTRY = {
     "direction": "long", "setup_tag": "BRK", "symbol": "MNQU6", "entry_price": 100,
@@ -86,3 +87,27 @@ async def test_price_update_and_exit_round_trip(repo):
     row = next(r for r in rows if r["correlation_id"] == "int-corr-lifecycle")
     assert row["status"] == "won"
     assert row["pmt_forwarded"] is True  # untouched by the lifecycle updates
+
+
+async def test_update_pmt_diagnostics_round_trips_through_real_postgres(repo):
+    async def forward():
+        return True, 200, None
+
+    await repo.claim_and_forward("int-corr-diagnostics", BASE_ENTRY, "{}", forward)
+
+    diagnostics = {
+        "url": "https://pmt.example.com/hook", "method": "POST",
+        "payload": {"token": "***1234"}, "status_code": 200,
+        "response_body": "OK", "exception": None, "duration_ms": 42.5,
+    }
+    matched = await repo.update_pmt_diagnostics("int-corr-diagnostics", diagnostics)
+    assert matched == 1
+
+    row = await repo.get_by_correlation_id("int-corr-diagnostics")
+    stored = json.loads(row["pmt_relay_diagnostics"])
+    assert stored == diagnostics
+
+
+async def test_update_pmt_diagnostics_no_matching_trade_returns_zero(repo):
+    matched = await repo.update_pmt_diagnostics("int-corr-does-not-exist", {"status_code": 200})
+    assert matched == 0

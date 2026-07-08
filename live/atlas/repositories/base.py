@@ -43,6 +43,16 @@ class TradeRepository(Protocol):
         pmt_status_code/pmt_error."""
         ...
 
+    async def update_pmt_diagnostics(self, correlation_id: str, diagnostics: dict[str, Any]) -> int:
+        """Persists the latest PickMyTrade relay attempt's full diagnostics (url,
+        masked payload, status_code, response_body, exception, duration_ms) - see
+        atlas/services/pickmytrade.py. Overwrites any previous diagnostics for this
+        trade (this is "latest attempt", not a history). Called as a best-effort,
+        separate step after claim_and_forward already completed - a failure here must
+        never affect the webhook's response or the relay result itself. Returns the
+        number of rows matched (0 if no trade exists yet for this correlation_id)."""
+        ...
+
     async def update_exit(
         self, correlation_id: str, status: str, exit_price: Optional[float], realized_pnl: Optional[float], closed_at: str,
     ) -> int:

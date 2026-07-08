@@ -122,6 +122,14 @@ class PostgresTradeRepository:
             )
             return cur.rowcount
 
+    async def update_pmt_diagnostics(self, correlation_id: str, diagnostics: dict[str, Any]) -> int:
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                "UPDATE trades SET pmt_relay_diagnostics=%s WHERE correlation_id=%s",
+                (json.dumps(diagnostics, default=str), correlation_id),
+            )
+            return cur.rowcount
+
     async def update_exit(self, correlation_id, status, exit_price, realized_pnl, closed_at) -> int:
         async with self._pool.connection() as conn:
             cur = await conn.execute(

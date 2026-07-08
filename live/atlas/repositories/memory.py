@@ -49,6 +49,7 @@ class InMemoryTradeRepository:
                     "current_price": None, "unrealized_pnl": None, "last_update_at": None,
                     "exit_price": None, "realized_pnl": None, "closed_at": None,
                     "llm_model": None, "llm_analysis": None, "llm_error": None,
+                    "pmt_relay_diagnostics": None,
                 }
                 self._next_id += 1
 
@@ -73,6 +74,13 @@ class InMemoryTradeRepository:
         row["current_price"] = current_price
         row["unrealized_pnl"] = unrealized_pnl
         row["last_update_at"] = updated_at
+        return 1
+
+    async def update_pmt_diagnostics(self, correlation_id, diagnostics) -> int:
+        row = self._trades.get(correlation_id)
+        if not row:
+            return 0
+        row["pmt_relay_diagnostics"] = dict(diagnostics)
         return 1
 
     async def update_exit(self, correlation_id, status, exit_price, realized_pnl, closed_at) -> int:
