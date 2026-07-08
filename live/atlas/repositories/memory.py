@@ -29,6 +29,8 @@ class InMemoryTradeRepository:
         self._trades: dict[str, dict[str, Any]] = {}
         self._next_id = 1
         self._lock = asyncio.Lock()
+        self._ai_notes: list[dict[str, Any]] = []
+        self._next_ai_note_id = 1
 
     async def claim_and_forward(self, correlation_id, entry, raw_body, forward) -> ClaimResult:
         async with self._lock:
@@ -83,13 +85,37 @@ class InMemoryTradeRepository:
         row["closed_at"] = closed_at
         return 1
 
-    async def update_ai_analysis(self, correlation_id, model, analysis, error) -> None:
-        row = self._trades.get(correlation_id)
-        if row is None:
-            return
-        row["llm_model"] = model
-        row["llm_analysis"] = analysis
-        row["llm_error"] = error
+    async def add_ai_note(
+        self, *, trade_correlation_id, note_type, model, content, error, score=None, score_label=None,
+        expected_r=None, historical_win_rate_pct=None, similar_trade_count=None, factors=None,
+    ) -> dict[str, Any]:
+        note = {
+            "id": self._next_ai_note_id,
+            "trade_correlation_id": trade_correlation_id,
+            "note_type": note_type,
+            "created_at": now_iso(),
+            "model": model,
+            "score": score,
+            "score_label": score_label,
+            "content": content,
+            "error": error,
+            "expected_r": expected_r,
+            "historical_win_rate_pct": historical_win_rate_pct,
+            "similar_trade_count": similar_trade_count,
+            "factors": list(factors) if factors is not None else None,
+        }
+        self._next_ai_note_id += 1
+        self._ai_notes.append(note)
+        return dict(note)
+
+    async def list_ai_notes(self, *, trade_correlation_id=None, note_type=None, limit=100) -> list[dict[str, Any]]:
+        notes = self._ai_notes
+        if trade_correlation_id is not None:
+            notes = [n for n in notes if n["trade_correlation_id"] == trade_correlation_id]
+        if note_type is not None:
+            notes = [n for n in notes if n["note_type"] == note_type]
+        notes = sorted(notes, key=lambda n: n["id"], reverse=True)
+        return [dict(n) for n in notes[:limit]]
 
     async def list_recent(self, limit: int = 100, status: str | None = None) -> list[dict[str, Any]]:
         rows = sorted(self._trades.values(), key=lambda r: r["id"], reverse=True)

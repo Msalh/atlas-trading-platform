@@ -3,6 +3,7 @@ computation. atlas/risk.py's own test suite (test_risk.py) covers the math in de
 these tests confirm the endpoint wires real trade data and settings into it correctly."""
 from unittest.mock import patch
 
+import atlas.ai as ai_module
 from atlas.api.v1 import webhook
 from atlas.config import settings
 from tests.conftest import entry_payload
@@ -10,7 +11,7 @@ from tests.conftest import entry_payload
 
 def _post_entry(client, correlation_id, **overrides):
     with patch.object(webhook, "forward_to_pickmytrade", return_value=(True, 200, None)), \
-         patch.object(webhook, "analyze_with_claude", return_value=("ok", None)):
+         patch.object(ai_module, "analyze_with_claude", return_value=("ok", None)):
         return client.post("/webhook", json=entry_payload(correlation_id, **overrides))
 
 

@@ -46,6 +46,7 @@ export default function RootLayout({
                     <Link href="/" className="hover:text-foreground">Dashboard</Link>
                     <Link href="/account" className="hover:text-foreground">Account</Link>
                     <Link href="/analytics" className="hover:text-foreground">Analytics</Link>
+                    <Link href="/ai" className="hover:text-foreground">AI</Link>
                   </nav>
                 </div>
                 <div className="flex items-center gap-4">
@@ -56,7 +57,7 @@ export default function RootLayout({
             </header>
             <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">{children}</main>
             <footer className="border-t border-border px-6 py-4 text-center text-xs text-muted">
-              Atlas AI Trading Platform — Sprint 5
+              Atlas AI Trading Platform — Sprint 7
             </footer>
           </LiveUpdatesProvider>
         </QueryProvider>

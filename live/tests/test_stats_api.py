@@ -1,13 +1,14 @@
 """Tests for GET /stats/today - the honestly-scoped account/risk summary placeholder."""
 from unittest.mock import patch
 
+import atlas.ai as ai_module
 from atlas.api.v1 import webhook
 from tests.conftest import entry_payload
 
 
 def _post_entry(client, correlation_id, **overrides):
     with patch.object(webhook, "forward_to_pickmytrade", return_value=(True, 200, None)), \
-         patch.object(webhook, "analyze_with_claude", return_value=("ok", None)):
+         patch.object(ai_module, "analyze_with_claude", return_value=("ok", None)):
         return client.post("/webhook", json=entry_payload(correlation_id, **overrides))
 
 
@@ -48,7 +49,7 @@ def test_stats_today_counts_entries_wins_losses_and_pnl(client):
 
 def test_stats_today_counts_pmt_forward_failures(client):
     with patch.object(webhook, "forward_to_pickmytrade", return_value=(False, None, "down")), \
-         patch.object(webhook, "analyze_with_claude", return_value=(None, None)):
+         patch.object(ai_module, "analyze_with_claude", return_value=(None, None)):
         client.post("/webhook", json=entry_payload("corr-stats-relay-fail"))
 
     resp = client.get("/api/v1/stats/today")

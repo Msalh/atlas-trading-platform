@@ -16,6 +16,7 @@ call (up to its 15s timeout) while inside the transaction. That's an accepted
 trade-off given TradingView's low signal frequency for this strategy - see
 docs/sprint1/architecture-decisions.md.
 """
+import json
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -27,6 +28,17 @@ from atlas.repositories.base import ClaimResult, ForwardFn
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _decode_ai_note(row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    """Replaces the stored `factors_json` TEXT column with a real `factors` list (or
+    None) - callers of the repository interface work with Python data, never a JSON
+    string. See migrations/0004_ai_intelligence_fields.sql."""
+    if row is None:
+        return None
+    raw = row.pop("factors_json", None)
+    row["factors"] = json.loads(raw) if raw else None
+    return row
 
 
 class PostgresTradeRepository:
@@ -118,12 +130,46 @@ class PostgresTradeRepository:
             )
             return cur.rowcount
 
-    async def update_ai_analysis(self, correlation_id, model, analysis, error) -> None:
+    async def add_ai_note(
+        self, *, trade_correlation_id, note_type, model, content, error, score=None, score_label=None,
+        expected_r=None, historical_win_rate_pct=None, similar_trade_count=None, factors=None,
+    ) -> dict[str, Any]:
+        factors_json = json.dumps(factors) if factors is not None else None
         async with self._pool.connection() as conn:
-            await conn.execute(
-                "UPDATE trades SET llm_model=%s, llm_analysis=%s, llm_error=%s WHERE correlation_id=%s",
-                (model, analysis, error, correlation_id),
-            )
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(
+                    """
+                    INSERT INTO ai_notes
+                        (trade_correlation_id, note_type, created_at, model, score, score_label, content, error,
+                         expected_r, historical_win_rate_pct, similar_trade_count, factors_json)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING *
+                    """,
+                    (
+                        trade_correlation_id, note_type, now_iso(), model, score, score_label, content, error,
+                        expected_r, historical_win_rate_pct, similar_trade_count, factors_json,
+                    ),
+                )
+                return _decode_ai_note(await cur.fetchone())
+
+    async def list_ai_notes(self, *, trade_correlation_id=None, note_type=None, limit=100) -> list[dict[str, Any]]:
+        conditions = []
+        params: list[Any] = []
+        if trade_correlation_id is not None:
+            conditions.append("trade_correlation_id = %s")
+            params.append(trade_correlation_id)
+        if note_type is not None:
+            conditions.append("note_type = %s")
+            params.append(note_type)
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        params.append(limit)
+
+        async with self._pool.connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(
+                    f"SELECT * FROM ai_notes {where_clause} ORDER BY id DESC LIMIT %s", params,
+                )
+                return [_decode_ai_note(row) for row in await cur.fetchall()]
 
     async def list_recent(self, limit: int = 100, status: Optional[str] = None) -> list[dict[str, Any]]:
         async with self._pool.connection() as conn:

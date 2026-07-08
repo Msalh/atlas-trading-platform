@@ -24,6 +24,11 @@ PICKMYTRADE_EVENT_TYPES = [
     event_types.TRADE_ENTRY_FORWARDED,
     event_types.TRADE_ENTRY_FORWARD_FAILED,
 ]
+CLAUDE_EVENT_TYPES = [
+    event_types.AI_ENTRY_SCORED,
+    event_types.AI_TRADE_REVIEWED,
+    event_types.AI_REPORT_GENERATED,
+]
 
 
 @router.get("/status")
@@ -42,8 +47,8 @@ async def status(
     pmt_type, pmt_at = system_status.most_recent(PICKMYTRADE_EVENT_TYPES)
     pmt_payload = system_status.last_payload(pmt_type) if pmt_type else None
 
-    claude_at = system_status.last_at(event_types.TRADE_AI_ANALYZED)
-    claude_payload = system_status.last_payload(event_types.TRADE_AI_ANALYZED)
+    claude_type, claude_at = system_status.most_recent(CLAUDE_EVENT_TYPES)
+    claude_payload = system_status.last_payload(claude_type) if claude_type else None
 
     return {
         "database": database,

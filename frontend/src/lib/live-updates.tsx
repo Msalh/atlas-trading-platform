@@ -18,6 +18,12 @@ export function useLiveUpdatesConnected(): boolean {
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://localhost:8000";
 
+// Sprint 9: /api/v1/stream requires the same shared API key as every other backend
+// endpoint (see atlas/api/security.py::require_api_key_for_stream), but browsers'
+// native EventSource can't set custom headers - so, for this one endpoint only, the
+// key travels as a query parameter instead.
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY;
+
 // Every event type from atlas/events/types.py that should cause a refetch. Kept as a
 // flat "which query-key groups does this event affect" map rather than trying to
 // invalidate by exact trade id - React Query's invalidateQueries does prefix
@@ -25,12 +31,18 @@ const API_BASE_URL =
 // and any open trade-detail view in one call. Cheap at this app's data volume (see
 // docs/sprint3/architecture-decisions.md).
 function queryKeyGroupsFor(eventType: string): string[][] {
-  // Every event type affects the Connection Status panel in some way (it tracks
-  // last-seen-at for TradingView/PickMyTrade/Claude across all of them - see
-  // atlas/api/v1/status.py), and every trade.* event affects at least one field the
-  // risk snapshot computes (open position appearing/updating, or balance/drawdown
-  // moving on exit) - so both are always invalidated alongside ["trades"].
+  // Every event type (trade.* and, as of Sprint 6, ai.*) affects the Connection
+  // Status panel in some way (it tracks last-seen-at for TradingView/PickMyTrade/
+  // Claude across all of them - see atlas/api/v1/status.py), and every trade.* event
+  // affects at least one field the risk snapshot computes (open position appearing/
+  // updating, or balance/drawdown moving on exit) - so both are always invalidated
+  // alongside ["trades"]. AI events additionally affect ["ai"] (the notes/reports
+  // panel) and, since an AI note can appear in a trade's timeline, ["trades"] too -
+  // already covered by the base group.
   const groups: string[][] = [["trades"], ["status"], ["risk"]];
+  if (eventType.startsWith("ai.")) {
+    groups.push(["ai"]);
+  }
   if (eventType === "trade.exit" || eventType === "trade.entry.received") {
     groups.push(["stats"]);
   }
@@ -48,7 +60,10 @@ export function LiveUpdatesProvider({ children }: { children: React.ReactNode })
   const sourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
-    const source = new EventSource(`${API_BASE_URL}/api/v1/stream`);
+    const streamUrl = API_KEY
+      ? `${API_BASE_URL}/api/v1/stream?api_key=${encodeURIComponent(API_KEY)}`
+      : `${API_BASE_URL}/api/v1/stream`;
+    const source = new EventSource(streamUrl);
     sourceRef.current = source;
 
     source.addEventListener("connected", () => setState("open"));

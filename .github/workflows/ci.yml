@@ -1,0 +1,95 @@
+name: CI
+
+# Sprint 10 - Production Operations. Two independent jobs: backend (pytest, unit +
+# integration against a real Postgres service container, coverage) and frontend
+# (tsc/lint/build). Neither job deploys anything - this is a verification gate only,
+# see docs/sprint10/deployment-runbook.md for how a green run here feeds into an
+# actual deploy.
+
+"on":
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: live
+    services:
+      # A real Postgres so tests/integration/ (the advisory-lock concurrency
+      # guarantee, real SQL correctness) actually runs in CI, not just the in-memory
+      # unit suite - closing the Sprint 8 audit's finding that this had never been
+      # exercised anywhere in this project's history.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: atlas_test
+          POSTGRES_PASSWORD: atlas_test
+          POSTGRES_DB: atlas_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U atlas_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: live/requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run unit test suite (in-memory repository) with coverage
+        run: pytest tests/ --cov-report=xml --cov-fail-under=80
+
+      - name: Run integration tests against real Postgres
+        env:
+          TEST_DATABASE_URL: postgres://atlas_test:atlas_test@localhost:5432/atlas_test
+        run: pytest tests/integration/ -v --no-cov
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: live/coverage.xml
+          retention-days: 14
+
+  frontend-checks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build
+        env:
+          # A placeholder API base URL is enough for `next build` (static analysis
+          # and prerendering only - no real backend is contacted during a build).
+          NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+        run: npm run build

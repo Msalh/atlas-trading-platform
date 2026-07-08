@@ -7,15 +7,30 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from atlas.api.deps import get_event_bus, get_repository, get_system_status  # noqa: E402
+from atlas.api.security import require_api_key, require_api_key_for_stream  # noqa: E402
 from atlas.config import settings  # noqa: E402
 from atlas.events.bus import EventBus  # noqa: E402
 from atlas.events.subscribers import log_event  # noqa: E402
 from atlas.events.types import ALL as ALL_EVENT_TYPES  # noqa: E402
 from atlas.main import app  # noqa: E402
+from atlas.rate_limit import limiter  # noqa: E402
 from atlas.repositories.memory import InMemoryTradeRepository  # noqa: E402
 from atlas.status import SystemStatus  # noqa: E402
 
 TEST_SECRET = "test-secret"
+TEST_API_KEY = "test-api-key"
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """The slowapi Limiter's in-memory counters live on the module-level `limiter`
+    singleton (atlas/rate_limit.py), which persists across every test in a pytest run
+    (atlas.main:app is imported once). Without this, tests that post several webhooks
+    in a row (or run after test_rate_limiting.py's deliberately-over-the-limit tests)
+    would fail for a reason unrelated to what they're actually testing."""
+    limiter.reset()
+    yield
+    limiter.reset()
 
 
 @pytest.fixture
@@ -45,11 +60,20 @@ def client(repository, event_bus, system_status, monkeypatch):
     """A TestClient wired to an in-memory repository via FastAPI's
     dependency_overrides - the standard way to test routes without a real database.
     This bypasses the Postgres-backed lifespan entirely (TestClient never triggers it
-    unless used as a context manager, and dependency_overrides win regardless)."""
+    unless used as a context manager, and dependency_overrides win regardless).
+
+    require_api_key/require_api_key_for_stream are overridden to no-ops here so the
+    existing test suite (none of which sends an Authorization header) keeps testing
+    what it was actually written to test, rather than universally needing an auth
+    header bolted on. The auth check itself is verified for real, without this
+    override, in tests/test_auth.py."""
     monkeypatch.setattr(settings, "webhook_secret", TEST_SECRET)
+    monkeypatch.setattr(settings, "api_key", TEST_API_KEY)
     app.dependency_overrides[get_repository] = lambda: repository
     app.dependency_overrides[get_event_bus] = lambda: event_bus
     app.dependency_overrides[get_system_status] = lambda: system_status
+    app.dependency_overrides[require_api_key] = lambda: None
+    app.dependency_overrides[require_api_key_for_stream] = lambda: None
     try:
         yield TestClient(app)
     finally:
@@ -66,6 +90,18 @@ def get_trade(repository):
             if row["correlation_id"] == correlation_id:
                 return row
         return None
+    return _get
+
+
+@pytest.fixture
+def get_ai_notes(repository):
+    """Returns a helper that reads back AI notes for a correlation_id (most recent
+    first), optionally filtered to one note_type."""
+    def _get(correlation_id, note_type=None):
+        import asyncio
+        return asyncio.run(
+            repository.list_ai_notes(trade_correlation_id=correlation_id, note_type=note_type)
+        )
     return _get
 
 

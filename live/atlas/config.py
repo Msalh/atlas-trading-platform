@@ -15,6 +15,32 @@ class Settings:
         self.anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY", "")
         self.claude_model = os.environ.get("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
         self.pickmytrade_webhook_url = os.environ.get("PICKMYTRADE_WEBHOOK_URL", "")
+
+        # Sprint 9: "production" (the default - fails safe) or "development". Only
+        # "development" ever tolerates a missing WEBHOOK_SECRET/API_KEY - see
+        # validate_for_startup() below. atlas.main:app (the real entrypoint) reads
+        # this; scripts/dev_seed_server.py is a separate, intentionally-unauthenticated
+        # local test harness that never calls validate_for_startup() at all.
+        self.environment = os.environ.get("ENVIRONMENT", "production").strip().lower()
+        # Sprint 9: shared API key required on every non-webhook, non-health endpoint
+        # (see atlas/api/security.py). Single shared secret, not per-user - this
+        # remains a single-user tool, not a multi-tenant system.
+        self.api_key = os.environ.get("API_KEY", "")
+        # Sprint 9: display-only by default (Sprint 4's original scope). Only when
+        # this is explicitly "true" does a breached kill switch actually block new
+        # PickMyTrade forwards - see atlas/api/v1/webhook.py's risk-enforcement gate.
+        self.risk_enforcement = os.environ.get("RISK_ENFORCEMENT", "false").strip().lower() == "true"
+
+        # Sprint 10: a Slack-compatible incoming webhook URL (also works with Discord
+        # and most generic webhook receivers) - see atlas/alerting.py. If unset,
+        # alerting is a no-op everywhere, the same "advisory only, gracefully absent"
+        # pattern as PICKMYTRADE_WEBHOOK_URL/ANTHROPIC_API_KEY.
+        self.alert_webhook_url = os.environ.get("ALERT_WEBHOOK_URL", "")
+        # Sprint 10: how many CONSECUTIVE Claude failures (across entry scoring, post-
+        # trade review, and reports combined) before atlas.alerting.ClaudeFailureTracker
+        # sends one alert - see that class's docstring for why this is a streak count,
+        # not "alert on every failure."
+        self.claude_failure_alert_threshold = int(os.environ.get("CLAUDE_FAILURE_ALERT_THRESHOLD", "3"))
         # Comma-separated list of origins allowed to call the API cross-origin (the
         # Next.js frontend). Defaults to the local Next.js dev server so local
         # frontend development works with zero configuration; set this explicitly in
@@ -44,6 +70,57 @@ class Settings:
         # = $2/point - also a placeholder until a real symbols table exists (see the
         # same architecture-decisions.md note).
         self.account_point_value = float(os.environ.get("ACCOUNT_POINT_VALUE", "2.0"))
+
+    def validate_for_startup(self) -> None:
+        """Called once from atlas/main.py's lifespan, before the app accepts any
+        traffic - the same "refuse to start rather than run unsafely" discipline
+        atlas/db.py's create_pool() already uses for a missing DATABASE_URL, applied
+        to the Sprint 9 security gaps found in the Sprint 8 audit:
+
+        - A missing WEBHOOK_SECRET used to silently disable webhook authentication
+          entirely (atlas/api/v1/webhook.py's check was `if settings.webhook_secret
+          and ...` - a blank secret short-circuited the check to always pass).
+        - The same class of bug would apply to API_KEY (atlas/api/security.py) if it
+          were allowed to be blank in production.
+        - RISK_ENFORCEMENT=true against un-configured (placeholder) account limits
+          would enforce against numbers that aren't your real funded-account rules -
+          arguably worse than no enforcement, since it looks safe but isn't.
+
+        Deliberately NOT called by scripts/dev_seed_server.py, which is a separate,
+        already-documented-as-unauthenticated local dev harness - set
+        ENVIRONMENT=development for any other kind of informal local testing against
+        atlas.main:app itself.
+        """
+        if self.environment not in ("production", "development"):
+            raise RuntimeError(
+                f"ENVIRONMENT={self.environment!r} is not recognized - must be "
+                f"'production' (the default) or 'development'."
+            )
+        if self.environment != "production":
+            return
+
+        missing = []
+        if not self.webhook_secret:
+            missing.append("WEBHOOK_SECRET")
+        if not self.api_key:
+            missing.append("API_KEY")
+        if missing:
+            raise RuntimeError(
+                f"{', '.join(missing)} not set. Refusing to start in production mode "
+                f"(ENVIRONMENT=production, the default) without it - an unset webhook "
+                f"secret or API key means that check is silently disabled, not "
+                f"enforced. Set the missing variable(s), or set ENVIRONMENT=development "
+                f"for local testing only (never for a real deployment)."
+            )
+        if self.risk_enforcement and not self.account_configured:
+            raise RuntimeError(
+                "RISK_ENFORCEMENT=true but ACCOUNT_STARTING_BALANCE/ACCOUNT_DAILY_LOSS_LIMIT/"
+                "ACCOUNT_TRAILING_DRAWDOWN_LIMIT/ACCOUNT_MAX_CONTRACTS are not all set. "
+                "Refusing to start: enforcing the kill switch against placeholder default "
+                "limits (not your real funded-account rules) would be actively misleading - "
+                "it would look like protection while enforcing numbers that mean nothing. "
+                "Set all four account variables, or leave RISK_ENFORCEMENT unset/false."
+            )
 
 
 settings = Settings()

@@ -7,6 +7,7 @@ import { formatPnl, formatPrice, formatTimeAgo } from "@/lib/format";
 import { pollInterval } from "@/lib/intervals";
 import { useLiveUpdatesConnected } from "@/lib/live-updates";
 import { DirectionBadge, StatusBadge } from "@/components/StatusBadge";
+import { EntryScoreBadge } from "@/components/EntryScoreBadge";
 
 export function CurrentPositionCard() {
   const sseConnected = useLiveUpdatesConnected();
@@ -38,6 +39,7 @@ export function CurrentPositionCard() {
               <DirectionBadge direction={data.trade.direction} />
               <span className="text-muted">{data.trade.setup_tag ?? "?"}</span>
               <StatusBadge status={data.trade.status} />
+              <EntryScoreBadge correlationId={data.trade.correlation_id} />
             </div>
             <span className="text-xs text-muted">
               opened {formatTimeAgo(data.trade.received_at)}

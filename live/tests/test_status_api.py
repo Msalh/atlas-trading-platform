@@ -1,9 +1,22 @@
 """Tests for GET /status - the Connection Status panel's data source."""
+import asyncio
 from unittest.mock import patch
 
+import atlas.ai as ai_module
 from atlas.api.v1 import webhook
 from atlas.config import settings
 from tests.conftest import entry_payload
+
+
+async def _seed_similar_trade(repository, correlation_id):
+    """Seeds one closed trade sharing entry_payload()'s direction/setup_tag so
+    run_entry_score has historical evidence and actually calls Claude (rather than
+    taking the zero-history shortcut where Claude is never invoked at all)."""
+    async def _forward_ok():
+        return True, 200, None
+
+    await repository.claim_and_forward(correlation_id, entry_payload(correlation_id), "{}", _forward_ok)
+    await repository.update_exit(correlation_id, "won", 30050, 500.0, "2026-01-01T00:00:00+00:00")
 
 
 def test_status_with_no_activity_yet(client, monkeypatch):
@@ -27,7 +40,7 @@ def test_status_reflects_successful_forward_and_analysis(client, monkeypatch):
     monkeypatch.setattr(settings, "anthropic_api_key", "sk-test")
 
     with patch.object(webhook, "forward_to_pickmytrade", return_value=(True, 200, None)), \
-         patch.object(webhook, "analyze_with_claude", return_value=("bullish setup", None)):
+         patch.object(ai_module, "analyze_with_claude", return_value=("bullish setup", None)):
         client.post("/webhook", json=entry_payload("corr-status-ok"))
 
     resp = client.get("/api/v1/status")
@@ -45,9 +58,11 @@ def test_status_reflects_successful_forward_and_analysis(client, monkeypatch):
     assert body["claude"]["last_error"] is None
 
 
-def test_status_reflects_forward_failure(client):
+def test_status_reflects_forward_failure(client, repository):
+    asyncio.run(_seed_similar_trade(repository, "hist-status-fail"))
+
     with patch.object(webhook, "forward_to_pickmytrade", return_value=(False, None, "connection refused")), \
-         patch.object(webhook, "analyze_with_claude", return_value=(None, "no API key")):
+         patch.object(ai_module, "analyze_with_claude", return_value=(None, "no API key")):
         client.post("/webhook", json=entry_payload("corr-status-fail"))
 
     resp = client.get("/api/v1/status")

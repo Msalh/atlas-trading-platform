@@ -6,6 +6,16 @@
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://localhost:8000";
 
+// Sprint 9: every non-webhook, non-health backend endpoint requires this - see
+// atlas/api/security.py. Left unset for local dev against scripts/dev_seed_server.py
+// (which never checks it); required once NEXT_PUBLIC_API_BASE_URL points at a real
+// atlas.main:app deployment, which refuses to start without a real API_KEY anyway.
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY;
+
+function authHeaders(): HeadersInit {
+  return API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {};
+}
+
 export interface Trade {
   id: number;
   correlation_id: string;
@@ -42,13 +52,17 @@ export type TimelineEventType =
   | "entry_received"
   | "pmt_forwarded"
   | "pmt_forward_failed"
-  | "ai_analysis"
+  | "ai_analysis" // legacy (pre-Sprint-6) single-slot analysis - see atlas/api/v1/trades.py
+  | "entry_score"
   | "price_update"
-  | "exit";
+  | "exit"
+  | "post_trade_review";
 
 export interface TimelineEvent {
   type: TimelineEventType;
   at: string | null;
+  // entry_score events (Sprint 7) additionally carry expected_r, historical_win_rate_pct,
+  // similar_trade_count, and factors: Factor[] - see atlas/api/v1/trades.py::build_timeline.
   [key: string]: unknown;
 }
 
@@ -195,8 +209,66 @@ export interface BreakdownResponse {
   by_weekday: BreakdownGroup[];
 }
 
+export type AiNoteType = "entry_score" | "post_trade_review" | "daily_report" | "weekly_report";
+
+// Sprint 7: one measurable factor behind a confidence score - this entry's value
+// compared against the median among historically similar winners and losers. See
+// atlas/intelligence.py::compute_factors. `favorable` is null when there wasn't
+// enough historical data on one side (winners or losers) to compare against.
+export interface Factor {
+  name: string;
+  entry_value: number | null;
+  winners_median: number | null;
+  losers_median: number | null;
+  favorable: boolean | null;
+}
+
+export interface AiNote {
+  id: number;
+  trade_correlation_id: string | null;
+  note_type: AiNoteType;
+  created_at: string;
+  model: string | null;
+  score: number | null;
+  score_label: string | null;
+  content: string | null;
+  error: string | null;
+  // Sprint 7: only populated for note_type "entry_score" - the deterministic,
+  // historically-grounded numbers computed before Claude was ever called. Null for
+  // post_trade_review/daily_report/weekly_report rows, and also null on an
+  // entry_score row when similar_trade_count is 0 (nothing to compute against yet).
+  expected_r: number | null;
+  historical_win_rate_pct: number | null;
+  similar_trade_count: number | null;
+  factors: Factor[] | null;
+}
+
+export interface AiNotesResponse {
+  count: number;
+  notes: AiNote[];
+}
+
+export interface AiReportsResponse {
+  count: number;
+  reports: AiNote[];
+}
+
+// Sprint 7: on-demand recomputation of atlas/intelligence.py's snapshot - no Claude
+// call, nothing persisted. Works for any trade (open or closed), unlike the
+// entry_score AiNote which is a one-time snapshot taken at entry time.
+export interface IntelligenceSnapshot {
+  correlation_id: string;
+  similar_trade_count: number;
+  confidence_score: number | null;
+  confidence_label: string;
+  summary: AnalyticsSummaryResponse;
+  factors: Factor[];
+}
+
+export type ReportPeriod = "daily" | "weekly";
+
 async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, { cache: "no-store" });
+  const res = await fetch(`${API_BASE_URL}${path}`, { cache: "no-store", headers: authHeaders() });
   if (!res.ok) {
     throw new Error(`GET ${path} failed: HTTP ${res.status}`);
   }
@@ -217,7 +289,7 @@ export const api = {
   tradeDetail: async (correlationId: string): Promise<TradeDetailResponse | null> => {
     const res = await fetch(
       `${API_BASE_URL}/api/v1/trades/${encodeURIComponent(correlationId)}`,
-      { cache: "no-store" },
+      { cache: "no-store", headers: authHeaders() },
     );
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`GET trade detail failed: HTTP ${res.status}`);
@@ -235,4 +307,38 @@ export const api = {
   equityCurve: () => apiGet<EquityCurveResponse>("/api/v1/analytics/equity-curve"),
 
   breakdown: () => apiGet<BreakdownResponse>("/api/v1/analytics/breakdown"),
+
+  aiNotes: (params?: { tradeCorrelationId?: string; noteType?: AiNoteType; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.tradeCorrelationId) qs.set("trade_correlation_id", params.tradeCorrelationId);
+    if (params?.noteType) qs.set("note_type", params.noteType);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    const query = qs.toString();
+    return apiGet<AiNotesResponse>(`/api/v1/ai/notes${query ? `?${query}` : ""}`);
+  },
+
+  aiReports: (params?: { period?: ReportPeriod; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.period) qs.set("period", params.period);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    const query = qs.toString();
+    return apiGet<AiReportsResponse>(`/api/v1/ai/reports${query ? `?${query}` : ""}`);
+  },
+
+  triggerReport: async (period: ReportPeriod): Promise<void> => {
+    const res = await fetch(
+      `${API_BASE_URL}/api/v1/ai/reports/${period}`, { method: "POST", headers: authHeaders() },
+    );
+    if (!res.ok) throw new Error(`POST report trigger failed: HTTP ${res.status}`);
+  },
+
+  intelligence: async (correlationId: string): Promise<IntelligenceSnapshot | null> => {
+    const res = await fetch(
+      `${API_BASE_URL}/api/v1/ai/intelligence/${encodeURIComponent(correlationId)}`,
+      { cache: "no-store", headers: authHeaders() },
+    );
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`GET intelligence failed: HTTP ${res.status}`);
+    return (await res.json()) as IntelligenceSnapshot;
+  },
 };

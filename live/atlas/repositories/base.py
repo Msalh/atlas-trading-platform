@@ -51,11 +51,43 @@ class TradeRepository(Protocol):
         pmt_status_code/pmt_error."""
         ...
 
-    async def update_ai_analysis(
-        self, correlation_id: str, model: Optional[str], analysis: Optional[str], error: Optional[str],
-    ) -> None:
-        """Records the result of a Claude analysis pass. Commentary only - never
-        called on the request-critical path."""
+    async def add_ai_note(
+        self,
+        *,
+        trade_correlation_id: Optional[str],
+        note_type: str,
+        model: Optional[str],
+        content: Optional[str],
+        error: Optional[str],
+        score: Optional[int] = None,
+        score_label: Optional[str] = None,
+        expected_r: Optional[float] = None,
+        historical_win_rate_pct: Optional[float] = None,
+        similar_trade_count: Optional[int] = None,
+        factors: Optional[list[dict[str, Any]]] = None,
+    ) -> dict[str, Any]:
+        """Records one AI pass - an entry score, a post-trade review, or a
+        daily/weekly report (trade_correlation_id is None for report types, which
+        summarize many trades rather than belonging to one). Commentary only - never
+        called on the request-critical path. Returns the stored row.
+
+        expected_r/historical_win_rate_pct/similar_trade_count/factors (Sprint 7) are
+        only meaningful for note_type='entry_score' - the deterministic, historically-
+        grounded numbers atlas/intelligence.py computed *before* Claude was ever
+        called, not anything Claude produced itself. `factors` is a plain Python list
+        of dicts in and out - implementations own how (or whether) they serialize it
+        for storage, callers never see a JSON string.
+        """
+        ...
+
+    async def list_ai_notes(
+        self,
+        *,
+        trade_correlation_id: Optional[str] = None,
+        note_type: Optional[str] = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Most recent first. Filters are AND-ed together; both are optional."""
         ...
 
     async def list_recent(self, limit: int = 100, status: Optional[str] = None) -> list[dict[str, Any]]:

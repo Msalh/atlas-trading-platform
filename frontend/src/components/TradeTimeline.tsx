@@ -1,13 +1,39 @@
-import type { TimelineEvent } from "@/lib/api";
+import type { Factor, TimelineEvent } from "@/lib/api";
 import { formatClock, formatPnl, formatPrice } from "@/lib/format";
+
+function FactorChips({ factors }: { factors: Factor[] }) {
+  return (
+    <div className="mt-1 flex flex-wrap gap-1.5">
+      {factors.map((f) => {
+        const colorClass =
+          f.favorable === true
+            ? "text-long border-long/30 bg-long/10"
+            : f.favorable === false
+              ? "text-short border-short/30 bg-short/10"
+              : "text-muted border-border bg-surface-raised";
+        return (
+          <span
+            key={f.name}
+            className={`rounded border px-1.5 py-0.5 text-[10px] font-mono ${colorClass}`}
+            title={`this entry: ${f.entry_value ?? "-"}, winners median: ${f.winners_median ?? "-"}, losers median: ${f.losers_median ?? "-"}`}
+          >
+            {f.name}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
 
 const DOT_COLOR: Record<string, string> = {
   entry_received: "bg-open",
   pmt_forwarded: "bg-ok",
   pmt_forward_failed: "bg-danger",
   ai_analysis: "bg-muted",
+  entry_score: "bg-muted",
   price_update: "bg-open",
   exit: "bg-long",
+  post_trade_review: "bg-muted",
 };
 
 function EventLabel({ event }: { event: TimelineEvent }) {
@@ -42,6 +68,46 @@ function EventLabel({ event }: { event: TimelineEvent }) {
       ) : (
         <>
           <span className="font-semibold">Claude analysis:</span> {String(event.analysis ?? "")}
+        </>
+      );
+    case "entry_score": {
+      // Sprint 7: score/similar_trade_count/etc come from atlas/intelligence.py's
+      // deterministic computation, not Claude - so a Claude failure (event.error) can
+      // still coexist with a real score. Only the narrative explanation is missing.
+      const factors = (event.factors as Factor[] | null) ?? null;
+      const similarCount = event.similar_trade_count as number | null | undefined;
+      const winRate = event.historical_win_rate_pct as number | null | undefined;
+      const expectedR = event.expected_r as number | null | undefined;
+      return (
+        <>
+          <span className="font-semibold">
+            AI entry score{event.score !== null && event.score !== undefined ? `: ${event.score}/10` : ""}
+            {event.score_label ? ` (${String(event.score_label)})` : ""}
+          </span>
+          {similarCount !== null && similarCount !== undefined && similarCount > 0 && (
+            <span className="ml-1 text-xs text-muted">
+              · {similarCount} similar trade{similarCount === 1 ? "" : "s"}
+              {winRate !== null && winRate !== undefined ? `, ${winRate.toFixed(0)}% win rate` : ""}
+              {expectedR !== null && expectedR !== undefined ? `, ${expectedR.toFixed(2)}R expected` : ""}
+            </span>
+          )}
+          {event.error ? (
+            <div className="mt-1 text-xs text-danger">Narrative unavailable — {String(event.error)}</div>
+          ) : event.content ? (
+            <> — {String(event.content)}</>
+          ) : null}
+          {factors && factors.length > 0 && <FactorChips factors={factors} />}
+        </>
+      );
+    }
+    case "post_trade_review":
+      return event.error ? (
+        <>
+          <span className="font-semibold text-danger">Post-trade review failed</span> — {String(event.error)}
+        </>
+      ) : (
+        <>
+          <span className="font-semibold">Post-trade review:</span> {String(event.content ?? "")}
         </>
       );
     case "price_update":
