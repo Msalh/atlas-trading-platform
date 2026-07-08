@@ -36,7 +36,15 @@ async def pool():
     p = AsyncConnectionPool(TEST_DATABASE_URL, min_size=2, max_size=5, open=False)
     await p.open(wait=True, timeout=30)
     async with p.connection() as conn:
-        await conn.execute("TRUNCATE trades RESTART IDENTITY")
+        # CASCADE is required, not optional, as of Sprint 6: ai_notes has a foreign
+        # key to trades.correlation_id (migrations/0003_ai_notes.sql), and Postgres
+        # refuses to TRUNCATE a table referenced by an FK unless the referencing
+        # table is truncated in the same statement. CASCADE also resets ai_notes'
+        # own identity sequence (RESTART IDENTITY applies to every table actually
+        # truncated, not just the one named) - self-healing if a future migration
+        # adds another table with an FK to trades, rather than needing this fixture
+        # updated by hand every time.
+        await conn.execute("TRUNCATE trades RESTART IDENTITY CASCADE")
     yield p
     await p.close()
 
