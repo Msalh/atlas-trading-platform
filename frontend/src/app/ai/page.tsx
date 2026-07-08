@@ -1,9 +1,11 @@
+import { AICopilotPanel } from "@/components/AICopilotPanel";
 import { AiNotesTimeline } from "@/components/AiNotesTimeline";
 import { AiReportsPanel } from "@/components/AiReportsPanel";
 
 export default function AiPage() {
   return (
     <div className="space-y-6">
+      <AICopilotPanel />
       <AiReportsPanel />
       <AiNotesTimeline />
       <p className="text-xs text-muted">
