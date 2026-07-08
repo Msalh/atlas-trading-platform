@@ -31,7 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from atlas.alerting import ClaudeFailureTracker, alert_on_forward_failure  # noqa: E402
 from atlas.api.v1 import ai as ai_router  # noqa: E402
-from atlas.api.v1 import analytics, health, risk, status, stats, stream, trades, webhook  # noqa: E402
+from atlas.api.v1 import activity, analytics, health, risk, status, stats, stream, trades, webhook  # noqa: E402
 from atlas.config import settings  # noqa: E402
 from atlas.events import types as event_types  # noqa: E402
 from atlas.events.bus import EventBus  # noqa: E402
@@ -277,6 +277,7 @@ def build_app() -> FastAPI:
     dev_app.include_router(risk.router, prefix="/api/v1", tags=["v1"])
     dev_app.include_router(analytics.router, prefix="/api/v1", tags=["v1"])
     dev_app.include_router(ai_router.router, prefix="/api/v1", tags=["v1"])
+    dev_app.include_router(activity.router, prefix="/api/v1", tags=["v1"])
     dev_app.include_router(webhook.router, tags=["legacy"])
     dev_app.include_router(health.router, tags=["legacy"])
     return dev_app

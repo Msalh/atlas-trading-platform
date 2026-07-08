@@ -267,6 +267,28 @@ export interface IntelligenceSnapshot {
 
 export type ReportPeriod = "daily" | "weekly";
 
+// Sprint 11 - Activity Center: unified chronological feed built server-side from
+// existing trades/ai_notes/risk/status data - see atlas/activity.py. Risk and system
+// events are current-state snapshots, not history (see that module's docstring), so
+// don't assume every past breach/error will appear here, only the most recent.
+export type ActivityCategory = "trading" | "ai" | "risk" | "analytics" | "system";
+export type ActivitySeverity = "info" | "success" | "warning" | "critical";
+
+export interface ActivityEvent {
+  id: string;
+  timestamp: string;
+  category: ActivityCategory;
+  severity: ActivitySeverity;
+  title: string;
+  description: string | null;
+  correlation_id: string | null;
+}
+
+export interface ActivityResponse {
+  count: number;
+  events: ActivityEvent[];
+}
+
 async function apiGet<T>(path: string): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${path}`, { cache: "no-store", headers: authHeaders() });
   if (!res.ok) {
@@ -340,5 +362,12 @@ export const api = {
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`GET intelligence failed: HTTP ${res.status}`);
     return (await res.json()) as IntelligenceSnapshot;
+  },
+
+  activity: (params?: { limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.limit) qs.set("limit", String(params.limit));
+    const query = qs.toString();
+    return apiGet<ActivityResponse>(`/api/v1/activity${query ? `?${query}` : ""}`);
   },
 };

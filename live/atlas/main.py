@@ -45,7 +45,7 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from atlas.alerting import ClaudeFailureTracker, alert_on_forward_failure
 from atlas.api.security import require_api_key, require_api_key_for_stream
-from atlas.api.v1 import ai, analytics, health, risk, status, stats, stream, trades, webhook
+from atlas.api.v1 import activity, ai, analytics, health, risk, status, stats, stream, trades, webhook
 from atlas.config import settings
 from atlas.db import create_pool
 from atlas.events import types as event_types
@@ -144,6 +144,7 @@ app.include_router(
 app.include_router(risk.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
 app.include_router(analytics.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
 app.include_router(ai.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
+app.include_router(activity.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
 
 # Legacy, unversioned surface - preserved so the existing TradingView alert keeps
 # working without any change on TradingView's side. The legacy HTML dashboard

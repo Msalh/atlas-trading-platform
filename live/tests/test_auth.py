@@ -42,6 +42,7 @@ def raw_client(monkeypatch, repository, event_bus, system_status):
 @pytest.mark.parametrize("path", [
     "/api/v1/trades", "/api/v1/trades/current", "/api/v1/status", "/api/v1/stats/today",
     "/api/v1/risk", "/api/v1/analytics/summary", "/api/v1/ai/notes", "/api/v1/ai/reports",
+    "/api/v1/activity",
 ])
 def test_protected_endpoints_reject_missing_api_key(raw_client, path):
     resp = raw_client.get(path)
