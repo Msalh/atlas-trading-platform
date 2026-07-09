@@ -34,8 +34,18 @@ async def stats_today(repository: TradeRepository = Depends(get_repository)):
     today = datetime.now(timezone.utc).date().isoformat()
     trades = await repository.list_recent(limit=SCAN_LIMIT)
 
-    entered_today = [t for t in trades if (t["received_at"] or "").startswith(today)]
-    closed_today = [t for t in trades if (t["closed_at"] or "").startswith(today)]
+    # "won"/"lost" only - status='test_closed' (developer E2E cleanup, see
+    # scripts/close_e2e_test_trades.py) is deliberately excluded from every one of
+    # these, matching the exact status in ("won", "lost") pattern atlas/analytics.py's
+    # _closed_trades(), atlas/risk.py's compute_risk_snapshot, and
+    # atlas/intelligence.py's find_similar_trades already use - test trades were never
+    # meant to be a fourth kind of real outcome.
+    entered_today = [
+        t for t in trades if (t["received_at"] or "").startswith(today) and t["status"] != "test_closed"
+    ]
+    closed_today = [
+        t for t in trades if (t["closed_at"] or "").startswith(today) and t["status"] in ("won", "lost")
+    ]
     wins_today = [t for t in closed_today if t["status"] == "won"]
     losses_today = [t for t in closed_today if t["status"] == "lost"]
     forward_failures_today = [t for t in entered_today if not t["pmt_forwarded"]]

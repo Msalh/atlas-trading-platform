@@ -1,6 +1,7 @@
 """Tests for GET /api/v1/risk - fetch-and-serialize wrapper around atlas/risk.py's pure
 computation. atlas/risk.py's own test suite (test_risk.py) covers the math in depth;
 these tests confirm the endpoint wires real trade data and settings into it correctly."""
+import asyncio
 from unittest.mock import patch
 
 import atlas.ai as ai_module
@@ -77,3 +78,25 @@ def test_risk_endpoint_reports_unconfigured_account(client, monkeypatch):
 
     resp = client.get("/api/v1/risk")
     assert resp.json()["account_configured"] is False
+
+
+def test_risk_endpoint_excludes_test_closed_trades_from_balance(client, repository):
+    """Locks in existing (unchanged) behavior: compute_risk_snapshot's status in
+    ("won", "lost") filter already excludes test_closed (scripts/close_e2e_test_trades.py's
+    cleanup status) from current_balance/high_water_mark/daily_realized_pnl - a $0
+    test trade must never even show up as a no-op entry in the balance history."""
+    _post_entry(client, "corr-real-win", direction="long", entry_price=100, sl=90, tp=130)
+    client.post("/webhook", json={
+        "type": "exit", "correlation_id": "corr-real-win", "secret": "test-secret",
+        "outcome": "WIN", "exit_price": 130, "realized_pnl": 600,
+    })
+
+    _post_entry(client, "E2E-MNQU6-1720000000000")
+    asyncio.run(repository.update_exit(
+        "E2E-MNQU6-1720000000000", "test_closed", None, 0.0, "2026-01-01T00:00:00+00:00",
+    ))
+
+    resp = client.get("/api/v1/risk")
+    body = resp.json()
+    assert body["current_balance"] == body["starting_balance"] + 600
+    assert body["daily_realized_pnl"] == 600

@@ -90,6 +90,28 @@ def test_list_trades_rejects_invalid_status(client):
     assert resp.status_code == 400
 
 
+def test_list_trades_filters_by_test_closed_status(client, repository):
+    """test_closed (scripts/close_e2e_test_trades.py) must stay a valid, searchable
+    filter value - it's a real status, just not a performance outcome."""
+    _post_entry(client, "corr-real-open")
+    _post_entry(client, "E2E-MNQU6-1720000000000")
+    asyncio.run(repository.update_exit(
+        "E2E-MNQU6-1720000000000", "test_closed", None, 0.0, "2026-01-01T00:00:00+00:00",
+    ))
+
+    resp = client.get("/api/v1/trades", params={"status": "test_closed"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["count"] == 1
+    assert body["trades"][0]["correlation_id"] == "E2E-MNQU6-1720000000000"
+
+    # and it does not leak into the "open" filter, since it's no longer open
+    resp = client.get("/api/v1/trades", params={"status": "open"})
+    body = resp.json()
+    assert body["count"] == 1
+    assert body["trades"][0]["correlation_id"] == "corr-real-open"
+
+
 def test_trade_detail_404_for_unknown_correlation_id(client):
     resp = client.get("/api/v1/trades/does-not-exist")
     assert resp.status_code == 404

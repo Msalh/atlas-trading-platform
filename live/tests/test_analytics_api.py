@@ -1,6 +1,7 @@
 """Tests for the three analytics endpoints - confirms real trade data flows through
 compute_summary/compute_equity_curve/compute_breakdown correctly end to end. The math
 itself is covered in depth by test_analytics.py."""
+import asyncio
 from unittest.mock import patch
 
 import atlas.ai as ai_module
@@ -38,6 +39,24 @@ def test_analytics_summary_reflects_closed_trades(client):
     assert body["losses"] == 1
     assert body["gross_profit"] == 500
     assert body["gross_loss"] == 200
+
+
+def test_analytics_summary_excludes_test_closed_trades(client, repository):
+    """Locks in existing (unchanged) behavior: compute_summary's status in ("won",
+    "lost") filter already excludes test_closed - scripts/close_e2e_test_trades.py's
+    cleanup status - from every summary metric. Confirmed end to end here so a future
+    change to that filter can't silently start counting test trades as real ones."""
+    _closed_trade(client, "corr-real-win", "WIN", 500)
+    _closed_trade(client, "E2E-MNQU6-1720000000000", "WIN", 0)
+    asyncio.run(repository.update_exit(
+        "E2E-MNQU6-1720000000000", "test_closed", None, 0.0, "2026-01-01T00:00:00+00:00",
+    ))
+
+    resp = client.get("/api/v1/analytics/summary")
+    body = resp.json()
+    assert body["total_trades"] == 1
+    assert body["wins"] == 1
+    assert body["gross_profit"] == 500
 
 
 def test_analytics_equity_curve_starts_at_configured_starting_balance(client, monkeypatch):

@@ -23,7 +23,11 @@ from atlas.repositories.base import TradeRepository
 
 router = APIRouter()
 
-VALID_STATUSES = {"open", "won", "lost"}
+# test_closed (developer E2E cleanup, see scripts/close_e2e_test_trades.py) is a real,
+# queryable status - "searchable through the API" - not a performance outcome, so it's
+# excluded everywhere analytics/risk/stats compute over won/lost trades (see
+# atlas/api/v1/stats.py), but a valid filter value here.
+VALID_STATUSES = {"open", "won", "lost", "test_closed"}
 
 
 @router.get("/trades/current")
