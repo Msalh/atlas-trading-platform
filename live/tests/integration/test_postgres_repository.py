@@ -151,3 +151,26 @@ async def test_pmt_relay_diagnostics_is_none_when_never_set(repo):
 async def test_update_pmt_diagnostics_no_matching_trade_returns_zero(repo):
     matched = await repo.update_pmt_diagnostics("int-corr-does-not-exist", {"status_code": 200})
     assert matched == 0
+
+
+async def test_e2e_trade_closed_as_test_closed_leaves_no_open_position(repo):
+    """The core safety property scripts/close_e2e_test_trades.py depends on: closing a
+    trade with status='test_closed' (rather than 'won'/'lost') removes it from
+    get_open_trade() - the actual method used to close E2E test trades, exercised here
+    against a real database rather than assumed."""
+    async def forward():
+        return True, 200, None
+
+    e2e_entry = {**BASE_ENTRY, "setup_tag": "E2E_TEST"}
+    await repo.claim_and_forward("E2E-MNQU6-1720000000000", e2e_entry, "{}", forward)
+
+    assert (await repo.get_open_trade())["correlation_id"] == "E2E-MNQU6-1720000000000"
+
+    await repo.update_exit("E2E-MNQU6-1720000000000", "test_closed", None, 0.0, "2026-01-01T00:00:00Z")
+
+    assert await repo.get_open_trade() is None
+
+    rows = await repo.list_recent(limit=10)
+    closed_row = next(r for r in rows if r["correlation_id"] == "E2E-MNQU6-1720000000000")
+    assert closed_row["status"] == "test_closed"
+    assert closed_row["realized_pnl"] == 0.0
