@@ -77,4 +77,8 @@ def test_extra_pickmytrade_only_fields_still_pass_through_unrejected(client):
     assert resp.status_code in (200, 207)
     forwarded_payload = mock_forward.call_args[0][0]
     assert forwarded_payload.get("some_future_field") == "anything"
-    assert forwarded_payload.get("strategy_name") == "NQ RECLAIM NY LONG"  # PMT-only field, still present
+    # strategy_name stays in Atlas's own internal payload/storage (this is what gets
+    # passed INTO forward_to_pickmytrade, before that function's own PMT_FIELDS
+    # filtering runs) - see test_pickmytrade.py for confirmation it's excluded from
+    # what's actually sent to PickMyTrade specifically.
+    assert forwarded_payload.get("strategy_name") == "NQ RECLAIM NY LONG"

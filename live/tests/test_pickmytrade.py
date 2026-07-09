@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 from atlas.config import settings
 from atlas.services.pickmytrade import (
+    PMT_FIELDS,
     _mask_payload,
     _mask_token,
     _normalize_pmt_payload,
@@ -30,6 +31,32 @@ def _entry_payload(**overrides):
     }
     payload.update(overrides)
     return payload
+
+
+# --- payload parity with the verified-working direct curl test ----------------------
+# A direct curl straight to PickMyTrade's endpoint, verified end-to-end (status
+# TradingLocked - correctly recognized, just blocked by account state), did not
+# include `strategy_name` at all. Atlas's own internal payload/trade storage still
+# keeps it (see conftest.py's entry_payload and test_webhook_validation.py) - only the
+# outbound-to-PickMyTrade payload excludes it.
+
+def test_strategy_name_is_not_in_pmt_fields():
+    assert "strategy_name" not in PMT_FIELDS
+
+
+async def test_forward_does_not_send_strategy_name_to_pickmytrade(monkeypatch):
+    monkeypatch.setattr(settings, "pickmytrade_webhook_url", "https://pmt.example.com/hook")
+    mock_response = Mock(status_code=200, text="OK")
+    diagnostics: dict = {}
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock, return_value=mock_response) as mock_post:
+        await forward_to_pickmytrade(_entry_payload(), diagnostics=diagnostics)
+
+    sent_body = mock_post.call_args.kwargs["json"]
+    assert "strategy_name" not in sent_body
+    assert "strategy_name" not in diagnostics["payload"]
+    # everything else PMT_FIELDS still selects is untouched by this exclusion
+    assert sent_body["symbol"] == "MNQU6"
+    assert sent_body["token"] == "supersecrettoken1234"
 
 
 # --- masking -------------------------------------------------------------------------

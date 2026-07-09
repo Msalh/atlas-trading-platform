@@ -46,6 +46,23 @@ export interface Trade {
   pmt_status_code: number | null;
   pmt_error: string | null;
   raw_entry_payload: string | null;
+  pmt_relay_diagnostics: PmtRelayDiagnostics | null;
+}
+
+// Full diagnostics of the latest PickMyTrade relay attempt (added to debug why
+// PickMyTrade's Alert Log was showing nothing for a relay Atlas believed succeeded -
+// see atlas/services/pickmytrade.py). `payload` is the exact, normalized JSON body
+// sent to PickMyTrade (data lowercased, price stringified, date ISO-8601) with the
+// token masked - never the real secret.
+export interface PmtRelayDiagnostics {
+  attempted_at: string;
+  url: string | null;
+  method: string;
+  payload: Record<string, unknown>;
+  status_code: number | null;
+  response_body: string | null;
+  exception: string | null;
+  duration_ms: number;
 }
 
 export type TimelineEventType =

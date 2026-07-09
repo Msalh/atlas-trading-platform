@@ -52,7 +52,13 @@ from atlas.config import settings
 logger = logging.getLogger("atlas.pickmytrade")
 
 PMT_FIELDS = [
-    "symbol", "strategy_name", "date", "data", "quantity", "price", "tp", "sl",
+    # `strategy_name` deliberately excluded (Sprint - PMT payload parity): a direct
+    # curl test against PickMyTrade's live endpoint, verified end-to-end (status
+    # TradingLocked - correctly recognized, just blocked by account state), did not
+    # include this field at all. Atlas's own internal storage/trade record still keeps
+    # strategy_name (see WebhookPayload/payload dict) - this list only controls what's
+    # forwarded to PickMyTrade specifically.
+    "symbol", "date", "data", "quantity", "price", "tp", "sl",
     "trail", "trail_stop", "trail_trigger", "trail_freq", "token", "pyramid",
     "same_direction_ignore", "reverse_order_close", "multiple_accounts",
 ]

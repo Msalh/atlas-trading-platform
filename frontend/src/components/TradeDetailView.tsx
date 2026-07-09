@@ -7,6 +7,7 @@ import { formatPnl, formatPrice } from "@/lib/format";
 import { pollInterval } from "@/lib/intervals";
 import { useLiveUpdatesConnected } from "@/lib/live-updates";
 import { DirectionBadge, StatusBadge } from "@/components/StatusBadge";
+import { PmtDiagnosticsPanel } from "@/components/PmtDiagnosticsPanel";
 import { TradeTimeline } from "@/components/TradeTimeline";
 
 export function TradeDetailView({ correlationId }: { correlationId: string }) {
@@ -88,6 +89,10 @@ export function TradeDetailView({ correlationId }: { correlationId: string }) {
             </h2>
             <TradeTimeline events={data.timeline} />
           </section>
+
+          {data.trade.pmt_relay_diagnostics && (
+            <PmtDiagnosticsPanel diagnostics={data.trade.pmt_relay_diagnostics} />
+          )}
         </>
       )}
     </div>
