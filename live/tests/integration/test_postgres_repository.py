@@ -5,7 +5,6 @@ tested against the in-memory double: that PostgresTradeRepository.claim_and_forw
 safe under true concurrency, not just sequential idempotency.
 """
 import asyncio
-import json
 
 BASE_ENTRY = {
     "direction": "long", "setup_tag": "BRK", "symbol": "MNQU6", "entry_price": 100,
@@ -90,6 +89,14 @@ async def test_price_update_and_exit_round_trip(repo):
 
 
 async def test_update_pmt_diagnostics_round_trips_through_real_postgres(repo):
+    """pmt_relay_diagnostics is stored as a JSON string in a TEXT column
+    (update_pmt_diagnostics does the json.dumps) but must come back as a real dict on
+    every read path - dict_row does not auto-decode TEXT columns the way it would a
+    native JSON/JSONB column, so get_by_correlation_id must decode it explicitly (see
+    _decode_trade in atlas/repositories/postgres.py). Asserting direct dict equality
+    here (not json.loads(row[...])) is deliberate: if the decode step regresses and
+    this field comes back as a raw string again, this comparison fails outright rather
+    than the test papering over it with a redundant manual decode."""
     async def forward():
         return True, 200, None
 
@@ -104,8 +111,41 @@ async def test_update_pmt_diagnostics_round_trips_through_real_postgres(repo):
     assert matched == 1
 
     row = await repo.get_by_correlation_id("int-corr-diagnostics")
-    stored = json.loads(row["pmt_relay_diagnostics"])
-    assert stored == diagnostics
+    assert row["pmt_relay_diagnostics"] == diagnostics
+    assert isinstance(row["pmt_relay_diagnostics"], dict)
+
+
+async def test_update_pmt_diagnostics_decoded_consistently_across_all_read_paths(repo):
+    """Same decode must apply on list_recent and get_open_trade too, not just
+    get_by_correlation_id - these are three separate SELECT * queries, each needing
+    its own _decode_trade call."""
+    async def forward():
+        return True, 200, None
+
+    await repo.claim_and_forward("int-corr-diag-multi", BASE_ENTRY, "{}", forward)
+    diagnostics = {"url": "https://pmt.example.com/hook", "status_code": 200, "response_body": "OK"}
+    await repo.update_pmt_diagnostics("int-corr-diag-multi", diagnostics)
+
+    recent_rows = await repo.list_recent(limit=10)
+    recent_row = next(r for r in recent_rows if r["correlation_id"] == "int-corr-diag-multi")
+    assert recent_row["pmt_relay_diagnostics"] == diagnostics
+
+    open_row = await repo.get_open_trade()
+    assert open_row is not None
+    assert open_row["pmt_relay_diagnostics"] == diagnostics
+
+
+async def test_pmt_relay_diagnostics_is_none_when_never_set(repo):
+    """The common case - most trades never have diagnostics written at all (duplicate,
+    risk-enforcement block, or simply never forwarded) - must decode to None, not an
+    empty string or a json.loads crash on NULL."""
+    async def forward():
+        return True, 200, None
+
+    await repo.claim_and_forward("int-corr-no-diagnostics", BASE_ENTRY, "{}", forward)
+
+    row = await repo.get_by_correlation_id("int-corr-no-diagnostics")
+    assert row["pmt_relay_diagnostics"] is None
 
 
 async def test_update_pmt_diagnostics_no_matching_trade_returns_zero(repo):

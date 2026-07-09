@@ -41,6 +41,23 @@ def _decode_ai_note(row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
     return row
 
 
+def _decode_trade(row: Optional[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    """Same pattern as _decode_ai_note - pmt_relay_diagnostics is stored as a JSON
+    string in a TEXT column (see update_pmt_diagnostics below and
+    migrations/0005_pmt_relay_diagnostics.sql). dict_row only auto-decodes native
+    JSON/JSONB columns; a TEXT column always comes back as a raw str no matter what
+    text it holds, so every trade-reading query must decode it explicitly - without
+    this, callers (the API response, the frontend's PmtDiagnosticsPanel) silently see
+    a JSON-encoded string instead of an object, and every field access on it resolves
+    to undefined. Column name is unchanged (unlike factors_json -> factors), only its
+    value is decoded in place."""
+    if row is None:
+        return None
+    raw = row.get("pmt_relay_diagnostics")
+    row["pmt_relay_diagnostics"] = json.loads(raw) if raw else None
+    return row
+
+
 class PostgresTradeRepository:
     def __init__(self, pool: AsyncConnectionPool):
         self._pool = pool
@@ -188,19 +205,19 @@ class PostgresTradeRepository:
                     )
                 else:
                     await cur.execute("SELECT * FROM trades ORDER BY id DESC LIMIT %s", (limit,))
-                return await cur.fetchall()
+                return [_decode_trade(row) for row in await cur.fetchall()]
 
     async def get_open_trade(self) -> Optional[dict[str, Any]]:
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute("SELECT * FROM trades WHERE status = 'open' ORDER BY id DESC LIMIT 1")
-                return await cur.fetchone()
+                return _decode_trade(await cur.fetchone())
 
     async def get_by_correlation_id(self, correlation_id: str) -> Optional[dict[str, Any]]:
         async with self._pool.connection() as conn:
             async with conn.cursor(row_factory=dict_row) as cur:
                 await cur.execute("SELECT * FROM trades WHERE correlation_id = %s", (correlation_id,))
-                return await cur.fetchone()
+                return _decode_trade(await cur.fetchone())
 
     async def ping(self) -> bool:
         async with self._pool.connection() as conn:
