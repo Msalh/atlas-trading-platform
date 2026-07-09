@@ -31,6 +31,26 @@ def test_successful_relay_persists_diagnostics_on_the_trade(client, get_trade, m
     assert "token" not in str(diagnostics["payload"].get("token", "")).replace("***", "")  # masked, not the raw token
 
 
+def test_relay_normalizes_data_price_date_for_pickmytrade(client, get_trade, monkeypatch):
+    """Full webhook -> relay -> persisted-diagnostics path, confirmed against a real
+    direct-to-PickMyTrade curl test: the entry_payload() fixture sends "BUY" (upper),
+    a bare numeric price, and an epoch-millisecond date string - PickMyTrade's own
+    documented format expects lowercase "buy", price as a string, and an ISO-8601 UTC
+    date. This is what actually gets sent (and stored/logged), not what the strategy
+    originally produced."""
+    monkeypatch.setattr(settings, "pickmytrade_webhook_url", "https://pmt.example.com/hook")
+    mock_response = Mock(status_code=200, text='{"res":"Successfully send","error":false}')
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock, return_value=mock_response):
+        _post_entry_with_real_pmt_call(
+            client, "corr-diag-normalize", data="BUY", price=21500.25, date="1720000000000",
+        )
+
+    diagnostics = get_trade("corr-diag-normalize")["pmt_relay_diagnostics"]
+    assert diagnostics["payload"]["data"] == "buy"
+    assert diagnostics["payload"]["price"] == "21500.25"
+    assert diagnostics["payload"]["date"] == "2024-07-03T09:46:40Z"
+
+
 def test_failed_relay_still_persists_diagnostics(client, get_trade, monkeypatch):
     monkeypatch.setattr(settings, "pickmytrade_webhook_url", "https://pmt.example.com/hook")
     with patch("httpx.AsyncClient.post", side_effect=Exception("connection refused")):

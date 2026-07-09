@@ -23,6 +23,22 @@ way changes nothing about what already exists, it only adds.
 None of this changes relay behavior: the same URL, same payload fields, same 15s
 timeout, same success/failure classification (status < 400) as before - purely
 observability wrapped around the unchanged call.
+
+Field normalization (confirmed via a direct curl test bypassing Atlas entirely - see
+docs discussion, not reproduced here): PickMyTrade's own documented/example payloads
+use lowercase "buy"/"sell" for `data`, a quoted string for `price` (their examples
+source it from TradingView's {{close}} placeholder, which only ever substitutes as
+text), and an ISO-8601 UTC string for `date` (from {{timenow}}, likewise always text).
+Atlas's internal payload (built in the Pine strategy, untouched by this) never matched
+any of the three - PickMyTrade accepted every relay ("Successfully send") without ever
+creating an Alert Log entry or order. An identical payload with these three fields
+normalized, sent directly to PickMyTrade, was correctly recognized (status
+TradingLocked - rejected only because the connected account is locked, not because the
+payload was malformed). Normalizing happens ONLY here, at the outbound-to-PickMyTrade
+boundary - `data`/`price`/`date` are PickMyTrade-specific fields Atlas's own internal
+logic (risk/AI/analytics, all keyed off `direction`/`entry_price`) never reads, so this
+cannot affect anything upstream. tp/sl stay numeric - PickMyTrade's own examples show
+them as plain numbers, not strings.
 """
 import logging
 import time
@@ -59,6 +75,32 @@ def _mask_token(token: Any) -> Any:
     return f"***{token[-4:]}" if len(token) > 4 else "***"
 
 
+def _to_iso_utc(date_value: Any) -> str:
+    """Converts Atlas's internal `date` (TradingView epoch-milliseconds, sent as a
+    string - see the Pine strategy's toJson) to the ISO-8601 UTC string PickMyTrade's
+    own examples use. Falls back to the current time if the value is missing or isn't
+    a valid epoch-millisecond string, rather than ever failing the relay over a
+    formatting hiccup in a field PickMyTrade doesn't use for order routing."""
+    try:
+        dt = datetime.fromtimestamp(int(date_value) / 1000, tz=timezone.utc)
+    except (TypeError, ValueError):
+        dt = datetime.now(timezone.utc)
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _normalize_pmt_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """See this module's docstring for why - `data` lowercased, `price` stringified,
+    `date` converted to ISO-8601 UTC. tp/sl are deliberately left untouched."""
+    normalized = dict(payload)
+    if isinstance(normalized.get("data"), str):
+        normalized["data"] = normalized["data"].lower()
+    if normalized.get("price") is not None:
+        normalized["price"] = str(normalized["price"])
+    if "date" in normalized:
+        normalized["date"] = _to_iso_utc(normalized.get("date"))
+    return normalized
+
+
 def _mask_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """Deep-enough copy that masks every credential field without touching anything
     else - `token` at the top level and inside each entry of `multiple_accounts`."""
@@ -81,6 +123,7 @@ async def forward_to_pickmytrade(
     method, masked payload, status_code, response_body, exception, and duration_ms -
     the caller decides what to do with it (see atlas/api/v1/webhook.py)."""
     pmt_payload = {k: payload[k] for k in PMT_FIELDS if k in payload}
+    pmt_payload = _normalize_pmt_payload(pmt_payload)
     masked_payload = _mask_payload(pmt_payload)
     attempted_at = _now_iso()
     url = settings.pickmytrade_webhook_url

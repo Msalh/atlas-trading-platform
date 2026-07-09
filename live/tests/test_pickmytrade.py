@@ -8,7 +8,13 @@ wholesale (see test_webhook.py and friends)."""
 from unittest.mock import AsyncMock, Mock, patch
 
 from atlas.config import settings
-from atlas.services.pickmytrade import _mask_payload, _mask_token, forward_to_pickmytrade
+from atlas.services.pickmytrade import (
+    _mask_payload,
+    _mask_token,
+    _normalize_pmt_payload,
+    _to_iso_utc,
+    forward_to_pickmytrade,
+)
 
 
 def _entry_payload(**overrides):
@@ -48,6 +54,62 @@ def test_mask_payload_masks_top_level_and_nested_tokens_only():
     assert masked["symbol"] == "MNQU6"  # untouched
 
 
+# --- PickMyTrade field normalization --------------------------------------------------
+# Confirmed via a direct curl test bypassing Atlas entirely: an identical payload with
+# these three fields normalized was correctly recognized by PickMyTrade (status
+# TradingLocked - rejected only because the connected account is locked, not because
+# the payload was malformed). Atlas's own internal payload never matched PickMyTrade's
+# documented format for `data`/`price`/`date` - see this module's docstring.
+
+def test_to_iso_utc_converts_epoch_milliseconds_string():
+    assert _to_iso_utc("1720000000000") == "2024-07-03T09:46:40Z"
+
+
+def test_to_iso_utc_falls_back_to_now_for_missing_value():
+    result = _to_iso_utc(None)
+    assert result.endswith("Z") and "T" in result
+
+
+def test_to_iso_utc_falls_back_to_now_for_non_numeric_value():
+    result = _to_iso_utc("not-a-timestamp")
+    assert result.endswith("Z") and "T" in result
+
+
+def test_normalize_lowercases_data():
+    normalized = _normalize_pmt_payload({"data": "BUY"})
+    assert normalized["data"] == "buy"
+
+    normalized = _normalize_pmt_payload({"data": "SELL"})
+    assert normalized["data"] == "sell"
+
+
+def test_normalize_stringifies_price():
+    normalized = _normalize_pmt_payload({"price": 21500.25})
+    assert normalized["price"] == "21500.25"
+    assert isinstance(normalized["price"], str)
+
+
+def test_normalize_leaves_tp_sl_numeric():
+    normalized = _normalize_pmt_payload({"tp": 21515.0, "sl": 21485.0})
+    assert normalized["tp"] == 21515.0 and isinstance(normalized["tp"], float)
+    assert normalized["sl"] == 21485.0 and isinstance(normalized["sl"], float)
+
+
+def test_normalize_converts_date_to_iso():
+    normalized = _normalize_pmt_payload({"date": "1720000000000"})
+    assert normalized["date"] == "2024-07-03T09:46:40Z"
+
+
+def test_normalize_does_not_mutate_input_payload():
+    original = {"data": "BUY", "price": 100.0}
+    _normalize_pmt_payload(original)
+    assert original == {"data": "BUY", "price": 100.0}
+
+
+def test_normalize_handles_missing_fields_gracefully():
+    assert _normalize_pmt_payload({}) == {}
+
+
 # --- forward_to_pickmytrade diagnostics -----------------------------------------------
 
 async def test_forward_not_configured_populates_diagnostics_without_calling_httpx(monkeypatch):
@@ -78,6 +140,10 @@ async def test_forward_success_populates_full_diagnostics(monkeypatch):
     assert diagnostics["exception"] is None
     assert diagnostics["duration_ms"] >= 0
     assert diagnostics["payload"]["token"] == "***1234"  # masked, never the real secret
+    # PickMyTrade-facing normalization (_entry_payload() sends "BUY"/100.0/"123"):
+    assert diagnostics["payload"]["data"] == "buy"
+    assert diagnostics["payload"]["price"] == "100.0"
+    assert diagnostics["payload"]["date"] == "1970-01-01T00:00:00Z"
 
 
 async def test_forward_http_error_populates_diagnostics_and_error_message(monkeypatch):
