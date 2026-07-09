@@ -94,18 +94,6 @@ async def webhook(
     repository: TradeRepository = Depends(get_repository),
     event_bus: EventBus = Depends(get_event_bus),
 ):
-    # TEMPORARY DIAGNOSTIC LOGGING - remove once the "Atlas creates the trade but
-    # Railway HTTP Logs never show POST /webhook" investigation is resolved. Placed
-    # before any parsing/validation so it fires even on a malformed/empty body -
-    # if this line is missing from Deployment Logs for a request TradingView says it
-    # delivered, the request never reached this FastAPI process at all.
-    logger.info("WEBHOOK RECEIVED", extra={
-        "client_host": request.client.host if request.client else None,
-        "method": request.method,
-        "path": request.url.path,
-        "content_length": request.headers.get("content-length"),
-    })
-
     raw = await request.body()
     try:
         raw_json = json.loads(raw)
@@ -183,19 +171,7 @@ async def _handle_entry(payload, raw, correlation_id, background_tasks, reposito
             blocked_reason = await _risk_enforcement_block_reason(repository)
             if blocked_reason:
                 return False, None, f"blocked by risk engine: {blocked_reason}"
-        # TEMPORARY DIAGNOSTIC LOGGING - remove alongside the WEBHOOK RECEIVED line above.
-        logger.info("CALLING forward_to_pickmytrade", extra={"correlation_id": correlation_id})
-        forward_result = await forward_to_pickmytrade(payload, diagnostics=pmt_diagnostics)
-        logger.info(
-            "RETURNED FROM forward_to_pickmytrade",
-            extra={
-                "correlation_id": correlation_id,
-                "forwarded": forward_result[0],
-                "pmt_status_code": forward_result[1],
-                "pmt_error": forward_result[2],
-            },
-        )
-        return forward_result
+        return await forward_to_pickmytrade(payload, diagnostics=pmt_diagnostics)
 
     result = await repository.claim_and_forward(correlation_id, payload, raw_body, do_forward)
 
