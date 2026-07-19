@@ -6,19 +6,23 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from atlas.api.deps import get_event_bus, get_repository, get_system_status  # noqa: E402
+from atlas.api.deps import (  # noqa: E402
+    get_event_bus, get_market_state_repository, get_repository, get_system_status,
+)
 from atlas.api.security import require_api_key, require_api_key_for_stream  # noqa: E402
 from atlas.config import settings  # noqa: E402
 from atlas.events.bus import EventBus  # noqa: E402
 from atlas.events.subscribers import log_event  # noqa: E402
 from atlas.events.types import ALL as ALL_EVENT_TYPES  # noqa: E402
 from atlas.main import app  # noqa: E402
+from atlas.market_engine.repositories.memory import InMemoryMarketStateRepository  # noqa: E402
 from atlas.rate_limit import limiter  # noqa: E402
 from atlas.repositories.memory import InMemoryTradeRepository  # noqa: E402
 from atlas.status import SystemStatus  # noqa: E402
 
 TEST_SECRET = "test-secret"
 TEST_API_KEY = "test-api-key"
+TEST_MARKET_STATE_SECRET = "test-market-state-secret"
 
 
 @pytest.fixture(autouse=True)
@@ -39,6 +43,11 @@ def repository():
 
 
 @pytest.fixture
+def market_state_repository():
+    return InMemoryMarketStateRepository()
+
+
+@pytest.fixture
 def system_status():
     return SystemStatus()
 
@@ -56,7 +65,7 @@ def event_bus(system_status):
 
 
 @pytest.fixture
-def client(repository, event_bus, system_status, monkeypatch):
+def client(repository, market_state_repository, event_bus, system_status, monkeypatch):
     """A TestClient wired to an in-memory repository via FastAPI's
     dependency_overrides - the standard way to test routes without a real database.
     This bypasses the Postgres-backed lifespan entirely (TestClient never triggers it
@@ -66,10 +75,19 @@ def client(repository, event_bus, system_status, monkeypatch):
     existing test suite (none of which sends an Authorization header) keeps testing
     what it was actually written to test, rather than universally needing an auth
     header bolted on. The auth check itself is verified for real, without this
-    override, in tests/test_auth.py."""
+    override, in tests/test_auth.py.
+
+    market_state_webhook_secret IS set to a real value (not overridden to a
+    no-op) - unlike API_KEY, /api/v1/market-state has no dependency-injected
+    auth check to override; its secret check is inline in the route (same
+    shape as /webhook's), so tests exercise it for real via
+    market_state_payload()'s default secret, mirroring exactly how
+    entry_payload() already does for /webhook."""
     monkeypatch.setattr(settings, "webhook_secret", TEST_SECRET)
     monkeypatch.setattr(settings, "api_key", TEST_API_KEY)
+    monkeypatch.setattr(settings, "market_state_webhook_secret", TEST_MARKET_STATE_SECRET)
     app.dependency_overrides[get_repository] = lambda: repository
+    app.dependency_overrides[get_market_state_repository] = lambda: market_state_repository
     app.dependency_overrides[get_event_bus] = lambda: event_bus
     app.dependency_overrides[get_system_status] = lambda: system_status
     app.dependency_overrides[require_api_key] = lambda: None
@@ -103,6 +121,22 @@ def get_ai_notes(repository):
             repository.list_ai_notes(trade_correlation_id=correlation_id, note_type=note_type)
         )
     return _get
+
+
+def market_state_payload(event_id="MNQU6:5m:2026-07-18T13:35:00Z", **overrides):
+    payload = {
+        "schema_version": "1.0",
+        "event_id": event_id,
+        "symbol": "MNQU6",
+        "source": "tradingview",
+        "timeframe": "5m",
+        "timestamp": "2026-07-18T13:35:00Z",
+        "bar_status": "closed",
+        "secret": TEST_MARKET_STATE_SECRET,
+        "close": 20125.75,
+    }
+    payload.update(overrides)
+    return payload
 
 
 def entry_payload(correlation_id="corr-1", **overrides):

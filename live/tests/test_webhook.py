@@ -136,7 +136,7 @@ def test_pickmytrade_failure_is_recorded_and_visible(client, get_trade):
     real frontend reads - the legacy server-rendered HTML dashboard was removed in
     Sprint 9) can show it."""
     with patch.object(webhook, "forward_to_pickmytrade",
-                       return_value=(False, None, "connection refused")) as mock_forward, \
+                       return_value=(False, None, "connection refused")), \
          patch.object(ai_module, "analyze_with_claude", return_value=("analysis ran fine", None)):
         resp = client.post("/webhook", json=entry_payload("corr-pmt-fail"))
 

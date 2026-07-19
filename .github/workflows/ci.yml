@@ -1,10 +1,19 @@
 name: CI
 
-# Sprint 10 - Production Operations. Two independent jobs: backend (pytest, unit +
-# integration against a real Postgres service container, coverage) and frontend
-# (tsc/lint/build). Neither job deploys anything - this is a verification gate only,
-# see docs/sprint10/deployment-runbook.md for how a green run here feeds into an
+# Sprint 10 (original project history) - Production Operations. Two independent
+# jobs: backend (pytest, unit + integration against a real Postgres service
+# container, coverage) and frontend (tsc/lint/build). Neither job deploys
+# anything - this is a verification gate only, see
+# docs/sprint10/deployment-runbook.md for how a green run here feeds into an
 # actual deploy.
+#
+# Market Engine Sprint 6 (a separate, later initiative - see
+# tools/research/... and the atlas.market_engine package for context; this
+# Sprint numbering is independent of the "Sprint 10" above, which predates it)
+# added the backend lint step below. Everything else in this file already
+# existed and is unchanged - this Sprint verified the existing pipeline
+# already covers atlas.market_engine's own unit and integration tests (plain
+# pytest discovery, no per-package wiring needed) rather than assuming so.
 
 "on":
   push:
@@ -47,6 +56,18 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
+
+      - name: Lint (unused imports, unused variables, undefined names)
+        # Market Engine Sprint 6. Deliberately scoped to --select=F (the
+        # pyflakes-equivalent ruleset: real correctness-adjacent issues) and
+        # not ruff's full default rule set, which includes stylistic
+        # opinions (import ordering, line length, etc.) never enforced
+        # anywhere in this project's history - turning those on now would
+        # fail the build over pre-existing, working code for reasons
+        # unrelated to this check's actual purpose. Verified locally before
+        # adding this gate: exactly 3 real issues existed across the entire
+        # codebase, all fixed in this same Sprint (see the Sprint 6 PR).
+        run: ruff check --select=F atlas/ tests/
 
       - name: Run unit test suite (in-memory repository) with coverage
         run: pytest tests/ --cov-report=xml --cov-fail-under=80

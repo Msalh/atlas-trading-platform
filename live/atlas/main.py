@@ -34,6 +34,7 @@ Run locally (requires DATABASE_URL pointing at a Postgres instance):
 
 Deploy: see README.md and ../docs/sprint9/deployment-checklist.md.
 """
+import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
@@ -45,7 +46,9 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from atlas.alerting import ClaudeFailureTracker, alert_on_forward_failure
 from atlas.api.security import require_api_key, require_api_key_for_stream
-from atlas.api.v1 import activity, ai, analytics, health, risk, status, stats, stream, trades, webhook
+from atlas.api.v1 import (
+    activity, ai, analytics, health, market_state, risk, rule_engine, status, stats, stream, trades, webhook,
+)
 from atlas.config import settings
 from atlas.db import create_pool
 from atlas.events import types as event_types
@@ -53,11 +56,26 @@ from atlas.events.bus import EventBus
 from atlas.events.subscribers import log_event
 from atlas.events.types import ALL as ALL_EVENT_TYPES
 from atlas.logging_config import configure_logging
+from atlas.market_engine.repositories.postgres import PostgresMarketStateRepository
+from atlas.monitoring import MarketStateStalenessMonitor
 from atlas.rate_limit import limiter
 from atlas.repositories.postgres import PostgresTradeRepository
 from atlas.status import SystemStatus
 
 configure_logging()
+
+
+async def _market_state_staleness_loop(app: FastAPI, monitor: MarketStateStalenessMonitor, interval_seconds: float) -> None:
+    """Sprint 7. A thin adapter, deliberately - all the interesting logic
+    (what counts as stale, what counts as expected market hours, alert-once-
+    on-transition) lives in atlas.monitoring, fully unit-tested there. This
+    loop's only job is extracting the two values that logic needs from
+    app.state and calling into it, every `interval_seconds`."""
+    while True:
+        await asyncio.sleep(interval_seconds)
+        last_at_str = app.state.system_status.last_at(event_types.MARKET_STATE_INGESTED)
+        last_seen_at = datetime.fromisoformat(last_at_str) if last_at_str else None
+        monitor.check(last_seen_at, app.state.started_at, datetime.now(timezone.utc))
 
 
 @asynccontextmanager
@@ -67,6 +85,9 @@ async def lifespan(app: FastAPI):
     pool = await create_pool()
     app.state.pool = pool
     app.state.repository = PostgresTradeRepository(pool)
+    # Sprint 3 (Market Engine): reuses the same connection pool - it's the same
+    # Postgres database, a different table, no reason for a second pool.
+    app.state.market_state_repository = PostgresMarketStateRepository(pool)
     app.state.event_bus = EventBus()
     app.state.system_status = SystemStatus()
     for event_type in ALL_EVENT_TYPES:
@@ -81,7 +102,25 @@ async def lifespan(app: FastAPI):
     for ai_event_type in (event_types.AI_ENTRY_SCORED, event_types.AI_TRADE_REVIEWED, event_types.AI_REPORT_GENERATED):
         app.state.event_bus.subscribe(ai_event_type, claude_failure_tracker.record)
 
+    # Market Engine Sprint 7 - a long-running background task, a genuinely new
+    # shape of code for this codebase (distinct from the request-triggered
+    # BackgroundTasks pattern in atlas/ai.py and the purely event-driven
+    # subscribers above). Cancelled and awaited on shutdown so it doesn't leak
+    # or log an "unhandled task exception" warning on every restart.
+    staleness_monitor = MarketStateStalenessMonitor(
+        threshold_minutes=settings.market_state_staleness_threshold_minutes
+    )
+    staleness_task = asyncio.create_task(
+        _market_state_staleness_loop(app, staleness_monitor, settings.market_state_staleness_check_interval_seconds)
+    )
+
     yield
+
+    staleness_task.cancel()
+    try:
+        await staleness_task
+    except asyncio.CancelledError:
+        pass
     await pool.close()
 
 
@@ -135,6 +174,17 @@ app.add_middleware(
 # requires the shared API key - see atlas/api/security.py.
 app.include_router(webhook.router, prefix="/api/v1", tags=["v1"])
 app.include_router(health.router, prefix="/api/v1", tags=["v1"])
+# Sprint 3 (Market Engine): its own body-embedded-secret auth scheme, same as
+# webhook.router above - not the shared API key, and not dual-mounted at a
+# legacy path, since no existing integration points at one yet (unlike
+# /webhook, which TradingView's live alert already depends on).
+app.include_router(market_state.router, prefix="/api/v1", tags=["v1"])
+# Sprint 15 (Rule Engine): a dedicated namespace, not nested under
+# market_state.router - Rule Engine is its own domain package. One route,
+# one auth scheme, so require_api_key is applied here at registration time
+# (unlike market_state.router, which mixes two schemes on one router and
+# applies auth per-route instead).
+app.include_router(rule_engine.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
 app.include_router(trades.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
 app.include_router(status.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
 app.include_router(stats.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])

@@ -18,6 +18,14 @@ AI_ENTRY_SCORED = "ai.entry_scored"
 AI_TRADE_REVIEWED = "ai.trade_reviewed"
 AI_REPORT_GENERATED = "ai.report_generated"
 
+# Market Engine Sprint 7 - fired on every successful ingest (STORED or
+# DUPLICATE; a duplicate still proves data is flowing, which is what
+# staleness detection cares about) - see atlas/api/v1/market_state.py and
+# atlas/monitoring.py. Adding it here is what makes SystemStatus track its
+# last-seen time automatically, via the existing subscription loop below -
+# no separate tracking mechanism needed.
+MARKET_STATE_INGESTED = "market_state.ingested"
+
 ALL = [
     TRADE_ENTRY_RECEIVED,
     TRADE_ENTRY_FORWARDED,
@@ -28,4 +36,5 @@ ALL = [
     AI_ENTRY_SCORED,
     AI_TRADE_REVIEWED,
     AI_REPORT_GENERATED,
+    MARKET_STATE_INGESTED,
 ]
