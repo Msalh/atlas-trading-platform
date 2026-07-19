@@ -169,22 +169,25 @@ def _market_state_window(count, base_time="2026-07-18T13:00:00", **shared_overri
 
 
 class TestRealRegistryCoexistence:
-    def test_all_three_real_setups_present_and_independently_evaluated(self):
+    def test_all_four_real_setups_present_and_independently_evaluated(self):
         # displacement=True and volume_spike=True on every bar (defaults);
         # no reference levels set, so liquidity_sweep is InsufficientData -
         # a real, asymmetric outcome: one setup detects, another cannot even
         # be evaluated, a third (sustained_displacement_streak, Sprint 21)
-        # detects a genuine 3-bar streak - and none of their states affect
-        # each other.
+        # detects a genuine 3-bar streak, a fourth
+        # (vwap_extension_with_volume_confirmation, Sprint 23B) is
+        # InsufficientData too (no distance_from_vwap_points set) - and none
+        # of their states affect each other.
         window = _market_state_window(3)
         context = SetupEvaluationContext(history=build_rule_engine_output_window(window))
         output = build_setup_engine_output(context, registry=REGISTRY)
 
-        assert len(output.setups) == 3
+        assert len(output.setups) == 4
         by_name = {s.setup_name: s for s in output.setups}
         displacement_result = by_name["displacement_with_volume_confirmation"]
         liquidity_sweep_result = by_name["liquidity_sweep_with_volume_confirmation"]
         streak_result = by_name["sustained_displacement_streak"]
+        vwap_result = by_name["vwap_extension_with_volume_confirmation"]
 
         assert isinstance(displacement_result, SetupResult)
         assert displacement_result.detected is True
@@ -192,6 +195,7 @@ class TestRealRegistryCoexistence:
         assert isinstance(streak_result, SetupResult)
         assert streak_result.detected is True
         assert len(streak_result.evidence.supporting_facts) == 3
+        assert isinstance(vwap_result, InsufficientData)
 
     def test_multiple_real_setups_can_detect_simultaneously(self):
         # A window where BOTH conditions genuinely hold: displacement/volume

@@ -13,10 +13,14 @@ facts already existed; Setup Engine's registry started genuinely empty at
 its Sprint 17B foundation. It held one real setup as of Sprint 18
 (atlas.setup_engine.setups.displacement_with_volume_confirmation), two as of
 Sprint 20 (atlas.setup_engine.setups.liquidity_sweep_with_volume_confirmation
-added), and three as of Sprint 21
+added), three as of Sprint 21
 (atlas.setup_engine.setups.sustained_displacement_streak added - the first
-registration with history_param set, so required_history(REGISTRY) below is
-now 2, not 1).
+registration with history_param set, so required_history(REGISTRY) below
+became 2, not 1), and four as of Sprint 23B
+(atlas.setup_engine.setups.vwap_extension_with_volume_confirmation added -
+the first CONFLUENCE-family setup; required_history(REGISTRY) stays 2,
+since this setup only needs 1 bar and sustained_displacement_streak remains
+the registry-wide maximum).
 
 SetupRegistration and SetupEvaluator live in atlas.setup_engine.registration,
 not here (Sprint 18) - this module originally defined SetupRegistration
@@ -39,6 +43,9 @@ from atlas.setup_engine.setups.liquidity_sweep_with_volume_confirmation import (
 )
 from atlas.setup_engine.setups.sustained_displacement_streak import (
     SUSTAINED_DISPLACEMENT_STREAK_REGISTRATION,
+)
+from atlas.setup_engine.setups.vwap_extension_with_volume_confirmation import (
+    VWAP_EXTENSION_WITH_VOLUME_CONFIRMATION_REGISTRATION,
 )
 
 
@@ -94,6 +101,7 @@ REGISTRY: tuple[SetupRegistration, ...] = (
     DISPLACEMENT_WITH_VOLUME_CONFIRMATION_REGISTRATION,
     LIQUIDITY_SWEEP_WITH_VOLUME_CONFIRMATION_REGISTRATION,
     SUSTAINED_DISPLACEMENT_STREAK_REGISTRATION,
+    VWAP_EXTENSION_WITH_VOLUME_CONFIRMATION_REGISTRATION,
 )
 
 

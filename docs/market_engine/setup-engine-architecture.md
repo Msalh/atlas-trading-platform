@@ -38,6 +38,15 @@ higher-level market structures — still never an LLM call, still never a probab
 LLM consumes Setup Engine's output only, never Rule Engine's directly — see
 `rule-engine-architecture.md`'s §3 for the full corrected interface statement.
 
+**A third path, added Sprint 24B/24C, neither of the two above**: `atlas/profiling/` sits ABOVE
+all three engines (imports `atlas.market_engine`, `atlas.rule_engine`, and `atlas.setup_engine`;
+none of them import it back — checked by grep the same way the layering rules above are), running
+historical, batch, deterministic analysis over their already-computed outputs. It is not the
+interpretation path (no LLM, no narration) and not the decision path (no Strategy/Paper/Live
+consumer, no signal, no confidence score, no profitability claim) — purely observational counts,
+rates, and distributions over how often the current facts and setups compute, fire, and overlap.
+See `roadmap.md`'s Sprint 24B/24C entries for the full design.
+
 ## Package layout
 
 `atlas/setup_engine/`:
@@ -52,7 +61,7 @@ LLM consumes Setup Engine's output only, never Rule Engine's directly — see
   is deferred until enough real setups within one family justify it, the same "don't build
   structure ahead of real need" reasoning `atlas/monitoring.py` already established for itself.
 - `service.py` — `evaluate_registration()`, `build_setup_engine_output()`,
-  `setup_engine_output_to_dict()`.
+  `build_setup_engine_output_window()` (Sprint 24C — see Orchestration below), `setup_engine_output_to_dict()`.
 
 ## Domain model
 
@@ -125,6 +134,22 @@ synchronous: the full `context` is passed to every registration's `evaluate` uni
 setup's own logic decides how much of `context.history` it actually uses (the orchestrator never
 truncates per-registration), the same convention Rule Engine facts already follow relative to
 their own window.
+
+**`build_setup_engine_output_window(rule_engine_output_window, registry=REGISTRY) ->
+list[SetupEngineOutput]` (Sprint 24C)** — a direct, one-layer-up generalization of
+`atlas.rule_engine.service.build_rule_engine_output_window`, added when the Sprint 24B historical
+profiler became a real, present consumer needing exactly this capability (line 122 above had
+already anticipated the hook this didn't even need: `evaluate_registration`'s single evaluation
+point required no change). Given an ordered window of `RuleEngineOutput`, returns exactly one
+`SetupEngineOutput` per input position, using `registry.required_history()` bars of trailing
+history at each position — the same truncation shape (`max(0, i - depth + 1) : i + 1`)
+`build_rule_engine_output_window` uses for `MarketState`, never suppressing an early position.
+Does not itself validate contiguity: a `RuleEngineOutput` window produced by
+`build_rule_engine_output_window` is already contiguous by construction, so this function trusts
+that guarantee rather than re-deriving it — a caller assembling the window some other way is
+responsible for the same property. Pure, deterministic, no repository access, no analysis logic —
+purely orchestration, the same discipline `build_rule_engine_output_window` itself follows one
+layer down.
 
 ## Serialization
 

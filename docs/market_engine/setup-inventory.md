@@ -1,8 +1,8 @@
 # Setup Engine — Setup Inventory
 
-**Status: 3 setups implemented — Sprint 18, Sprint 20, and Sprint 21 (all 2026-07-19), the first two
-steps of the rolling implementation queue from `setup-engine-catalog.md`'s planning (Sprint 19).**
-Extends
+**Status: 4 setups implemented — Sprint 18, Sprint 20, Sprint 21, and Sprint 23B (all 2026-07-19),
+the first three steps of the rolling implementation queue from `setup-engine-catalog.md`'s planning
+(Sprint 19).** Extends
 `setup-engine-architecture.md` (which defines what a setup *is* and how Setup Engine relates to
 Rule Engine and the future LLM) into a concrete, per-setup catalog — the same role
 `rule-fact-inventory.md` plays for Rule Engine's own facts. See `setup-engine-catalog.md` for the
@@ -101,6 +101,42 @@ utilization matrix — this document only records what has actually been *built*
   (oldest first, current last), each carrying that bar's own `displacement` evidence plus the
   computed `streak_length` — a scalar, fitting `SupportingFact.detail`'s existing bounded type with
   no Setup Engine model change.
+
+## `vwap_extension_with_volume_confirmation`
+
+- **Sprint**: 23B — step 3 of the rolling implementation queue from `setup-engine-catalog.md`, and
+  the first setup under `SetupFamily.CONFLUENCE` (added Sprint 23A, following a dedicated
+  classification review — see that document's CONFLUENCE section and `SetupFamily`'s own docstring
+  in `atlas/setup_engine/models.py` for the full precedence rule this setup was reviewed against).
+- **Family**: `CONFLUENCE`.
+- **Required facts**: `vwap_relationship`, `volume_spike`.
+- **Required history**: `1` — reads only the current `RuleEngineOutput`; both facts are already
+  single-bar Rule Engine facts.
+- **Definition**: `detected = vwap_relationship.value != "within_band" AND volume_spike.value is
+  True` — a bar where price is extended beyond the configured ATR-normalized band around VWAP
+  (either side) and volume is simultaneously elevated. The two facts are independent by
+  construction: `vwap_relationship` reads `distance_from_vwap_points`/`atr`; `volume_spike` reads
+  `volume_ratio` alone. Reads only each fact's `.value` — never `.evidence` — so this setup never
+  re-derives or re-evaluates ATR, VWAP distance, or volume ratio itself; Rule Engine's own
+  classification is trusted directly.
+- **Deliberately interpretation-neutral**: does not claim continuation, reversal, exhaustion, mean
+  reversion, momentum direction, trade entry quality, or probability. This is the reason the setup
+  belongs to `CONFLUENCE` rather than `MOMENTUM` or `MEAN_REVERSION` — see the classification review
+  in `setup-engine-catalog.md` for the full reasoning already settled before this Sprint began.
+- **Insufficient-data propagation**: if `vwap_relationship` is `insufficient_data`, its reason is
+  used regardless of `volume_spike`'s state; only if `vwap_relationship` resolved to a real result
+  is `volume_spike` checked next — the same deterministic ordering every other
+  `_with_volume_confirmation` setup already follows.
+- **Severity**: fixed `Severity.NORMAL` for every `detected=True` result, matching every other
+  setup built so far.
+- **Evidence**: exactly two `SupportingFact` entries, always present. Deliberately does **not**
+  copy full Rule Engine evidence into `detail` (unlike `displacement_with_volume_confirmation`'s and
+  `liquidity_sweep_with_volume_confirmation`'s flat-evidence passthrough) — only fields derived
+  directly from the two fact values: `vwap_relationship_value`/`volume_spike_value` (explicit,
+  named copies of each `SupportingFact`'s own `.value`, so `detail` alone is self-describing),
+  `is_vwap_extended` (the boolean half of the detection rule), and `extension_side` — present only
+  when actually extended, carrying `vwap_relationship.value` verbatim (`"extended_above"` or
+  `"extended_below"`; never a third, invented directional label).
 
 ## Considered and deferred
 

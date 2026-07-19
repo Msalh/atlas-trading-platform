@@ -34,11 +34,8 @@ Severity is fixed at NORMAL for every detected=True result, matching Sprint
 18 and the project-wide decision to defer severity calibration until real
 data exists.
 """
-from atlas.rule_engine.models import FactOutcome
-from atlas.rule_engine.models import InsufficientData as FactInsufficientData
-from atlas.setup_engine.evidence import supporting_fact_from_rule_engine_output
+from atlas.setup_engine.evidence import require_computed_fact, supporting_fact_from_rule_engine_output
 from atlas.setup_engine.models import (
-    InsufficientData,
     SetupDefinition,
     SetupEvaluationContext,
     SetupEvidence,
@@ -57,26 +54,17 @@ DEFAULT_LIQUIDITY_SWEEP_WITH_VOLUME_CONFIRMATION_DEFINITION = SetupDefinition(
 )
 
 
-def _require_computed(outcome: FactOutcome, setup_name: str, definition_version: str):
-    if isinstance(outcome, FactInsufficientData):
-        return InsufficientData(
-            setup_name=setup_name, definition_version=definition_version,
-            reason=f"{outcome.fact_name} is insufficient_data: {outcome.reason}",
-        )
-    return None
-
-
 def evaluate_liquidity_sweep_with_volume_confirmation(
     context: SetupEvaluationContext, definition: SetupDefinition,
 ) -> SetupOutcome:
     current = context.current
     liquidity_sweep = current.facts["liquidity_sweep"]
-    insufficient = _require_computed(liquidity_sweep, definition.name, definition.version)
+    insufficient = require_computed_fact(liquidity_sweep, definition.name, definition.version)
     if insufficient is not None:
         return insufficient
 
     volume_spike = current.facts["volume_spike"]
-    insufficient = _require_computed(volume_spike, definition.name, definition.version)
+    insufficient = require_computed_fact(volume_spike, definition.name, definition.version)
     if insufficient is not None:
         return insufficient
 

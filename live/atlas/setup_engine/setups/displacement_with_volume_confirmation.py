@@ -33,11 +33,8 @@ Severity is fixed at NORMAL for every detected=True result - no tiering.
 Calibrating a real severity metric is deliberately left to a future Sprint,
 once real data exists to calibrate against, not invented here.
 """
-from atlas.rule_engine.models import FactOutcome
-from atlas.rule_engine.models import InsufficientData as FactInsufficientData
-from atlas.setup_engine.evidence import supporting_fact_from_rule_engine_output
+from atlas.setup_engine.evidence import require_computed_fact, supporting_fact_from_rule_engine_output
 from atlas.setup_engine.models import (
-    InsufficientData,
     SetupDefinition,
     SetupEvaluationContext,
     SetupEvidence,
@@ -56,26 +53,17 @@ DEFAULT_DISPLACEMENT_WITH_VOLUME_CONFIRMATION_DEFINITION = SetupDefinition(
 )
 
 
-def _require_computed(outcome: FactOutcome, setup_name: str, definition_version: str):
-    if isinstance(outcome, FactInsufficientData):
-        return InsufficientData(
-            setup_name=setup_name, definition_version=definition_version,
-            reason=f"{outcome.fact_name} is insufficient_data: {outcome.reason}",
-        )
-    return None
-
-
 def evaluate_displacement_with_volume_confirmation(
     context: SetupEvaluationContext, definition: SetupDefinition,
 ) -> SetupOutcome:
     current = context.current
     displacement = current.facts["displacement"]
-    insufficient = _require_computed(displacement, definition.name, definition.version)
+    insufficient = require_computed_fact(displacement, definition.name, definition.version)
     if insufficient is not None:
         return insufficient
 
     volume_spike = current.facts["volume_spike"]
-    insufficient = _require_computed(volume_spike, definition.name, definition.version)
+    insufficient = require_computed_fact(volume_spike, definition.name, definition.version)
     if insufficient is not None:
         return insufficient
 

@@ -75,12 +75,33 @@ additions or removals don't need a deliberate-extension process the way `SetupFa
 |---|---|---|---|---|---|
 | `liquidity_sweep_with_volume_confirmation` | *(implemented, Sprint 20)* | `liquidity_sweep`, `volume_spike` | 1 | Low | Done |
 | `reclaim_with_volume_confirmation` | Close-based break-then-reclaim of a level, confirmed by volume | `reclaim`, `volume_spike` | 1 | Low | High |
-| `rejection_with_volume_confirmation` | Same-bar wick-and-reclose against a reference level, confirmed by volume | `rejection`, `volume_spike` | 1 | Medium (per-level aggregation) | High |
+| `rejection_with_volume_confirmation` | Same-bar wick-and-reclose against a reference level, confirmed by volume | `rejection`, `volume_spike` | 1 | Low — its qualifying-level aggregation (`qualifying_level_count` + sorted `reference_level` names) is identical in shape to the already-shipped `liquidity_sweep_with_volume_confirmation` pattern; corrected from an earlier "Medium" rating that assumed a harder aggregation than the fact's evidence actually requires | High |
 | `trend_aligned_liquidity_sweep` | A sweep whose reclaim direction agrees with `trend_5m` | `liquidity_sweep`, `trend_5m` | 20 | Medium — needs its own directional-alignment design pass | Medium |
 | `fair_value_gap_with_displacement` | 3-candle OHLC imbalance confirmed by high displacement | new fact `fair_value_gap` + `displacement` | 2–3 | Medium | Medium — blocked on missing fact |
 | `opening_range_reference` | Price behavior relative to the RTH session open | new fact `rth_session_context` + `displacement`/`volume_spike` | small | Medium | Low-Medium — blocked on missing fact |
 | `multi_level_liquidity_sweep` | `liquidity_sweep` qualifying on 2+ levels at once | `liquidity_sweep` only, thresholded on its own qualifying-level count | 1 | Low, but a real edge case worth naming: `detected` is a stricter threshold on one fact's internal evidence, not an identity passthrough | Low |
 | `order_block_reversal` | ICT "order block" (last opposing candle before a strong displacement move) | undesigned | n/a | High | **Defer** — definitions vary meaningfully across ICT practitioners |
+
+#### Refinement/supertype coexistence rule (Sprint 24A)
+
+`liquidity_sweep`, `rejection`, and `reclaim` are **not three independent peer ICT primitives** —
+the Sprint 24A Rule Fact Independence Audit found `rejection` is an unconditional predicate
+refinement of `liquidity_sweep` (whenever both are computable), and `reclaim` is a predicate
+refinement of `liquidity_sweep` under the current matched default window configuration (both
+`window=3`); `rejection` and `reclaim` remain independent of each other. See
+`docs/market_engine/rule-fact-inventory.md`, "Fact hierarchy within this family," for the full
+proof — this section states only the resulting catalog policy, not the proof itself.
+
+**Permanent rule**: a refinement-based setup (`rejection_with_volume_confirmation`,
+`reclaim_with_volume_confirmation`) and a supertype-based setup
+(`liquidity_sweep_with_volume_confirmation`) may both exist in the catalog, both be registered, and
+both fire and be reported independently on the same bar — Setup Engine itself must never suppress,
+merge, or deduplicate them; this is Rule Engine's and Setup Engine's ordinary independent-evaluation
+behavior and stays that way. However, any downstream consumer that aggregates, scores, weights, or
+narrates setup outcomes must treat a refinement firing alongside its supertype as **one structural
+evidence family, not two independent confirmations** — whenever the refinement fires, the supertype
+is structurally guaranteed to fire too (given the same confirming fact), so counting both toward
+confidence or corroboration double-counts a single event.
 
 ### MOMENTUM
 
@@ -94,7 +115,7 @@ additions or removals don't need a deliberate-extension process the way `SetupFa
 
 | Setup | Purpose | Required facts | History | Complexity | Priority |
 |---|---|---|---|---|---|
-| `vwap_extension_with_volume_confirmation` | `vwap_relationship` is extended (either side) on the same bar `volume_spike` fires — `detected = (vwap_relationship.value != "within_band") AND volume_spike.value`. Deliberately asserts no reversion/continuation thesis: whether an extension-plus-volume-spike co-occurrence means climactic exhaustion or strong continuation is genuinely ambiguous, and Setup Engine reports structure, not interpretation. Moved here from `MEAN_REVERSION` (Sprint 23A) — see the classification review below. | `vwap_relationship` *(implemented, Sprint 22B)*, `volume_spike` | 1 | Low — same `_with_volume_confirmation` shape as the two setups already built | High — next in the rolling queue, zero remaining blockers |
+| `vwap_extension_with_volume_confirmation` | *(implemented, Sprint 23B)* — `vwap_relationship` is extended (either side) on the same bar `volume_spike` fires — `detected = (vwap_relationship.value != "within_band") AND volume_spike.value is True`. Deliberately asserts no reversion/continuation thesis: whether an extension-plus-volume-spike co-occurrence means climactic exhaustion or strong continuation is genuinely ambiguous, and Setup Engine reports structure, not interpretation. Moved here from `MEAN_REVERSION` (Sprint 23A) — see the classification review below. | `vwap_relationship` *(implemented, Sprint 22B)*, `volume_spike` | 1 | Low — same `_with_volume_confirmation` shape as the setups already built | Done |
 
 ### MEAN_REVERSION
 
@@ -108,7 +129,17 @@ review below) once that contradiction turned out to run deeper than a naming fix
 | Setup | Purpose | Required facts | History | Complexity | Priority |
 |---|---|---|---|---|---|
 | `vwap_extension_with_volume_fade` | The original mean-reversion-via-exhaustion thesis, preserved under a correct name: `vwap_relationship` extended, with volume *declining* rather than spiking. Genuinely asserts a reversion thesis — `MEAN_REVERSION` remains the truthful family for this one. | `vwap_relationship` *(implemented, Sprint 22B)* + a new windowed volume-trend fact | 1–several | Medium | **Defer** — blocked on a new fact; explicitly not approximated with `volume_spike` (see `reclaim`'s own borderline-dead history for what happens when a fact is asked to serve a purpose it wasn't built for) |
-| `reference_level_touch_without_break` | Price approaches a known level closely without sweeping or rejecting it | new fact `liquidity_proximity` + `liquidity_sweep`, `rejection` (both False) | 1 | Medium | Medium — blocked on missing fact |
+| `reference_level_touch_without_break` | Price approaches a known level closely without sweeping or rejecting it | new fact `liquidity_proximity` + `liquidity_sweep` (False) | 1 | Medium | Medium — blocked on missing fact |
+
+**Note on this candidate's required facts (Sprint 24A)**: an earlier version of this row also
+required `rejection` (False) alongside `liquidity_sweep` (False), on the assumption that "no sweep
+and no rejection" was a stronger, more specific condition than "no sweep" alone. The Rule Fact
+Independence Audit found this redundant: `rejection` is an unconditional predicate refinement of
+`liquidity_sweep` (`rejection=True` always implies `liquidity_sweep=True` when both are
+computable), so by contraposition `liquidity_sweep=False` already guarantees `rejection=False` —
+checking `rejection` again adds no additional filtering, only the appearance of a stronger
+condition. `liquidity_proximity`'s own "close to a level" test remains this setup's actual, genuine
+distinguishing condition once built; it is not weakened by dropping the redundant clause.
 
 #### SetupFamily classification review — `vwap_extension_with_volume_confirmation` (resolved Sprint 23A)
 
@@ -202,10 +233,9 @@ order-flow ingestion exists.
 Ranked by cost-to-build vs. how much they unblock:
 
 1. ~~**`vwap_relationship`** — thresholds the already-raw `distance_from_vwap_points`.~~ —
-   **implemented, Sprint 22B** (`atlas.rule_engine.facts.evaluate_vwap_relationship`). Unblocks
-   `vwap_extension_with_volume_confirmation` fully — designed, unblocked, not yet implemented,
-   next in the rolling queue; unblocks `vwap_extension_with_volume_fade` only partially (still
-   needs item 2 below).
+   **implemented, Sprint 22B** (`atlas.rule_engine.facts.evaluate_vwap_relationship`). Unblocked
+   `vwap_extension_with_volume_confirmation` fully — **implemented, Sprint 23B**; unblocks
+   `vwap_extension_with_volume_fade` only partially (still needs item 2 below).
 2. **Windowed volume trend** — needed for `vwap_extension_with_volume_fade` (MEAN_REVERSION) *and*
    Wyckoff's `test_of_support_low_volume` — the same fact, two waiting consumers, not a coincidence.
 3. **`liquidity_proximity`** — wraps the already-raw `nearest_liquidity_level`/`nearest_liquidity_type`/
@@ -259,9 +289,9 @@ exists yet, tag reflects intended capability once designed, not a verified compu
 near-term setups) and **Market Structure** (7 of 9), both dominated by ICT — the exact concentration
 risk this exercise was meant to catch. **Multi-timeframe has zero coverage**, fully blocked on the
 known `trend_15m`/`trend_1h` aggregation gap. **Session still has one setup, blocked** on an
-undesigned fact; **VWAP now has two** (Sprint 22B), one buildable now
-(`vwap_extension_with_volume_confirmation`) and one still blocked
-(`vwap_extension_with_volume_fade`). **Volatility coverage is entirely inherited from one fact** (`displacement`) —
+undesigned fact; **VWAP now has two**, one implemented (`vwap_extension_with_volume_confirmation`,
+Sprint 23B) and one still blocked (`vwap_extension_with_volume_fade`). **Volatility coverage is
+entirely inherited from one fact** (`displacement`) —
 if its definition needs rework, the whole column collapses with it. **Volume is broad but never
 primary** — always the confirming signal, never the setup's own reason for existing. **Mean
 Reversion is present but under-labeled** — sweep/reclaim/rejection setups are structurally
@@ -278,10 +308,10 @@ deferred/undesigned setup.
 | `volume_spike` | Implemented | 5 confirmed (`displacement_with_volume_confirmation`, `liquidity_sweep_with_volume_confirmation`, `reclaim_with_volume_confirmation`, `rejection_with_volume_confirmation`, `vwap_extension_with_volume_confirmation`) + 2 conceptual | 7–8 | **Broadly reused** |
 | `displacement` | Implemented | 4 (`displacement_with_volume_confirmation`, `fair_value_gap_with_displacement`, `sustained_displacement_streak`, `trend_aligned_displacement`) | 4–5 | **Broadly reused** |
 | `liquidity_sweep` | Implemented | 4 (`liquidity_sweep_with_volume_confirmation`, `trend_aligned_liquidity_sweep`, `multi_level_liquidity_sweep`, `reference_level_touch_without_break`) | 4 | **Broadly reused** |
-| `rejection` | Implemented | 2 (`rejection_with_volume_confirmation`, `reference_level_touch_without_break`) | 2 | Lightly used |
+| `rejection` | Implemented | 1 (`rejection_with_volume_confirmation`) — `reference_level_touch_without_break` no longer counts (Sprint 24A: its `rejection=False` clause was dropped as redundant with `liquidity_sweep=False`, see the MEAN_REVERSION table note above) | 1 | Lightly used |
 | `trend_5m` | Implemented | 2 (`trend_aligned_liquidity_sweep`, `trend_aligned_displacement`), neither built | 2 | Lightly used |
 | `reclaim` | Implemented | 1 (`reclaim_with_volume_confirmation`) | 1 | Lightly used — **borderline dead; see note** |
-| `vwap_relationship` | **Implemented, Sprint 22B** | 2 (`vwap_extension_with_volume_confirmation`, designed and unblocked, not yet implemented; `vwap_extension_with_volume_fade`, designed but deferred, blocked on a missing fact) | 2 | Lightly used |
+| `vwap_relationship` | **Implemented, Sprint 22B** | 2 (`vwap_extension_with_volume_confirmation`, **implemented, Sprint 23B**; `vwap_extension_with_volume_fade`, designed but deferred, blocked on a missing fact) | 2 | Lightly used |
 | `liquidity_proximity` | Proposed | 1 (prospective) | 1 | Lightly used (prospective) |
 | `rth_session_context` | Proposed | 1 (prospective) | 1 | Lightly used (prospective) |
 | `fair_value_gap` | Proposed | 1 (prospective) | 1 | Lightly used (prospective) |
@@ -292,11 +322,19 @@ deferred/undesigned setup.
 | `trend_1h` | Blocked (soft) | — | 0 | Unused — expected, aggregation-blocked |
 | Reference-level status facts (×4) | Undesigned | — | 0 | Unused — **not expected: identified need, no drafted consumer** |
 
-**Note on `reclaim`**: its only consumer, `reclaim_with_volume_confirmation`, was deliberately not
-implemented in Sprint 20 in favor of `liquidity_sweep_with_volume_confirmation` — meaning `reclaim`
-currently drives zero *built* setups. Combined with the earlier, session-documented finding that
-`reclaim=True` implies `liquidity_sweep=True` under matched window configuration, `reclaim` is a
-genuine candidate for future reconsideration, not just underuse — surfaced here, not acted on.
+**Note on `reclaim` and `rejection` (Sprint 24A: Rule Fact Independence Audit)**: `reclaim`'s only
+consumer, `reclaim_with_volume_confirmation`, was deliberately not implemented in Sprint 20 in
+favor of `liquidity_sweep_with_volume_confirmation` — meaning `reclaim` currently drives zero
+*built* setups. The audit confirmed and formalized the earlier finding that `reclaim=True` implies
+`liquidity_sweep=True`, but under the current matched default window configuration only
+(config-contingent — see `docs/market_engine/rule-fact-inventory.md`, "Fact hierarchy within this
+family"). The audit also found a **stronger, unconditional** version of the same relationship for
+`rejection`: `rejection=True` implies `liquidity_sweep=True` whenever both facts are computable,
+regardless of window configuration — meaning `rejection_with_volume_confirmation`, if built, would
+also always co-fire alongside `liquidity_sweep_with_volume_confirmation` on the same bar, not just
+usually. Neither finding blocks either setup from existing (see the "Refinement/supertype
+coexistence rule" under the ICT table above) — both `reclaim` and `rejection` remain genuine
+candidates for future reconsideration, surfaced here, not acted on.
 
 **Over-centralized facts**: `volume_spike`, `displacement`, `liquidity_sweep` anchor almost the
 entire near-term catalog — the three facts most worth prioritizing for real calibration once
@@ -308,19 +346,20 @@ This section is **intentionally short-lived** — it should be re-derived after 
 Sprint against the tables above, not extended into a long fixed schedule. See `setup-inventory.md`
 for what's actually been built.
 
-**As of Sprint 23A**: steps 1 (`liquidity_sweep_with_volume_confirmation`), 2
-(`sustained_displacement_streak`), and 3 (`vwap_relationship`) of the original 5-item queue are
-complete. Step 3 also corrected a real inconsistency discovered along the way — the queue's own
-step 4 entry, `vwap_reversion_with_volume_fade`, named `volume_spike` (elevated volume) while its
-purpose text claimed declining volume; see the MEAN_REVERSION table above for the resulting split
-into `vwap_extension_with_volume_confirmation` (buildable) and `vwap_extension_with_volume_fade`
-(correctly deferred). That split then surfaced a second inconsistency — `vwap_extension_with_volume_confirmation`'s
-own definition asserted no reversion thesis while `MEAN_REVERSION` asserted one — resolved this
-Sprint by adding `SetupFamily.CONFLUENCE` and reclassifying the setup (see the CONFLUENCE section
-above). Remaining from the queue, updated to match:
+**As of Sprint 23B**: all five steps of the original queue are complete. Steps 1–3
+(`liquidity_sweep_with_volume_confirmation`, `sustained_displacement_streak`, `vwap_relationship`)
+landed across Sprints 20–22B. Step 4 went through two corrections before implementation: the
+queue's original step-4 entry, `vwap_reversion_with_volume_fade`, named `volume_spike` (elevated
+volume) while its purpose text claimed declining volume (caught pre-implementation, split into
+`vwap_extension_with_volume_confirmation` and the correctly-deferred
+`vwap_extension_with_volume_fade`); the confirmation half then turned out to contradict its own
+cataloged family (`MEAN_REVERSION` asserts a reversion thesis the setup's own definition
+explicitly disclaims), resolved by adding `SetupFamily.CONFLUENCE` (Sprint 23A) and reclassifying
+it before — not after — implementation. **`vwap_extension_with_volume_confirmation` is now
+implemented (Sprint 23B)** — the first `CONFLUENCE`-family setup, registered, tested, and
+documented. Step 5, "re-evaluate," is what comes next:
 
-4. `vwap_extension_with_volume_confirmation` [Confluence setup] — the corrected step 4, correctly
-   classified; zero new facts needed, `vwap_relationship` and `volume_spike` both already exist,
-   zero remaining blockers.
-5. Re-evaluate against this document's own tables before picking anything further — not
-   pre-decided here.
+This section's own next action is to be **re-derived from the tables above**, not extended into a
+fixed list here — see `roadmap.md`'s "Next planning point" for the currently-open decision (which
+setup or fact comes next has not been chosen yet, deliberately, per the rolling-queue's own
+design).

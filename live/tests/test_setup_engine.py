@@ -23,7 +23,13 @@ from atlas.setup_engine.models import (
     SupportingFact,
 )
 from atlas.setup_engine.registry import REGISTRY, SetupRegistration
-from atlas.setup_engine.service import build_setup_engine_output, evaluate_registration, setup_engine_output_to_dict
+from atlas.setup_engine.registry import required_history as setup_required_history
+from atlas.setup_engine.service import (
+    build_setup_engine_output,
+    build_setup_engine_output_window,
+    evaluate_registration,
+    setup_engine_output_to_dict,
+)
 
 
 def _rule_engine_output(occurred_at="2026-07-18T13:35:00", symbol="MNQU6", timeframe="5m", facts=None):
@@ -326,16 +332,18 @@ class TestConstructionFromRuleEngineWindow:
         assert output.setups[0].detected is True
 
     def test_end_to_end_using_the_real_registry(self):
-        # Sprint 18/20/21: proves all three actually-registered setups, not
-        # local stand-ins, run correctly through the full pipeline, in
+        # Sprint 18/20/21/23B: proves all four actually-registered setups,
+        # not local stand-ins, run correctly through the full pipeline, in
         # registry order. _market_state_window's defaults already produce
         # displacement=True ((high-low)/atr = 20/10 = 2.0 > 1.5) and
         # volume_spike=True (volume_ratio = 2.0 > 1.5) on every bar, but set
         # no reference levels - liquidity_sweep_with_volume_confirmation is
         # therefore correctly InsufficientData here (no reference levels
-        # present). displacement=True on all 3 bars also means
-        # sustained_displacement_streak genuinely detects a real 3-bar
-        # streak here, not a stand-in.
+        # present) - and no distance_from_vwap_points, so
+        # vwap_extension_with_volume_confirmation is correctly
+        # InsufficientData too (no VWAP distance present). displacement=True
+        # on all 3 bars also means sustained_displacement_streak genuinely
+        # detects a real 3-bar streak here, not a stand-in.
         window = _market_state_window(3)
         context = SetupEvaluationContext(history=build_rule_engine_output_window(window))
         output = build_setup_engine_output(context, registry=REGISTRY)
@@ -343,8 +351,9 @@ class TestConstructionFromRuleEngineWindow:
             "displacement_with_volume_confirmation",
             "liquidity_sweep_with_volume_confirmation",
             "sustained_displacement_streak",
+            "vwap_extension_with_volume_confirmation",
         ]
-        displacement_result, liquidity_sweep_result, streak_result = output.setups
+        displacement_result, liquidity_sweep_result, streak_result, vwap_result = output.setups
         assert isinstance(displacement_result, SetupResult)
         assert displacement_result.detected is True
         assert displacement_result.severity == Severity.NORMAL
@@ -353,6 +362,7 @@ class TestConstructionFromRuleEngineWindow:
         assert isinstance(streak_result, SetupResult)
         assert streak_result.detected is True
         assert len(streak_result.evidence.supporting_facts) == 3
+        assert isinstance(vwap_result, InsufficientData)
 
     def test_end_to_end_liquidity_sweep_with_volume_confirmation_using_the_real_registry(self):
         # A window engineered so liquidity_sweep genuinely fires: low dips
@@ -371,3 +381,79 @@ class TestConstructionFromRuleEngineWindow:
         assert ls_fact.fact_name == "liquidity_sweep"
         assert dict(ls_fact.detail) == {"qualifying_level_count": 1, "qualifying_levels": "previous_day_low"}
         assert vs_fact.fact_name == "volume_spike"
+
+
+class TestBuildSetupEngineOutputWindow:
+    """Sprint 24C. build_setup_engine_output_window is the direct,
+    one-layer-up generalization of build_rule_engine_output_window - these
+    tests mirror TestBuildRuleEngineOutputWindow's own structure in
+    test_rule_engine.py exactly, over SetupEngineOutput instead of
+    RuleEngineOutput."""
+
+    def test_empty_input_produces_empty_output(self):
+        assert build_setup_engine_output_window([]) == []
+
+    def test_one_rule_engine_output_produces_one_setup_engine_output(self):
+        window = _market_state_window(1)
+        rule_history = build_rule_engine_output_window(window)
+        outputs = build_setup_engine_output_window(rule_history, registry=REGISTRY)
+        assert len(outputs) == 1
+        assert outputs[0] == build_setup_engine_output(SetupEvaluationContext(history=rule_history), REGISTRY)
+
+    def test_exactly_required_history_outputs_shows_natural_warm_up(self):
+        # required_history(REGISTRY) == 2, driven by sustained_displacement_streak.
+        # Position 0 has only itself as history (1 < 2) - that setup must be
+        # InsufficientData there. Position 1 has both entries (2 == 2) - the
+        # same 2-bar streak displacement_with_volume_confirmation and
+        # sustained_displacement_streak both need is genuinely available.
+        assert setup_required_history(REGISTRY) == 2
+        window = _market_state_window(2)
+        rule_history = build_rule_engine_output_window(window)
+        outputs = build_setup_engine_output_window(rule_history, registry=REGISTRY)
+        assert len(outputs) == 2
+
+        first_by_name = {s.setup_name: s for s in outputs[0].setups}
+        assert isinstance(first_by_name["sustained_displacement_streak"], InsufficientData)
+
+        second_by_name = {s.setup_name: s for s in outputs[1].setups}
+        streak_result = second_by_name["sustained_displacement_streak"]
+        assert isinstance(streak_result, SetupResult)
+        assert streak_result.detected is True
+        assert len(streak_result.evidence.supporting_facts) == 2
+
+    def test_required_history_plus_one_preserves_chronological_order_and_registry_order(self):
+        window = _market_state_window(3)
+        rule_history = build_rule_engine_output_window(window)
+        outputs = build_setup_engine_output_window(rule_history, registry=REGISTRY)
+        assert len(outputs) == 3
+        assert [o.occurred_at for o in outputs] == [ro.occurred_at for ro in rule_history]
+        for output in outputs:
+            assert [s.setup_name for s in output.setups] == [
+                "displacement_with_volume_confirmation",
+                "liquidity_sweep_with_volume_confirmation",
+                "sustained_displacement_streak",
+                "vwap_extension_with_volume_confirmation",
+            ]
+
+    def test_matches_build_setup_engine_output_called_per_position(self):
+        window = _market_state_window(3)
+        rule_history = build_rule_engine_output_window(window)
+        outputs = build_setup_engine_output_window(rule_history, registry=REGISTRY)
+        depth = setup_required_history(REGISTRY)
+        for i, output in enumerate(outputs):
+            context = SetupEvaluationContext(history=rule_history[max(0, i - depth + 1): i + 1])
+            assert output == build_setup_engine_output(context, registry=REGISTRY)
+
+    def test_deterministic_same_input_same_output(self):
+        window = _market_state_window(3)
+        rule_history = build_rule_engine_output_window(window)
+        assert build_setup_engine_output_window(rule_history, registry=REGISTRY) == build_setup_engine_output_window(
+            rule_history, registry=REGISTRY,
+        )
+
+    def test_does_not_mutate_or_reorder_input(self):
+        window = _market_state_window(3)
+        rule_history = build_rule_engine_output_window(window)
+        original = list(rule_history)
+        build_setup_engine_output_window(rule_history, registry=REGISTRY)
+        assert rule_history == original

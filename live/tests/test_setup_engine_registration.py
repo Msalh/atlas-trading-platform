@@ -43,5 +43,5 @@ class TestNoCircularImport:
 
     def test_registry_still_imports_cleanly_top_to_bottom(self):
         module = _fresh_import("atlas.setup_engine.registry")
-        assert len(module.REGISTRY) == 3  # Sprint 20 added a second setup, Sprint 21 a third
+        assert len(module.REGISTRY) == 4  # Sprint 20 a second setup, Sprint 21 a third, Sprint 23B a fourth
         module.validate_registry(module.REGISTRY)  # must not raise
