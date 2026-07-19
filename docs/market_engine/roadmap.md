@@ -15,10 +15,10 @@ recoverable. Rather than reconstruct it from memory, this document replaces it, 
 the actual state of the codebase after Sprint 8. It is persisted here specifically so this cannot
 happen again.
 
-## Current System Baseline (as of Sprint 23A)
+## Current System Baseline (as of Sprint 24C)
 
 **Updated 2026-07-19** — this section originally described the system as of Sprint 8, the point
-this document was first written. It now reflects everything completed through Sprint 23A; see
+this document was first written. It now reflects everything completed through Sprint 24C; see
 "Sprint Roadmap" below for how Sprints 9 onward got here, and the Phase 3 entry above for the
 Rule Engine/Setup Engine detail this section summarizes rather than repeats.
 
@@ -30,24 +30,87 @@ indicator; staleness detection + alerting (`atlas/monitoring.py`); gap/integrity
 10); Rule Engine — individual facts (7: the original 6 plus `vwap_relationship`, Sprint 22B, the
 first fact added beyond the original 13-field scope), an observability endpoint, and windowed
 output orchestration (Sprints 11–15, 17A, 22B); Setup Engine foundation, the long-term
-catalog/roadmap planning (`setup-engine-catalog.md`, Sprint 19), three real setups —
+catalog/roadmap planning (`setup-engine-catalog.md`, Sprint 19), and four real setups —
 `displacement_with_volume_confirmation` (Sprint 18), `liquidity_sweep_with_volume_confirmation`
-(Sprint 20), and `sustained_displacement_streak` (Sprint 21, the first setup with
-`required_history > 1`) — and a sixth `SetupFamily` member, `CONFLUENCE` (Sprint 23A), added
-ahead of its first consumer for reasons disclosed in `setup-engine-catalog.md`'s classification
-review, not speculatively. Steps 1–3 of Sprint 19's rolling implementation queue are complete
-(step 3 being `vwap_relationship` itself); step 4, `vwap_extension_with_volume_confirmation` (now
-correctly classified `CONFLUENCE`), is designed and fully unblocked but not yet implemented.
+(Sprint 20), `sustained_displacement_streak` (Sprint 21, the first setup with
+`required_history > 1`), and `vwap_extension_with_volume_confirmation` (Sprint 23B, the first
+`CONFLUENCE`-family setup — that family was added Sprint 23A, ahead of this consumer, for reasons
+disclosed in `setup-engine-catalog.md`'s classification review, not speculatively). All five steps
+of Sprint 19's original rolling implementation queue are now complete. Sprint 24A codified the Rule
+Fact Independence Audit's findings: `rejection` is an unconditional predicate refinement of
+`liquidity_sweep` (whenever both are computable), and `reclaim` is a predicate refinement of
+`liquidity_sweep` under the current matched default window configuration (both `window=3`,
+configuration-contingent) — see `rule-fact-inventory.md`'s "Fact hierarchy within this family" for
+the authoritative statement and `setup-engine-catalog.md`'s coexistence rule for the resulting
+catalog policy. No predicate, threshold, window, or registry changed in that Sprint — documentation
+and two regression tests only.
+
+Sprint 24B designed, and Sprint 24C implemented, a deterministic **historical fact and setup
+profiler** (`atlas/profiling/`) — an observational-only analysis package sitting above all three
+engines (Market Engine, Rule Engine, Setup Engine), reporting how often the current 7 facts and 4
+setups compute, fire, overlap, and encounter insufficient data over real historical `MarketState`
+data. Never a signal, confidence score, or profitability claim — see `setup-engine-architecture.md`'s
+"Position in the pipeline" for exactly how this third path differs from both the decision path and
+the LLM interpretation path. Sprint 24C also added `build_setup_engine_output_window()` to
+`atlas/setup_engine/service.py` — a direct, one-layer-up generalization of
+`build_rule_engine_output_window`, added because the profiler became a real, present consumer
+needing exactly that capability (see `setup-engine-architecture.md`'s Orchestration section). Key
+behavior, for anyone building on this later:
+- **Gap segmentation, not exclusion**: a raw `MarketState` range is split into strictly-contiguous
+  segments at every interval that isn't exactly one timeframe cadence apart (weekends, holidays,
+  exchange maintenance, any other missing interval) — rows around a gap are never discarded, only
+  placed in separate segments, each evaluated independently. A duplicate or non-monotonic
+  timestamp is not a gap — both fail the run outright, since they indicate a real input defect, not
+  a normal data condition.
+- **Warm-up is counted, never discarded**: the first bars of every segment naturally produce
+  `InsufficientData` for facts/setups whose required history exceeds what precedes them — the
+  profiler reports this as real data (`InsufficientData` counts, plus explicit
+  `fact_warm_up_observations`/`setup_warm_up_observations` per segment), never pads, synthesizes,
+  or drops these rows.
+- **21 MarketState bars, not 20, for two consecutive fully-computed Rule Engine outputs**: with
+  `required_history(RULE_ENGINE_REGISTRY) = 20` (driven by `trend_5m`'s 20-bar window),
+  `build_rule_engine_output_window` only fully resolves every one of the 7 registered facts at
+  position 20 onward within a segment — a 20-bar segment yields exactly ONE such fully-computed
+  output, not two; 21 bars are needed for two consecutive ones. Setup Engine completeness itself
+  needs far fewer bars (as few as 2–4, since no registered setup consumes `trend_5m`) — both figures
+  are derived directly from the real orchestration code and tested, not assumed (see
+  `tests/test_profiling.py::TestRequiredHistoryBoundary`).
+- **The hierarchy summary is derived, never a replacement for raw detections**: the profiler always
+  reports every fact's and setup's actual computed outcome faithfully; on top of that, it separately
+  computes whether the two Sprint 24A relationships (`rejection`/`reclaim` → `liquidity_sweep`) held
+  on the profiled data, using a small, explicit, two-entry configuration (`KNOWN_REFINEMENTS` in
+  `atlas/profiling/service.py`) that points back to `rule-fact-inventory.md` as the authoritative
+  explanation — not a generic hierarchy engine, graph, or runtime metadata framework. A discrepancy
+  (the documented relationship not holding on real data) is always surfaced, never hidden or
+  corrected away.
 
 **Not yet built**: LLM narration/interpretation of Setup Engine output (no LLM reasoning code
 exists yet — see `setup-engine-architecture.md`'s interpretation-path note); Strategy & Signal
-Layer (Phase 4); paper/live execution tied to Market Engine (Phases 5–6); journaling; any
-repository-backed (impure) wrapper around `build_rule_engine_output_window` or Setup Engine's
-orchestration — both remain pure-function-only, with input assembly left to the caller (a
-deliberate Sprint 17A deferral, not an oversight).
+Layer (Phase 4); paper/live execution tied to Market Engine (Phases 5–6); journaling. The pure
+orchestration functions themselves (`build_rule_engine_output_window`,
+`build_setup_engine_output_window`) remain repository-free, input-assembly-left-to-the-caller
+functions, unchanged since Sprint 17A/24C — but Sprint 24C's profiler now provides the first real
+repository-backed (impure) CONSUMER sitting above both (`atlas.profiling.service.profile_market_state_range`,
+calling `MarketStateRepository.get_range` directly), not a wrapper added inside either engine
+package itself. That distinction — impure assembly stays one layer above pure orchestration, never
+merged into it — is deliberate, not a partial retreat from the Sprint 17A posture.
 
-**Known debt** (updated through Sprint 23A; entries marked resolved, not removed, per this
+**Known debt** (updated through Sprint 24C; entries marked resolved, not removed, per this
 project's standing rule):
+- The historical profiler (`atlas/profiling/`, Sprint 24C) does not attempt automatic contract-roll
+  detection — only explicitly-configured roll timestamps are recorded in its data-quality summary
+  (`observations_near_roll_boundary`); an un-configured roll inside a profiled range is silently
+  invisible to it, not flagged. Disclosed, not solved — the same "detection and reporting only, no
+  automation" posture `find_gaps`/the Dataset Builder export already established one layer down.
+- The profiler's gap segmentation has no holiday-aware or session-aware semantic classification
+  beyond raw cadence-gap detection — it correctly splits on any non-cadence interval (a weekend, a
+  holiday, an exchange maintenance window are all treated identically as "a gap"), but cannot
+  distinguish which KIND of gap occurred, the same disclosed limitation `window_integrity.py`
+  itself carries (deliberately calendar-agnostic, per that module's own docstring).
+- `MarketStateRepository.get_range`'s Protocol does not expose whether a `limit`-bounded query was
+  truncated — the profiler's `possible_truncation` flag (raw row count equals the requested limit)
+  is a heuristic, not a guarantee; a range that genuinely contains exactly `limit` rows would also
+  set this flag. Disclosed explicitly rather than claimed as certain detection.
 - ~~`MarketStateRepository.get_history()` supports only "most recent N," no time-range query~~ —
   **resolved, Sprint 9**: `MarketStateRepository.get_range()` now exists (`atlas/market_engine/ports.py`).
 - `is_market_hours_expected` is not holiday-aware (disclosed in `atlas/monitoring.py`) — still
@@ -64,10 +127,10 @@ project's standing rule):
 - `live/README.md` has never been updated for any Market Engine work.
 - `GET /market-state/*` read endpoints carry no rate limit (consistent with every other read
   endpoint in the app, not a new gap).
-- Setup Engine severity is a single fixed `NORMAL` value for every detected setup, for all three
-  real setups built so far (Sprints 18, 20, 21 — deliberate, no real data exists yet to calibrate a
-  genuine severity metric against). Not a bug; named here so it isn't mistaken for a completed
-  feature.
+- Setup Engine severity is a single fixed `NORMAL` value for every detected setup, for all four
+  real setups built so far (Sprints 18, 20, 21, 23B — deliberate, no real data exists yet to
+  calibrate a genuine severity metric against). Not a bug; named here so it isn't mistaken for a
+  completed feature.
 
 **Operational risks**: no real production TradingView traffic has ever exercised this system —
 everything is validated against in-memory or local/CI Postgres only. Alerting is a silent no-op
@@ -86,7 +149,7 @@ trade counts in the original trading-platform project.
 
 **Architectural assumptions**: modular monolith remains correct as long as Market Engine, AI, and
 trading logic share one process; "AI never writes to Market Engine" is non-negotiable; hexagonal
-layering verified intact through Sprint 23A (each Rule Engine and Setup Engine Sprint re-ran its own
+layering verified intact through Sprint 23B (each Rule Engine and Setup Engine Sprint re-ran its own
 dependency-direction grep check as part of its own Definition of Done, not just once at Sprint 8);
 CT-timezone, CME-aligned session logic assumes MNQ/NQ-like instruments only.
 
@@ -102,9 +165,10 @@ CT-timezone, CME-aligned session logic assumes MNQ/NQ-like instruments only.
     the first fact beyond the original 13-field scope), an observability endpoint (Sprint 15),
     and windowed output orchestration for downstream consumers (Sprint 17A).
   - **Setup Engine** (`atlas/setup_engine/`, foundation implemented Sprint 17B; long-term catalog
-    and rolling roadmap planned Sprint 19; three real setups implemented, Sprints 18, 20, and 21;
-    a sixth `SetupFamily` member, `CONFLUENCE`, added Sprint 23A following a dedicated
-    classification review, all 2026-07-19): deterministic, code-defined composition of Rule Engine
+    and rolling roadmap planned Sprint 19; four real setups implemented, Sprints 18, 20, 21, and
+    23B; a sixth `SetupFamily` member, `CONFLUENCE`, added Sprint 23A following a dedicated
+    classification review, ahead of and specifically to unblock the Sprint 23B setup, all
+    2026-07-19): deterministic, code-defined composition of Rule Engine
     facts into higher-level market structures. Still never an LLM call, still never a probability —
     sits between Rule Engine and the LLM, not a part of either. See `setup-engine-architecture.md`,
     `setup-engine-catalog.md`, and `setup-inventory.md`.
@@ -168,21 +232,44 @@ current instead.
   primitive.
 
 ### Next planning point
-**Updated Sprint 23A** — the previous version of this section flagged an open classification
-question (`vwap_extension_with_volume_confirmation`'s definition asserting no reversion thesis
-while its cataloged family, `MEAN_REVERSION`, asserted one) as a blocker on step 4 of the rolling
-queue, and said Sprint 23 would not begin until it was resolved. It's now resolved:
-`SetupFamily.CONFLUENCE` was added (Sprint 23A, no other code changed) and the setup reclassified
-in `setup-engine-catalog.md`. Sprint 23A deliberately did **not** implement the setup itself —
-only the taxonomy amendment — so that the classification decision could be reviewed on its own,
-separately from the implementation work it unblocks. The next concrete step is now genuinely
-unblocked: `vwap_extension_with_volume_confirmation` (`setup-engine-catalog.md`'s rolling roadmap,
-step 4), designed and correctly classified, zero remaining blockers, not yet implemented. What
-remains genuinely undecided, and is correctly left unscoped here, is anything past that single
-next step: whether to continue the rolling queue, begin scoping Phase 4 (Strategy & Signal Layer),
-or something else. Naming that now would repeat the speculative-planning risk this project has
-consistently avoided; it gets its own decision when the rolling queue's own "re-evaluate" step is
-actually reached.
+**Updated Sprint 24C** — Sprint 23B's implementation closed out all five steps of Sprint 19's
+original rolling implementation queue. The Rule Fact Independence Audit that followed found that
+`liquidity_sweep`, `rejection`, and `reclaim` — previously catalogued as three independent ICT
+peer primitives — are actually a two-level hierarchy: `rejection` is an unconditional predicate
+refinement of `liquidity_sweep`, and `reclaim` is a predicate refinement of `liquidity_sweep` under
+the current matched default window configuration. Sprint 24A codified that finding as the
+authoritative documentation (`rule-fact-inventory.md`), the permanent Setup Engine catalog
+coexistence rule (`setup-engine-catalog.md`), and two regression tests — no predicate, threshold,
+window, or registry change.
+
+No currently cataloged `trend_5m` setup is implementation-ready. The two existing candidates
+(`setup-engine-catalog.md`'s ICT and MOMENTUM tables) were both inspected and found blocked:
+- `trend_aligned_liquidity_sweep` needs its own dedicated directional-alignment design pass
+  (what "a sweep whose reclaim direction agrees with `trend_5m`" precisely means is undefined) —
+  and, now that `liquidity_sweep` is known to sit atop the refinement hierarchy above, that design
+  pass must be hierarchy-aware, not just directional.
+- `trend_aligned_displacement` remains blocked on `displacement` exposing magnitude only, with no
+  directional sign — unresolved without a new or modified fact, out of scope for a design pass
+  alone.
+
+Sprints 24B/24C did not resolve either blocker above — they were a deliberately orthogonal next
+step: rather than open an implementation Sprint on an unresolved design question, or scope Phase 4
+speculatively, the project instead built the observational capability needed to eventually inform
+that design work with real data (how often does `liquidity_sweep` actually fire? does `rejection`'s
+documented unconditional relationship hold on real historical bars, not just synthetic fixtures?).
+The historical fact/setup profiler (`atlas/profiling/`) now exists for exactly that purpose — see
+this Sprint's own entry above and `setup-engine-architecture.md`'s "Position in the pipeline" for
+its placement. It has not yet been RUN against real production data (no real production traffic has
+ever exercised this system — see Operational risks below); running it is itself a candidate for
+whatever comes next, not assumed to have happened already.
+
+What comes next remains a dedicated design decision, not an implementation Sprint chosen
+speculatively — whether that's running the profiler against whatever real or replayed data becomes
+available, the `trend_aligned_liquidity_sweep` design pass, a different candidate from
+`setup-engine-catalog.md`'s list (re-deriving priority from that document's own Capability Coverage
+and Rule Fact Utilization matrices, not from a list written before this Sprint existed), or scoping
+Phase 4 (Strategy & Signal Layer). Naming that now would repeat the speculative-planning risk this
+project has consistently avoided; it gets its own decision when actually taken up.
 
 ## Why this ordering is technically correct
 

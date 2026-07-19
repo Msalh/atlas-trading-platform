@@ -16,11 +16,13 @@ def _no_op_evaluate(context, definition):
 
 class TestDefaultRegistry:
     def test_default_registry_holds_all_real_setups_in_registration_order(self):
-        # Sprint 18 added the first; Sprint 20 the second; Sprint 21 the third.
+        # Sprint 18 added the first; Sprint 20 the second; Sprint 21 the
+        # third; Sprint 23B the fourth (the first CONFLUENCE-family setup).
         assert [r.name for r in REGISTRY] == [
             "displacement_with_volume_confirmation",
             "liquidity_sweep_with_volume_confirmation",
             "sustained_displacement_streak",
+            "vwap_extension_with_volume_confirmation",
         ]
 
     def test_default_registry_passes_validation(self):
