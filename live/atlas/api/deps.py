@@ -8,6 +8,7 @@ the route code ever knowing the difference.
 from fastapi import Request
 
 from atlas.events.bus import EventBus
+from atlas.market_engine.ports import MarketStateRepository
 from atlas.repositories.base import TradeRepository
 from atlas.status import SystemStatus
 
@@ -22,3 +23,7 @@ def get_event_bus(request: Request) -> EventBus:
 
 def get_system_status(request: Request) -> SystemStatus:
     return request.app.state.system_status
+
+
+def get_market_state_repository(request: Request) -> MarketStateRepository:
+    return request.app.state.market_state_repository

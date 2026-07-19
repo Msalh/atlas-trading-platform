@@ -19,7 +19,7 @@ import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from atlas.api.deps import get_event_bus, get_repository, get_system_status
+from atlas.api.deps import get_event_bus, get_market_state_repository, get_repository, get_system_status
 from atlas.api.security import require_api_key_for_stream
 from atlas.config import settings
 from atlas.main import app
@@ -28,9 +28,10 @@ REAL_API_KEY = "real-api-key"
 
 
 @pytest.fixture
-def raw_client(monkeypatch, repository, event_bus, system_status):
+def raw_client(monkeypatch, repository, market_state_repository, event_bus, system_status):
     monkeypatch.setattr(settings, "api_key", REAL_API_KEY)
     app.dependency_overrides[get_repository] = lambda: repository
+    app.dependency_overrides[get_market_state_repository] = lambda: market_state_repository
     app.dependency_overrides[get_event_bus] = lambda: event_bus
     app.dependency_overrides[get_system_status] = lambda: system_status
     try:
@@ -43,6 +44,22 @@ def raw_client(monkeypatch, repository, event_bus, system_status):
     "/api/v1/trades", "/api/v1/trades/current", "/api/v1/status", "/api/v1/stats/today",
     "/api/v1/risk", "/api/v1/analytics/summary", "/api/v1/ai/notes", "/api/v1/ai/reports",
     "/api/v1/activity",
+    # Sprint 4 (Market Engine read API) - protected by the same shared API key,
+    # applied per-route rather than at router-registration time since
+    # api/v1/market_state.py's POST route shares this router but uses its own
+    # secret instead - see that module's docstring.
+    "/api/v1/market-state/latest?symbol=MNQU6&timeframe=5m",
+    "/api/v1/market-state/history?symbol=MNQU6&timeframe=5m",
+    # Sprint 8 (Data Validation & Integrity) - same shared API key as every
+    # other read route above.
+    "/api/v1/market-state/integrity?symbol=MNQU6&timeframe=5m",
+    # Sprint 9 (Dataset Builder) - same shared API key as every other read
+    # route above.
+    "/api/v1/market-state/export?symbol=MNQU6&timeframe=5m&start=2026-07-18T00:00:00Z&end=2026-07-19T00:00:00Z",
+    # Sprint 15 (Rule Engine observability) - same shared API key, applied at
+    # router-registration time (rule_engine.router has one route, one auth
+    # scheme - see atlas/main.py's registration comment).
+    "/api/v1/rule-engine/latest?symbol=MNQU6&timeframe=5m",
 ])
 def test_protected_endpoints_reject_missing_api_key(raw_client, path):
     resp = raw_client.get(path)
@@ -63,6 +80,27 @@ def test_protected_endpoint_rejects_malformed_authorization_header(raw_client):
 def test_protected_endpoint_accepts_correct_bearer_token(raw_client):
     resp = raw_client.get("/api/v1/trades", headers={"Authorization": f"Bearer {REAL_API_KEY}"})
     assert resp.status_code == 200
+
+
+def test_market_state_read_endpoints_accept_correct_api_key(raw_client):
+    resp = raw_client.get(
+        "/api/v1/market-state/latest?symbol=MNQU6&timeframe=5m",
+        headers={"Authorization": f"Bearer {REAL_API_KEY}"},
+    )
+    assert resp.status_code == 200
+
+
+def test_market_state_webhook_secret_does_not_authenticate_reads(raw_client, monkeypatch):
+    """The POST route's own MARKET_STATE_WEBHOOK_SECRET and the GET routes'
+    shared API_KEY protect different trust domains (see
+    atlas/api/v1/market_state.py's module docstring) - a valid ingestion
+    secret must not double as read access."""
+    monkeypatch.setattr(settings, "market_state_webhook_secret", "ms-secret")
+    resp = raw_client.get(
+        "/api/v1/market-state/latest?symbol=MNQU6&timeframe=5m",
+        headers={"Authorization": "Bearer ms-secret"},
+    )
+    assert resp.status_code == 401
 
 
 def test_webhook_does_not_require_the_api_key(raw_client, monkeypatch):

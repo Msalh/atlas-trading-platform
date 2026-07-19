@@ -12,6 +12,14 @@ class Settings:
     def __init__(self):
         self.database_url = os.environ.get("DATABASE_URL", "")
         self.webhook_secret = os.environ.get("WEBHOOK_SECRET", "")
+        # Sprint 3 (Market Engine): a SEPARATE shared secret from WEBHOOK_SECRET,
+        # protecting POST /api/v1/market-state. Deliberately not reused from the
+        # trade webhook - they protect different trust domains (market-state
+        # ingestion vs. order-relay-adjacent trade events), and a leaked one
+        # should never compromise the other. Same body-embedded-field,
+        # constant-time-comparison scheme as WEBHOOK_SECRET - see
+        # atlas/api/v1/market_state.py.
+        self.market_state_webhook_secret = os.environ.get("MARKET_STATE_WEBHOOK_SECRET", "")
         self.anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY", "")
         self.claude_model = os.environ.get("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
         self.pickmytrade_webhook_url = os.environ.get("PICKMYTRADE_WEBHOOK_URL", "")
@@ -41,6 +49,19 @@ class Settings:
         # sends one alert - see that class's docstring for why this is a streak count,
         # not "alert on every failure."
         self.claude_failure_alert_threshold = int(os.environ.get("CLAUDE_FAILURE_ALERT_THRESHOLD", "3"))
+        # Market Engine Sprint 7 - see atlas/monitoring.py. Default 15 minutes:
+        # roughly 3x a 5-minute bar interval, a buffer against normal
+        # delivery/processing jitter without being so loose that a genuine
+        # multi-bar gap goes unnoticed for a long time. Reuses
+        # ALERT_WEBHOOK_URL (above) for delivery - unset means this is a
+        # silent no-op, same "advisory only" pattern as everything else in
+        # atlas/alerting.py.
+        self.market_state_staleness_threshold_minutes = float(
+            os.environ.get("MARKET_STATE_STALENESS_THRESHOLD_MINUTES", "15")
+        )
+        self.market_state_staleness_check_interval_seconds = float(
+            os.environ.get("MARKET_STATE_STALENESS_CHECK_INTERVAL_SECONDS", "60")
+        )
         # Comma-separated list of origins allowed to call the API cross-origin (the
         # Next.js frontend). Defaults to the local Next.js dev server so local
         # frontend development works with zero configuration; set this explicitly in
@@ -104,6 +125,8 @@ class Settings:
             missing.append("WEBHOOK_SECRET")
         if not self.api_key:
             missing.append("API_KEY")
+        if not self.market_state_webhook_secret:
+            missing.append("MARKET_STATE_WEBHOOK_SECRET")
         if missing:
             raise RuntimeError(
                 f"{', '.join(missing)} not set. Refusing to start in production mode "

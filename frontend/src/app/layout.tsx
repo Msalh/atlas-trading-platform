@@ -48,6 +48,7 @@ export default function RootLayout({
                     <Link href="/analytics" className="hover:text-foreground">Analytics</Link>
                     <Link href="/ai" className="hover:text-foreground">AI</Link>
                     <Link href="/activity" className="hover:text-foreground">Activity</Link>
+                    <Link href="/rule-engine" className="hover:text-foreground">Rule Engine</Link>
                   </nav>
                 </div>
                 <div className="flex items-center gap-4">

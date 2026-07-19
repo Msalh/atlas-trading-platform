@@ -18,6 +18,7 @@ from atlas.config import Settings
 BASE_ENV = {
     "WEBHOOK_SECRET": "wh-secret",
     "API_KEY": "api-key",
+    "MARKET_STATE_WEBHOOK_SECRET": "ms-secret",
     "ENVIRONMENT": "production",
     "RISK_ENFORCEMENT": "false",
     "ACCOUNT_STARTING_BALANCE": "50000",
@@ -55,8 +56,19 @@ def test_refuses_to_start_without_either_secret_lists_both(monkeypatch):
         s.validate_for_startup()
 
 
+def test_refuses_to_start_without_market_state_webhook_secret_in_production(monkeypatch):
+    # Sprint 3 (Market Engine): a separate secret from WEBHOOK_SECRET/API_KEY,
+    # held to the exact same "refuse to start, don't silently disable the
+    # check" standard - see atlas/config.py's own comment on why it's separate.
+    s = _settings(monkeypatch, MARKET_STATE_WEBHOOK_SECRET="")
+    with pytest.raises(RuntimeError, match="MARKET_STATE_WEBHOOK_SECRET"):
+        s.validate_for_startup()
+
+
 def test_development_mode_tolerates_missing_secrets(monkeypatch):
-    s = _settings(monkeypatch, ENVIRONMENT="development", WEBHOOK_SECRET="", API_KEY="")
+    s = _settings(
+        monkeypatch, ENVIRONMENT="development", WEBHOOK_SECRET="", API_KEY="", MARKET_STATE_WEBHOOK_SECRET="",
+    )
     s.validate_for_startup()  # must not raise
 
 

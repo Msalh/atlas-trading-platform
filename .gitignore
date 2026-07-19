@@ -8,3 +8,8 @@
 /data/
 /screenshots/
 /.claude/
+# tools/ is a separate, independent git repository (its own .git/), unrelated
+# quant-research tooling - not part of this repo's history, and (found during
+# a Sprint 15 deployment incident) not previously excluded, meaning a
+# repo-root `railway up` would have uploaded it wholesale.
+/tools/

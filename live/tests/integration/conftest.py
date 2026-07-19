@@ -54,3 +54,29 @@ async def repo(pool):
     from atlas.repositories.postgres import PostgresTradeRepository
 
     return PostgresTradeRepository(pool)
+
+
+@pytest.fixture
+async def market_engine_pool():
+    """Separate from `pool` above deliberately - market_state_events has no
+    foreign-key relationship to trades (unlike ai_notes), so there is nothing
+    to CASCADE and no reason to share a fixture whose TRUNCATE semantics are
+    specific to the trades table's own FK graph."""
+    from psycopg_pool import AsyncConnectionPool
+
+    from migrations.runner import run_migrations
+
+    run_migrations(TEST_DATABASE_URL)
+    p = AsyncConnectionPool(TEST_DATABASE_URL, min_size=2, max_size=5, open=False)
+    await p.open(wait=True, timeout=30)
+    async with p.connection() as conn:
+        await conn.execute("TRUNCATE market_state_events RESTART IDENTITY")
+    yield p
+    await p.close()
+
+
+@pytest.fixture
+async def market_engine_repo(market_engine_pool):
+    from atlas.market_engine.repositories.postgres import PostgresMarketStateRepository
+
+    return PostgresMarketStateRepository(market_engine_pool)
