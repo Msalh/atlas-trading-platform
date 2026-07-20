@@ -50,7 +50,7 @@ class TestMarketStateToDict:
     def test_populated_fields_convert_correctly(self):
         state = _state(
             close=Price(20125.75, 0.25),
-            vwap=Price(20118.50, 0.25),
+            vwap=20118.50,  # analytical float (Sprint 26), not a Price
             volume=4210,
             session_name=Session.NY,
             is_rth=True,

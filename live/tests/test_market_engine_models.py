@@ -50,11 +50,12 @@ class TestMarketStateConstruction:
             low=Price(20118.00, 0.25),
             close=Price(20125.75, 0.25),
             volume=4210,
-            vwap=Price(20118.50, 0.25),
+            vwap=20118.503321,  # analytical float (Sprint 26) - deliberately off-tick to prove it's accepted
             liquidity_sweep=False,
             reclaim=True,
         )
         assert state.close.value == 20125.75
+        assert state.vwap == 20118.503321
         assert state.reclaim is True
         assert state.liquidity_sweep is False
 

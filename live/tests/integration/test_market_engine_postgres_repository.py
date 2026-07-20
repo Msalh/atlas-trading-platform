@@ -129,7 +129,7 @@ async def test_get_latest_round_trip_fidelity(market_engine_repo):
         rth_open=Price(20100.00, 0.25),
         previous_day_high=Price(20180.00, 0.25), previous_day_low=Price(20050.25, 0.25),
         overnight_high=Price(20140.00, 0.25), overnight_low=Price(20080.50, 0.25),
-        vwap=Price(20118.50, 0.25), distance_from_vwap_points=7.25, atr=42.5, volume_ratio=1.35,
+        vwap=20118.503321, distance_from_vwap_points=7.25, atr=42.5, volume_ratio=1.35,  # vwap: analytical float, deliberately off-tick (Sprint 26)
         nearest_liquidity_level=Price(20180.00, 0.25), nearest_liquidity_type="previous_day_high",
         distance_to_liquidity_ticks=217, overnight_high_status="untested",
         overnight_low_status="reclaimed", previous_day_high_status="untested",
