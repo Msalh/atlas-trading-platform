@@ -134,6 +134,28 @@ class TestHistoricalStateAt:
         state = verifier.historical_state_at(str(csv_path), "MNQ1!", "5m", "2026-07-20T08:00:00Z")
         assert state is None
 
+    def test_without_cadence_shift_a_bar_open_labeled_row_is_found_at_its_own_timestamp(self, tmp_path):
+        # A CSV row labeled with its bar-OPEN time (TradingView's native chart
+        # -export convention, confirmed by Sprint 31 Task 3's real evidence)
+        # matches directly at that same timestamp when no shift is applied.
+        csv_path = tmp_path / "export.csv"
+        csv_path.write_text(CSV_HEADERS + _csv_row(time="2026-07-20T07:45:00Z"), encoding="utf-8")
+        assert verifier.historical_state_at(str(csv_path), "MNQ1!", "5m", "2026-07-20T07:45:00Z") is not None
+        assert verifier.historical_state_at(str(csv_path), "MNQ1!", "5m", "2026-07-20T07:50:00Z") is None
+
+    def test_cadence_shift_matches_the_bar_close_timestamp_instead(self, tmp_path):
+        # Reuses import_historical_market_state_csv.py's own --assume-bar-
+        # open-time mechanism (cadence_minutes) unchanged - not a second
+        # implementation. A row natively labeled 07:45 (bar-open) shifts to
+        # 07:50 (bar-close) and is found there instead, matching the live
+        # webhook's own time_close convention.
+        csv_path = tmp_path / "export.csv"
+        csv_path.write_text(CSV_HEADERS + _csv_row(time="2026-07-20T07:45:00Z"), encoding="utf-8")
+        assert verifier.historical_state_at(str(csv_path), "MNQ1!", "5m", "2026-07-20T07:45:00Z", cadence_minutes=5) is None
+        shifted = verifier.historical_state_at(str(csv_path), "MNQ1!", "5m", "2026-07-20T07:50:00Z", cadence_minutes=5)
+        assert shifted is not None
+        assert shifted["close"] == 20125.75
+
 
 class TestLiveStateFromExportResponse:
     def test_reads_the_single_event(self, tmp_path):

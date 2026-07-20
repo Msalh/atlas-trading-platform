@@ -118,17 +118,26 @@ def compare_fields(historical: dict[str, Any], live: dict[str, Any]) -> list[Fie
 
 def historical_state_at(
     csv_path: str, symbol: str, timeframe: str, target_timestamp: str,
+    cadence_minutes: Optional[int] = None,
 ) -> Optional[dict[str, Any]]:
     """Finds the one CSV row matching `target_timestamp` and runs it through
     the real production translation pipeline - not a re-implementation of
-    to_canonical, the actual function."""
+    to_canonical, the actual function.
+
+    `cadence_minutes`: passed straight through to the importer's own
+    build_candidates/row_to_raw_json - the exact same bar-open-to-bar-close
+    shift import_historical_market_state_csv.py's --assume-bar-open-time
+    flag already applies, not a second implementation of it. Only pass this
+    once real evidence (an actual field-by-field comparison against live
+    data) has confirmed the CSV's native "time" column is bar-open, not
+    bar-close - never speculatively, and never silently."""
     with open(csv_path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         headers = reader.fieldnames or []
         column_map = importer._build_column_map(headers, strict=True)
         raw_rows = list(reader)
 
-    candidates, _skipped = importer.build_candidates(raw_rows, column_map, symbol, timeframe)
+    candidates, _skipped = importer.build_candidates(raw_rows, column_map, symbol, timeframe, cadence_minutes)
     for _row_number, occurred_at, raw_json in candidates:
         if raw_json["timestamp"] == target_timestamp or occurred_at.isoformat() == target_timestamp.replace("Z", "+00:00"):
             payload = TradingViewMarketStatePayload.model_validate(raw_json)
@@ -191,7 +200,17 @@ def main() -> None:
         "--api-response", action="append", required=True, metavar="TIMESTAMP=PATH",
         help="A saved GET /market-state/export response body for one start==end timestamp. Repeatable.",
     )
+    parser.add_argument(
+        "--assume-bar-open-time", action="store_true",
+        help="Shift the CSV's native 'time' column forward by one bar's cadence before matching - only pass "
+             "this once a real comparison has already shown a bar-open/bar-close offset (the same flag "
+             "import_historical_market_state_csv.py already has, reused here, not reimplemented). Do not "
+             "pass this speculatively.",
+    )
     args = parser.parse_args()
+
+    from atlas.core.primitives import Timeframe
+    cadence_minutes = Timeframe(args.timeframe).duration_minutes if args.assume_bar_open_time else None
 
     results_by_timestamp: dict[str, list[FieldComparison]] = {}
     for entry in args.api_response:
@@ -199,7 +218,7 @@ def main() -> None:
         if not timestamp or not response_path:
             parser.error(f"--api-response {entry!r} is not in TIMESTAMP=PATH form")
 
-        historical = historical_state_at(args.csv, args.symbol, args.timeframe, timestamp)
+        historical = historical_state_at(args.csv, args.symbol, args.timeframe, timestamp, cadence_minutes)
         if historical is None:
             print(f"ERROR: no CSV row found for timestamp {timestamp!r} - cannot compare", file=sys.stderr)
             raise SystemExit(1)
