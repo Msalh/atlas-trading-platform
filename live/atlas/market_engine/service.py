@@ -25,10 +25,18 @@ from atlas.market_engine.ports import IngestOutcome, MarketStateRepository
 @dataclass(frozen=True)
 class IngestResult:
     """`outcome` is None exactly when `error` is set - the payload never
-    reached the repository. Both are never set at once, and never both unset."""
+    reached the repository. Both are never set at once, and never both unset.
+
+    `error_stage`/`error_exception_type` are set alongside `error` (added for
+    the market-state 422 diagnostic logging) - which of the two validation
+    stages rejected the payload, and the exception's class name, so the
+    caller can log a machine-filterable rejection reason without having to
+    parse `error`'s free-text string."""
 
     outcome: Optional[IngestOutcome] = None
     error: Optional[str] = None
+    error_stage: Optional[str] = None
+    error_exception_type: Optional[str] = None
 
 
 async def ingest_tradingview_payload(
@@ -37,12 +45,18 @@ async def ingest_tradingview_payload(
     try:
         payload = TradingViewMarketStatePayload.model_validate(raw_json)
     except ValidationError as e:
-        return IngestResult(error=f"invalid payload: {e.errors(include_context=False)}")
+        return IngestResult(
+            error=f"invalid payload: {e.errors(include_context=False)}",
+            error_stage="wire_model_validation",
+            error_exception_type=type(e).__name__,
+        )
 
     try:
         state = to_canonical(payload)
     except AtlasDomainError as e:
-        return IngestResult(error=str(e))
+        return IngestResult(
+            error=str(e), error_stage="domain_translation", error_exception_type=type(e).__name__,
+        )
 
     outcome = await repository.ingest(state, raw_payload=raw_payload)
     return IngestResult(outcome=outcome)

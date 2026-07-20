@@ -4,6 +4,8 @@ repository via the `client` fixture's dependency override - the same pattern
 tests/test_webhook.py already uses for /webhook.
 """
 import asyncio
+import json
+import logging
 
 from tests.conftest import TEST_MARKET_STATE_SECRET, entry_payload, market_state_payload
 
@@ -93,6 +95,67 @@ class TestMalformedPayloadRejection:
             headers={"Content-Type": "application/json"},
         )
         assert resp.status_code == 401
+
+
+class TestRejectionLogging:
+    """Diagnostic logging added after a production 422 proved unrecoverable -
+    the rejection path previously logged nothing at all (see
+    atlas.api.v1.market_state's `if result.error is not None:` branch), so a
+    real TradingView payload that failed validation left no trace beyond the
+    access log's bare status code. These tests prove the new
+    logger.warning("MarketState rejected", extra={...}) call fires with the
+    right stage/exception-type breadcrumbs, never with the secret, and never
+    on the success path."""
+
+    def _rejection_records(self, caplog):
+        return [r for r in caplog.records if r.message == "MarketState rejected"]
+
+    def test_wire_model_validation_failure_is_logged(self, client, caplog):
+        with caplog.at_level(logging.WARNING, logger="atlas.market_state"):
+            resp = client.post("/api/v1/market-state", json=market_state_payload(bar_status="half_open"))
+        assert resp.status_code == 422
+        records = self._rejection_records(caplog)
+        assert len(records) == 1
+        record = records[0]
+        assert record.validation_stage == "wire_model_validation"
+        assert record.exception_type == "ValidationError"
+        assert record.symbol == "MNQU6"
+        assert record.timeframe == "5m"
+        assert "bar_status" in record.error
+
+    def test_domain_translation_failure_is_logged(self, client, caplog):
+        with caplog.at_level(logging.WARNING, logger="atlas.market_state"):
+            resp = client.post("/api/v1/market-state", json=market_state_payload(close=20125.80))
+        assert resp.status_code == 422
+        records = self._rejection_records(caplog)
+        assert len(records) == 1
+        record = records[0]
+        assert record.validation_stage == "domain_translation"
+        assert record.exception_type == "OffTickError"
+
+    def test_secret_never_present_in_rejection_log(self, client, caplog):
+        with caplog.at_level(logging.WARNING, logger="atlas.market_state"):
+            resp = client.post("/api/v1/market-state", json=market_state_payload(bar_status="half_open"))
+        assert resp.status_code == 422
+        assert self._rejection_records(caplog), "expected a rejection log record to check"
+        for record in caplog.records:
+            rendered = json.dumps(record.__dict__, default=str)
+            assert TEST_MARKET_STATE_SECRET not in rendered
+            assert "secret" not in rendered.lower()
+
+    def test_successful_request_logs_no_rejection(self, client, caplog):
+        with caplog.at_level(logging.WARNING, logger="atlas.market_state"):
+            resp = client.post("/api/v1/market-state", json=market_state_payload(event_id="e-log-success"))
+        assert resp.status_code == 200
+        assert self._rejection_records(caplog) == []
+
+    def test_duplicate_request_logs_no_rejection(self, client, caplog):
+        payload = market_state_payload(event_id="e-log-dup")
+        client.post("/api/v1/market-state", json=payload)
+        with caplog.at_level(logging.WARNING, logger="atlas.market_state"):
+            resp = client.post("/api/v1/market-state", json=payload)
+        assert resp.status_code == 208
+        assert self._rejection_records(caplog) == []
 
 
 class TestDevelopmentModeBlankSecret:
