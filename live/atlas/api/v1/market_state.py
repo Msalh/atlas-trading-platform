@@ -156,6 +156,22 @@ async def ingest_market_state(
         return JSONResponse({"ok": False, "error": f"internal error: {e}"}, status_code=500)
 
     if result.error is not None:
+        # Diagnostic-only: this path previously logged nothing at all, which
+        # made a production 422 unrecoverable after the fact (the raw body is
+        # never persisted for a rejected payload - see ingest_tradingview_payload).
+        # Reads only the same three already-parsed wire fields the success-path
+        # logging below already reads (never raw_json.get("secret") - see
+        # _sanitize_raw_body above), plus the stage/exception-type/error detail
+        # ingest_tradingview_payload now reports. Response body/status are
+        # unchanged from before this logging was added.
+        logger.warning("MarketState rejected", extra={
+            "event_id": raw_json.get("event_id"),
+            "symbol": raw_json.get("symbol"),
+            "timeframe": raw_json.get("timeframe"),
+            "validation_stage": result.error_stage,
+            "exception_type": result.error_exception_type,
+            "error": result.error,
+        })
         return JSONResponse({"ok": False, "error": result.error}, status_code=422)
 
     # Sprint 7: published for BOTH outcomes below - a duplicate still proves
