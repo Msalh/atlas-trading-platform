@@ -110,6 +110,12 @@ class TestGetLiveEpisodes:
         snapshot = body["setups"]["displacement_with_volume_confirmation"]
         assert snapshot["current_episode"] is not None
         assert snapshot["current_episode"]["is_active"] is True
+        # Regression: segment_id exists on the LiveEpisodeProjection dataclass
+        # but was originally missing from _episode_projection_to_dict's own
+        # serialization - Timeline's segment/gap-boundary rendering depends
+        # on it being present on the wire, not just in the dataclass.
+        assert "segment_id" in snapshot["current_episode"]
+        assert isinstance(snapshot["current_episode"]["segment_id"], str)
         assert snapshot["current_episode"]["end_timestamp_observed"] is None
         assert snapshot["current_episode"]["termination_reason"] is None
 

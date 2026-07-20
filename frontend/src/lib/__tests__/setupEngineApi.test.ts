@@ -103,6 +103,7 @@ describe("fetchLiveEpisodes", () => {
   function activeEpisode() {
     return {
       setup_name: "displacement_reclaim",
+      segment_id: "seg-1",
       left_boundary_reason: "query_window_start",
       activation_timestamp_observed: null,
       observed_start_timestamp: "2026-07-20T10:00:00Z",

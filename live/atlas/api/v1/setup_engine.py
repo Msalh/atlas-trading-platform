@@ -105,6 +105,7 @@ async def read_latest_setup_engine_output(
 def _episode_projection_to_dict(ep: LiveEpisodeProjection) -> dict[str, Any]:
     return {
         "setup_name": ep.setup_name,
+        "segment_id": ep.segment_id,
         "left_boundary_reason": ep.left_boundary_reason.value,
         "activation_timestamp_observed": ep.activation_timestamp_observed,
         "observed_start_timestamp": ep.observed_start_timestamp,

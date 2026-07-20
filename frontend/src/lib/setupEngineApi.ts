@@ -121,6 +121,7 @@ export interface RegisteredFactSnapshot {
 
 export interface LiveEpisodeProjection {
   setup_name: string;
+  segment_id: string;
   left_boundary_reason: LeftBoundaryReason;
   activation_timestamp_observed: string | null;
   observed_start_timestamp: string;
@@ -191,6 +192,7 @@ function isLiveEpisodeProjection(value: unknown): value is LiveEpisodeProjection
   const v = value as Record<string, unknown>;
   return (
     typeof v.setup_name === "string" &&
+    typeof v.segment_id === "string" &&
     typeof v.left_boundary_reason === "string" &&
     (v.activation_timestamp_observed === null || typeof v.activation_timestamp_observed === "string") &&
     typeof v.observed_start_timestamp === "string" &&
