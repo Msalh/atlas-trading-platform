@@ -81,7 +81,7 @@ def to_canonical(payload: TradingViewMarketStatePayload) -> MarketState:
         previous_day_low=_price_or_none(payload.previous_day_low),
         overnight_high=_price_or_none(payload.overnight_high),
         overnight_low=_price_or_none(payload.overnight_low),
-        vwap=_price_or_none(payload.vwap),
+        vwap=payload.vwap,
         distance_from_vwap_points=payload.distance_from_vwap_points,
         atr=payload.atr,
         volume_ratio=payload.volume_ratio,

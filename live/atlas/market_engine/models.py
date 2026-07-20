@@ -77,8 +77,13 @@ class MarketState:
     overnight_high: Optional[Price] = None
     overnight_low: Optional[Price] = None
 
-    # VWAP & volatility
-    vwap: Optional[Price] = None
+    # VWAP & volatility. vwap is a running volume-weighted AVERAGE (Pine's
+    # ta.vwap), not a traded print - a continuous statistic, structurally
+    # like atr below, never expected to land on the instrument's tick grid.
+    # Sprint 26 fix: this was previously (incorrectly) a Price, which
+    # rejected almost every real bar - see docs/market_engine/roadmap.md's
+    # Sprint 26 entry for the root cause.
+    vwap: Optional[float] = None
     distance_from_vwap_points: Optional[float] = None
     atr: Optional[float] = None
     volume_ratio: Optional[float] = None

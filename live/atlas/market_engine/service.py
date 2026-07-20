@@ -97,7 +97,7 @@ def market_state_to_dict(state: MarketState) -> dict[str, Any]:
         "previous_day_low": _price_value(state.previous_day_low),
         "overnight_high": _price_value(state.overnight_high),
         "overnight_low": _price_value(state.overnight_low),
-        "vwap": _price_value(state.vwap),
+        "vwap": state.vwap,
         "distance_from_vwap_points": state.distance_from_vwap_points,
         "atr": state.atr,
         "volume_ratio": state.volume_ratio,

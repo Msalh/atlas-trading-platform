@@ -84,12 +84,26 @@ class TestTickSizeRejection:
         with pytest.raises(OffTickError):
             to_canonical(_payload(close=20125.80))
 
-    def test_off_tick_rejection_applies_to_every_price_field(self):
+    def test_off_tick_rejection_applies_to_every_tradable_price_field(self):
+        # vwap deliberately excluded - Sprint 26: it is a running
+        # volume-weighted AVERAGE (analytical), not a traded print, and must
+        # never be tick-validated - see test_vwap_is_never_tick_validated
+        # below.
         for field in ("open", "high", "low", "close", "rth_open", "previous_day_high",
-                      "previous_day_low", "overnight_high", "overnight_low", "vwap",
+                      "previous_day_low", "overnight_high", "overnight_low",
                       "nearest_liquidity_level"):
             with pytest.raises(OffTickError):
                 to_canonical(_payload(**{field: 20125.80}))
+
+    def test_vwap_is_never_tick_validated(self):
+        # Sprint 26 root-cause fix: vwap is Pine's ta.vwap, a continuous
+        # running average - it will almost never land on the tick grid, and
+        # rejecting it here was the actual production bug (1197/1200 real
+        # historical bars rejected on this field alone). Preserved exactly,
+        # not rounded, not rejected - the same treatment atr/volume_ratio/
+        # distance_from_vwap_points already correctly receive.
+        state = to_canonical(_payload(vwap=20125.80123456))
+        assert state.vwap == 20125.80123456
 
 
 class TestExplicitNullHandling:
@@ -142,7 +156,7 @@ class TestTranslationCorrectness:
         assert state.session_name == Session.NY
         assert state.is_rth is True
         assert state.trading_date.isoformat() == "2026-07-18"
-        assert state.vwap.value == 20118.50
+        assert state.vwap == 20118.50
         assert state.nearest_liquidity_type == "previous_day_high"
         assert state.trend_1h == "down"
         assert state.reclaim is True
