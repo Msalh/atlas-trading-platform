@@ -3,7 +3,7 @@
 - **Symbol**: MNQ1!  **Timeframe**: 5m
 - **Range**: 2025-03-02T23:05:00+00:00 -> 2026-07-20T11:35:00+00:00
 - **Row count**: 97,858
-- **Code version**: 74608b58452e92c07bcda4bb55b62c4ded4c589c
+- **Code version**: 806e4f1ae2386a68207192089ab303d77c05fa66
 - **Generated**: 2026-07-20 (see the six RE2_*.md reports for the underlying computed statistics — this document introduces no new calculations, only a reading of results already in those reports)
 
 Descriptive Setup Profiling only. No profitability, expectancy, alpha, forward-return, MFE/MAE, or win-rate content anywhere below.
@@ -23,9 +23,18 @@ Censoring is rare and does not materially affect any of the above: left-censored
 
 ## 2. Time concentration
 
-**08:00 CT is the single most concentrated activation hour for every setup that includes `volume_spike`** (displacement, liquidity_sweep, vwap_extension) — for `displacement_with_volume_confirmation`, the 08:00 hour shows a 39.7% active-bar rate versus a 8.0% dataset-wide average, and 14.7% activation rate versus other hours mostly in the 1–10% range. This directly matches RE-1's own finding that 08:00 CT is the peak hour for the underlying `volume_spike`/`displacement` facts (RE1_Research_Notes.md §5) — a consistent, cross-validated signal, not a new independent finding.
+**All four setups show their strongest concentration at 08:00 CT**, each by a wide margin over every other hour:
 
-`sustained_displacement_streak` (the one setup with no `volume_spike` requirement) does not show this same 08:00 spike as sharply, consistent with it being driven by a different underlying mechanism (sustained directional range expansion, not a single-bar volume/liquidity event).
+| setup | dataset-wide active-bar rate | 08:00 CT active-bar rate | 08:00 CT activation rate |
+|---|---|---|---|
+| displacement_with_volume_confirmation | 8.0% | 39.7% | 14.7% |
+| liquidity_sweep_with_volume_confirmation | 5.4% | 18.0% | 7.5% |
+| sustained_displacement_streak | 3.1% | 25.2% | 9.1% |
+| vwap_extension_with_volume_confirmation | 11.7% | 47.2% | 15.8% |
+
+For the three `volume_spike`-driven setups (displacement, liquidity_sweep, vwap_extension), this sits directly adjacent to RE-1's own finding that 08:00 CT is the peak hour for the underlying `volume_spike`/`displacement` facts (RE1_Research_Notes.md §5) — expected, since `volume_spike` is a required input to all three.
+
+`sustained_displacement_streak` requires no `volume_spike` at all, yet independently shows the same 08:00 CT concentration (25.2% active-bar rate, roughly 8x its own dataset-wide rate) — a genuinely separate observation, not inherited from a shared input fact. Both findings describe a real, descriptive time concentration in this dataset; neither is evidence of what causes bars near 08:00 CT to behave this way, and no causal mechanism is asserted here.
 
 Session-level: every setup's activation rate is broadly similar between OVERNIGHT and RTH (within a few percentage points), but `displacement_with_volume_confirmation`'s active-bar rate is meaningfully higher in RTH (10.3%) than OVERNIGHT (7.0%) — RTH's greater average volume plausibly produces more sustained displacement runs once triggered, consistent with RE-1's own RTH-vs-OVERNIGHT displacement finding.
 
@@ -61,7 +70,9 @@ This is a real, empirically-confirmed distinction: sharing an input fact reliabl
 
 ## 6. Transitions
 
-`vwap_extension_with_volume_confirmation` has the highest same-setup recurrence (80.5% of its episodes are followed, within the same segment, by another activation event that includes itself) — consistent with it being the highest-frequency, most persistent-feeling setup in this baseline. `sustained_displacement_streak` has the lowest same-setup recurrence (3.9%) despite a very high cross-setup recurrence (98.1%) — once a streak ends, another 2+ bar streak is slow to re-form, but *some* other setup fires again almost immediately. This mirrors §3's clustering finding from a different angle (episode-level next-event structure rather than raw gap timing).
+**Same-setup and cross-setup recurrence are not mutually exclusive.** A next ActivationEvent can be multi-label (two or more setups tied on the identical bar), and when it includes both the originating setup and at least one other, that single transition counts toward both rates independently — their sum can exceed 100% for a given setup, and does (e.g. `liquidity_sweep_with_volume_confirmation`: 48.4% + 97.5% = 145.9%). See `RE2_Setup_Transitions.md`'s own recurrence-rate note and transition-matrix denominator table for the full mechanics.
+
+`vwap_extension_with_volume_confirmation` has the highest same-setup recurrence (80.5% of its episodes are followed, within the same segment, by a next ActivationEvent that includes itself) — consistent with it being the highest-frequency, most persistent-feeling setup in this baseline. `sustained_displacement_streak` has the lowest same-setup recurrence (3.9%) despite a very high cross-setup recurrence (98.1%) — once a streak ends, another 2+ bar streak is slow to re-form, but *some* other setup fires again almost immediately. This mirrors §3's clustering finding from a different angle (episode-level next-event structure rather than raw gap timing).
 
 The by-session breakdown shows `displacement_with_volume_confirmation`'s own self-transition probability is notably higher in RTH (40.8%) than OVERNIGHT (34.6%), while `vwap_extension`'s self-transition is comparable across both sessions (44.0% RTH vs 45.8% OVERNIGHT) — a session-dependent structural difference between these two setups worth carrying into any RE-3 session-conditioned design.
 
@@ -70,7 +81,7 @@ The by-session breakdown shows `displacement_with_volume_confirmation`'s own sel
 Full detail: `RE1_ExpandedRun_Manifest.md` / `docs/market_engine/re1-5file-phase3-certification-report.md` (RE-1's own certification findings, reused here rather than re-derived).
 
 - **ATR-warmup propagates into two setups' computability, exactly as expected**: `displacement_with_volume_confirmation` and `vwap_extension_with_volume_confirmation` both show 39 `atr is not present` insufficient-data bars — the same 3-cluster, 13-bar-each pattern RE-1's certification already root-caused as legitimate per-file-export `ta.atr` warmup, now confirmed to propagate correctly (not silently absorbed or hidden) into every setup that transitively depends on `displacement` or `vwap_relationship`.
-- **A smaller, distinct `volume_ratio`-null count (18 bars) appears in every `volume_spike`-dependent setup** (`displacement`, `liquidity_sweep`, `vwap_extension`) — smaller than the ATR-warmup count and not separately root-caused in this sprint; plausibly a related but distinct per-export warmup effect on `volume_ratio`'s own baseline computation. Disclosed here as an observed fact, not an investigated or confirmed root cause — worth a short, targeted follow-up before RE-3 if `volume_spike` computability becomes load-bearing for a hypothesis.
+- **A smaller, distinct `volume_ratio`-null count (18 bars) appears in every `volume_spike`-dependent setup** (`displacement_with_volume_confirmation`, `liquidity_sweep_with_volume_confirmation`, `vwap_extension_with_volume_confirmation`) — a different count from the 39-bar ATR cluster, so a different (unidentified) subset of bars. No root cause is established for this count in RE-1 or RE-2; nothing beyond "18 bars exist and are distinct from the ATR cluster" is asserted here. This is a targeted, unresolved data-quality follow-up required before RE-3 depends on precise `volume_spike` computability counts — it does not block RE-2 or UI v2, since RE-2's own reports (RE2_Setup_Profile.md's computability tables) already surface the count transparently rather than hiding it.
 - **`liquidity_sweep_with_volume_confirmation`'s window-warmup insufficient-data count (718 = 359+359) exactly matches RE-1's own `liquidity_sweep` fact insufficient-data count** (`RE1_Fact_Profile.md`: 718) and the certified 359-segment count (2 window-warmup bars × 359 segments) — a correctness cross-check confirming RE-2's per-segment Rule/Setup Engine evaluation reproduces RE-1's own established numbers exactly.
 - `trend_1m`'s pre-2025-07-20 unreliability (RE-1's certification finding) has no bearing on RE-2 — none of the 4 registered setups reads `trend_1m` (only `trend_5m` and the other 5 registered facts feed any setup's `required_facts`).
 - The formal RE-1 certification verdict for this dataset remains REJECTED (one FAIL: `trend_1m`, outside RE-2's scope) — carried forward unchanged, not re-adjudicated here.

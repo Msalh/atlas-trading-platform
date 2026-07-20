@@ -14,6 +14,6 @@ Wrote ../research\RE2_Time_Distribution.md (15528 chars)
 Wrote ../research\RE2_Clustering.md (4649 chars)
 Wrote ../research\RE2_Setup_Overlap.md (7869 chars)
 Wrote ../research\RE2_Context_Profile.md (10924 chars)
-Wrote ../research\RE2_Setup_Transitions.md (6205 chars)
+Wrote ../research\RE2_Setup_Transitions.md (7577 chars)
 
 Run complete: 97858 bars, MNQ1!/5m, 2025-03-02T23:05:00+00:00 -> 2026-07-20T11:35:00+00:00

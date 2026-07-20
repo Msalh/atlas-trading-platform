@@ -4,8 +4,8 @@
 - **Requested range**: 2025-03-02T23:05:00+00:00 -> 2026-07-20T11:35:00+00:00
 - **Source**: csv:../data/CME_03_03_25_16_06_25.csv,../data/CME_16_06_25_30_09_25.csv,../data/CME_01_10_31_12.csv,../data/CME_01_01_05_04.csv,../data/CME_06_04_20_07.csv
 - **Row count**: 97858
-- **Generated at**: 2026-07-20T14:04:22.064038+00:00
-- **Code version**: 74608b58452e92c07bcda4bb55b62c4ded4c589c
+- **Generated at**: 2026-07-20T14:18:36.013255+00:00
+- **Code version**: 806e4f1ae2386a68207192089ab303d77c05fa66
 
 Descriptive Setup Profiling only. No profitability, expectancy, alpha, forward-return, MFE/MAE, or win-rate content. trend_1m is never used - it is not a registered Rule Engine fact.
 
@@ -14,6 +14,15 @@ Every transition points to the NEXT ActivationEvent (possibly multi-label, when 
 Total episode-level transitions: 16279  Censored: 762 (4.7%)
 
 ## Transition matrix (from setup -> to setup, expanding multi-label events)
+
+**Denominator**: each row's `probability` is `count / expanded_destination_label_count` for that from-setup - normalized over EXPANDED DESTINATION LABELS, not over source episodes. When the next ActivationEvent after an episode is multi-label (two or more setups tied on the same bar), that ONE source episode contributes one count to EACH destination setup's row-cell - so `expanded_destination_label_count` can exceed `non_censored_episode_count` whenever ties occur, and a row's counts still sum to exactly its own `expanded_destination_label_count` (probabilities still sum to 100%).
+
+| from setup | non-censored episodes | distinct next events | multi-label next events | expanded destination labels |
+|---|---|---|---|---|
+| displacement_with_volume_confirmation | 5041 | 5041 | 2609 | 8406 |
+| liquidity_sweep_with_volume_confirmation | 2845 | 2845 | 1882 | 5448 |
+| sustained_displacement_streak | 1590 | 1590 | 786 | 2613 |
+| vwap_extension_with_volume_confirmation | 6041 | 6041 | 3525 | 10678 |
 
 | from | to | count | probability |
 |---|---|---|---|
@@ -35,6 +44,8 @@ Total episode-level transitions: 16279  Censored: 762 (4.7%)
 | vwap_extension_with_volume_confirmation | sustained_displacement_streak | 455 | 4.3% |
 
 ## Recurrence rates
+
+Same-setup and cross-setup recurrence are NOT mutually exclusive: a multi-label next ActivationEvent can include both the originating setup AND one or more other setups on the same bar, in which case that one transition counts toward BOTH rates independently. Their sum can therefore exceed 100% for a given setup - this is expected, not a double-counting defect.
 
 | setup | same-setup recurrence | cross-setup recurrence |
 |---|---|---|

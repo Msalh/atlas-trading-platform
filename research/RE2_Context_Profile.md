@@ -4,8 +4,8 @@
 - **Requested range**: 2025-03-02T23:05:00+00:00 -> 2026-07-20T11:35:00+00:00
 - **Source**: csv:../data/CME_03_03_25_16_06_25.csv,../data/CME_16_06_25_30_09_25.csv,../data/CME_01_10_31_12.csv,../data/CME_01_01_05_04.csv,../data/CME_06_04_20_07.csv
 - **Row count**: 97858
-- **Generated at**: 2026-07-20T14:04:22.064038+00:00
-- **Code version**: 74608b58452e92c07bcda4bb55b62c4ded4c589c
+- **Generated at**: 2026-07-20T14:18:36.013255+00:00
+- **Code version**: 806e4f1ae2386a68207192089ab303d77c05fa66
 
 Descriptive Setup Profiling only. No profitability, expectancy, alpha, forward-return, MFE/MAE, or win-rate content. trend_1m is never used - it is not a registered Rule Engine fact.
 
