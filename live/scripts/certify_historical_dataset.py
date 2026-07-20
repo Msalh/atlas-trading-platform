@@ -73,19 +73,31 @@ class CertificationResult:
     detail: str
 
 
-def load_states(csv_path: str, symbol: str, timeframe: str) -> tuple[list[MarketState], list[tuple[int, str]]]:
+def load_states(
+    csv_path: str, symbol: str, timeframe: str, cadence_minutes: int | None = None,
+) -> tuple[list[MarketState], list[tuple[int, str]]]:
     """Reuses the importer's own CSV parsing and the real production
     translation pipeline unchanged - never a second implementation of
     either. Returns (states, skipped) - skipped rows are themselves
     certification evidence (a structurally unparseable row), not silently
-    dropped."""
+    dropped.
+
+    `cadence_minutes` reuses the importer's own --assume-bar-open-time
+    mechanism unchanged (Sprint 31 Task 3's finding: this data source's
+    native CSV "time" column is bar-open, while production stores
+    bar-close) - previously missing from this function entirely, meaning
+    every certification run before this fix reported bar-open timestamps,
+    5 minutes off from what production actually stores. Certification
+    verdicts themselves are unaffected by a uniform timestamp shift (gap
+    sizes, ordering, and every field value are unchanged) - only the
+    specific timestamps printed in the report were off by one bar."""
     with open(csv_path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         headers = reader.fieldnames or []
         column_map = importer._build_column_map(headers, strict=True)
         raw_rows = list(reader)
 
-    candidates, skipped = importer.build_candidates(raw_rows, column_map, symbol, timeframe)
+    candidates, skipped = importer.build_candidates(raw_rows, column_map, symbol, timeframe, cadence_minutes)
     states = []
     for _row_number, _occurred_at, raw_json in candidates:
         payload = TradingViewMarketStatePayload.model_validate(raw_json)
@@ -360,16 +372,57 @@ def check_feature_integrity(states: list[MarketState]) -> list[CertificationResu
     return results
 
 
-def certify(csv_path: str, symbol: str, timeframe: str) -> list[CertificationResult]:
-    states, skipped = load_states(csv_path, symbol, timeframe)
+def check_duplicate_and_conflict_audit(merge_stats: dict) -> list[CertificationResult]:
+    """Only produced for a multi-file certification run - reports the
+    stats atlas.research (via run_statistical_profile.load_and_merge_states,
+    reused directly, not re-derived) already computed while merging: raw
+    row count, unique row count, identical duplicates safely removed, and
+    conflicting-content duplicates. A conflict here is impossible to
+    observe as a PASS/WARNING/FAIL - load_and_merge_states already raises
+    ConflictingTimestampError before this function could ever be called
+    with a nonzero conflict_count, so this section exists to make the
+    (already-enforced) zero-conflicts guarantee visible in the report,
+    not to re-check it."""
+    section = "0b. Duplicate & Conflict Audit (multi-file)"
+    return [CertificationResult(
+        section, "Cross-file timestamp merge", PASS,
+        f"raw_row_count={merge_stats['raw_row_count']}, unique_row_count={merge_stats['unique_row_count']}, "
+        f"identical_duplicates_removed={merge_stats['identical_duplicates_removed']}, "
+        f"conflict_count={merge_stats['conflict_count']} (a nonzero conflict count would already have raised "
+        f"ConflictingTimestampError before certification could run at all)",
+    )]
+
+
+def certify(
+    csv_paths: list[str], symbol: str, timeframe: str, cadence_minutes: int | None = None,
+) -> list[CertificationResult]:
     results = []
-    if skipped:
-        results.append(CertificationResult(
-            "0. Ingestion", "Row parsing", WARNING if len(skipped) < 5 else FAIL,
-            f"{len(skipped)} row(s) could not be parsed at all: {skipped[:5]}{'...' if len(skipped) > 5 else ''}",
-        ))
+    if len(csv_paths) == 1:
+        states, skipped = load_states(csv_paths[0], symbol, timeframe, cadence_minutes)
+        if skipped:
+            results.append(CertificationResult(
+                "0. Ingestion", "Row parsing", WARNING if len(skipped) < 5 else FAIL,
+                f"{len(skipped)} row(s) could not be parsed at all: {skipped[:5]}{'...' if len(skipped) > 5 else ''}",
+            ))
+        else:
+            results.append(CertificationResult(
+                "0. Ingestion", "Row parsing", PASS, f"all rows in {csv_paths[0]!r} parsed successfully",
+            ))
     else:
-        results.append(CertificationResult("0. Ingestion", "Row parsing", PASS, f"all rows in {csv_path!r} parsed successfully"))
+        # Multi-file: reuse run_statistical_profile.load_and_merge_states
+        # directly - the same merge/dedup/conflict-detection logic Phase 2
+        # already built, never a second implementation of it here.
+        import run_statistical_profile as runner
+        states, per_file_counts, merge_stats = runner.load_and_merge_states(
+            csv_paths, symbol, timeframe, cadence_minutes,
+        )
+        for csv_path, loaded, new_count in per_file_counts:
+            results.append(CertificationResult(
+                "0. Ingestion", f"Row parsing: {csv_path}", PASS,
+                f"{loaded} rows loaded, {new_count} new after dedup against prior files",
+            ))
+        results += check_duplicate_and_conflict_audit(merge_stats)
+        states = sorted(states, key=lambda s: s.envelope.occurred_at)
 
     results += check_dataset_identity(states, symbol, timeframe)
     results += check_time_continuity(states, Timeframe(timeframe))
@@ -415,12 +468,23 @@ def render_report(results: list[CertificationResult]) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--csv", required=True, help="Path to the historical export CSV")
+    parser.add_argument(
+        "--csv", required=True, action="append",
+        help="Path to a historical export CSV. Repeatable, in chronological order - when more than one "
+             "is given, files are merged via run_statistical_profile.load_and_merge_states (same "
+             "first-insert-wins dedup, same conflict detection) before certification runs.",
+    )
     parser.add_argument("--symbol", required=True, help="e.g. MNQ1! - the symbol to certify this dataset under")
     parser.add_argument("--timeframe", required=True, help="e.g. 5m")
+    parser.add_argument(
+        "--assume-bar-open-time", action="store_true",
+        help="Same flag as import_historical_market_state_csv.py - required for the certified "
+             "MNQ1!/5m historical CSVs (Sprint 31 Task 3).",
+    )
     args = parser.parse_args()
 
-    results = certify(args.csv, args.symbol, args.timeframe)
+    cadence_minutes = Timeframe(args.timeframe).duration_minutes if args.assume_bar_open_time else None
+    results = certify(args.csv, args.symbol, args.timeframe, cadence_minutes)
     print(render_report(results))
 
 

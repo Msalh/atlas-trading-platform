@@ -219,3 +219,85 @@ class TestRenderReport:
         results = certifier.check_time_continuity([_state(0), _state(50)], Timeframe.M5)
         report = certifier.render_report(results)
         assert "VERDICT: CERTIFIED WITH WARNINGS" in report
+
+
+_CSV_HEADERS = (
+    "time,open,high,low,close,volume,"
+    "export_rth_open,export_previous_day_high,export_previous_day_low,"
+    "export_overnight_high,export_overnight_low,export_vwap,"
+    "export_distance_from_vwap_points,export_atr,export_volume_ratio,"
+    "export_nearest_liquidity_level,export_distance_to_liquidity_ticks,"
+    "export_is_rth,export_trading_date,export_session_name,"
+    "export_nearest_liquidity_type,export_trend_1m,export_trend_5m,"
+    "export_trend_15m,export_trend_1h\n"
+)
+
+
+def _csv_row(epoch, close="20125.75"):
+    return (
+        f"{epoch},20120.00,20128.50,20118.00,{close},4210,"
+        "20100.00,20180.00,20050.25,20140.00,20080.50,28849.3104756607,"
+        "7.25,42.5,1.35,20180.00,217,1,20260720,1,1,1,1,0,-1\n"
+    )
+
+
+class TestLoadStatesBarOpenShift:
+    def test_no_shift_by_default(self, tmp_path):
+        csv_path = tmp_path / "a.csv"
+        csv_path.write_text(_CSV_HEADERS + _csv_row(1784533200), encoding="utf-8")
+        states, _skipped = certifier.load_states(str(csv_path), "MNQ1!", "5m")
+        assert states[0].envelope.occurred_at.isoformat() == "2026-07-20T07:40:00+00:00"
+
+    def test_shift_applied_when_cadence_minutes_given(self, tmp_path):
+        csv_path = tmp_path / "a.csv"
+        csv_path.write_text(_CSV_HEADERS + _csv_row(1784533200), encoding="utf-8")
+        states, _skipped = certifier.load_states(str(csv_path), "MNQ1!", "5m", cadence_minutes=5)
+        assert states[0].envelope.occurred_at.isoformat() == "2026-07-20T07:45:00+00:00"
+
+
+class TestCertifyMultiFile:
+    def test_single_csv_path_still_works_unchanged(self, tmp_path):
+        csv_path = tmp_path / "a.csv"
+        csv_path.write_text(_CSV_HEADERS + _csv_row(1784533200), encoding="utf-8")
+        results = certifier.certify([str(csv_path)], "MNQ1!", "5m")
+        by_check = {r.check: r for r in results}
+        assert by_check["Row parsing"].verdict == certifier.PASS
+
+    def test_multiple_files_reuses_load_and_merge_states_and_reports_stats(self, tmp_path):
+        csv_a = tmp_path / "a.csv"
+        csv_a.write_text(_CSV_HEADERS + _csv_row(1784533200), encoding="utf-8")
+        csv_b = tmp_path / "b.csv"
+        csv_b.write_text(_CSV_HEADERS + _csv_row(1784533200) + _csv_row(1784533500), encoding="utf-8")
+
+        results = certifier.certify([str(csv_a), str(csv_b)], "MNQ1!", "5m")
+        by_section = {}
+        for r in results:
+            by_section.setdefault(r.section, []).append(r)
+
+        audit = by_section["0b. Duplicate & Conflict Audit (multi-file)"][0]
+        assert audit.verdict == certifier.PASS
+        assert "raw_row_count=3" in audit.detail
+        assert "unique_row_count=2" in audit.detail
+        assert "identical_duplicates_removed=1" in audit.detail
+        assert "conflict_count=0" in audit.detail
+
+    def test_conflicting_files_raise_before_certification_can_run(self, tmp_path):
+        csv_a = tmp_path / "a.csv"
+        csv_a.write_text(_CSV_HEADERS + _csv_row(1784533200, close="20125.75"), encoding="utf-8")
+        csv_b = tmp_path / "b.csv"
+        csv_b.write_text(_CSV_HEADERS + _csv_row(1784533200, close="20130.00"), encoding="utf-8")
+
+        import importlib.util as _ilu
+        import sys as _sys
+        from pathlib import Path as _Path
+        runner_path = _Path(__file__).resolve().parents[1] / "scripts" / "run_statistical_profile.py"
+        spec = _ilu.spec_from_file_location("run_statistical_profile", runner_path)
+        runner = _ilu.module_from_spec(spec)
+        _sys.modules[spec.name] = runner
+        spec.loader.exec_module(runner)
+
+        try:
+            certifier.certify([str(csv_a), str(csv_b)], "MNQ1!", "5m")
+            raise AssertionError("expected ConflictingTimestampError")
+        except runner.ConflictingTimestampError:
+            pass
