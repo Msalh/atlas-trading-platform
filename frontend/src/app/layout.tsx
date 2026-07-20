@@ -44,13 +44,20 @@ export default function RootLayout({
                       <span className="text-lg font-semibold tracking-tight">Atlas</span>
                       <span className="text-sm text-muted">MNQU6 · ICT_Funded_v1</span>
                     </Link>
-                    <nav className="flex items-baseline gap-4 text-sm text-muted">
+                    <nav className="flex flex-wrap items-baseline gap-4 text-sm text-muted">
                       <Link href="/" className="hover:text-foreground">Dashboard</Link>
                       <Link href="/account" className="hover:text-foreground">Account</Link>
                       <Link href="/analytics" className="hover:text-foreground">Analytics</Link>
                       <Link href="/ai" className="hover:text-foreground">AI</Link>
                       <Link href="/activity" className="hover:text-foreground">Activity</Link>
                       <Link href="/rule-engine" className="hover:text-foreground">Rule Engine</Link>
+                      <span className="text-border">|</span>
+                      <Link href="/market-view" className="hover:text-foreground">Market View</Link>
+                      <Link href="/active-setups" className="hover:text-foreground">Active Setups</Link>
+                      <Link href="/timeline" className="hover:text-foreground">Timeline</Link>
+                      <Link href="/episodes" className="hover:text-foreground">Episode Inspector</Link>
+                      <Link href="/research" className="hover:text-foreground">Research Overview</Link>
+                      <Link href="/dataset-health" className="hover:text-foreground">Dataset Health</Link>
                     </nav>
                   </div>
                   <div className="flex items-center gap-4">

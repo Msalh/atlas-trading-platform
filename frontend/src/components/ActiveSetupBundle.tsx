@@ -22,7 +22,7 @@ import { formatClock } from "@/lib/format";
 import { LiveEpisodeProjection, LiveSetupSnapshot } from "@/lib/setupEngineApi";
 import { useLiveEpisodes } from "@/lib/useLiveEpisodes";
 
-function activationText(ep: LiveEpisodeProjection): string {
+export function activationText(ep: LiveEpisodeProjection): string {
   switch (ep.left_boundary_reason) {
     case "observed_activation":
     case "insufficient_data":

@@ -1,21 +1,18 @@
 "use client";
 
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { FreshnessBadge } from "@/components/FreshnessBadge";
 import { MismatchBanner, isSymbolTimeframeMismatch } from "@/components/MismatchBanner";
 import { CertificationTable } from "@/components/DatasetHealthPanels/CertificationTable";
 import { KnownWarningsList } from "@/components/DatasetHealthPanels/KnownWarningsList";
 import { formatDateShort } from "@/lib/format";
+import { useLiveSelector } from "@/lib/liveSelector";
 import { ApiFetchError, fetchDatasetHealth } from "@/lib/researchApi";
 
 export default function DatasetHealthPage() {
-  // Page-local stand-in for the shared, layout-level LIVE symbol/timeframe
-  // selector (architecture §8) - see research/page.tsx's own note; the same
-  // deliberately-deferred placeholder, replaced once F5 (Market View,
-  // Stage 2) ships the real shared selector.
-  const [liveSymbol, setLiveSymbol] = useState("MNQ1!");
-  const [liveTimeframe, setLiveTimeframe] = useState("5m");
+  // The shared, layout-level LIVE symbol/timeframe selector (architecture
+  // §8, F5).
+  const { symbol: liveSymbol, timeframe: liveTimeframe } = useLiveSelector();
 
   const { data, error, isError, isLoading } = useQuery<Awaited<ReturnType<typeof fetchDatasetHealth>>, ApiFetchError>({
     queryKey: ["research-dataset-health"],
@@ -30,30 +27,10 @@ export default function DatasetHealthPage() {
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-lg font-semibold text-foreground">Dataset Health</h1>
-        <div className="flex items-end gap-3">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-muted" htmlFor="dataset-health-live-symbol">
-              Live symbol
-            </label>
-            <input
-              id="dataset-health-live-symbol"
-              value={liveSymbol}
-              onChange={(e) => setLiveSymbol(e.target.value.trim())}
-              className="w-28 rounded border border-border bg-surface-raised px-2 py-1 text-sm"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-muted" htmlFor="dataset-health-live-timeframe">
-              Live timeframe
-            </label>
-            <input
-              id="dataset-health-live-timeframe"
-              value={liveTimeframe}
-              onChange={(e) => setLiveTimeframe(e.target.value.trim())}
-              className="w-20 rounded border border-border bg-surface-raised px-2 py-1 text-sm"
-            />
-          </div>
-        </div>
+        <span className="text-xs text-muted">
+          Current live selection: <span className="font-mono text-foreground">{liveSymbol}</span> /{" "}
+          <span className="font-mono text-foreground">{liveTimeframe}</span>
+        </span>
       </div>
 
       {data && (

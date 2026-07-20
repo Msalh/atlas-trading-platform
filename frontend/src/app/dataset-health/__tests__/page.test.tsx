@@ -1,16 +1,17 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import DatasetHealthPage from "@/app/dataset-health/page";
+import { LiveSelectorProvider } from "@/lib/liveSelector";
 
-function body() {
+function body(overrides: { symbol?: string } = {}) {
+  const symbol = overrides.symbol ?? "MNQ1!";
   return {
     ok: true,
     envelope: {
       schema_version: "1.0",
       source_track: "frozen",
-      symbol: "MNQ1!",
+      symbol,
       timeframe: "5m",
       generated_at: "2026-07-20T00:00:00Z",
       data_as_of: "2026-06-01T00:00:00Z",
@@ -18,7 +19,7 @@ function body() {
       warnings: [],
     },
     dataset_identity: {
-      symbol: "MNQ1!",
+      symbol,
       timeframe: "5m",
       row_count: 97858,
       date_range: { start: "2025-03-02T23:05:00Z", end: "2026-07-20T11:35:00Z" },
@@ -53,7 +54,9 @@ function renderWithClient() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <DatasetHealthPage />
+      <LiveSelectorProvider>
+        <DatasetHealthPage />
+      </LiveSelectorProvider>
     </QueryClientProvider>,
   );
 }
@@ -65,8 +68,10 @@ describe("DatasetHealthPage", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders dataset identity, certification, and known warnings", async () => {
-    global.fetch = vi.fn(async () => new Response(JSON.stringify(body()), { status: 200 })) as unknown as typeof fetch;
+  it("renders dataset identity, certification, and known warnings when the identity matches the live selector", async () => {
+    // lib/liveSelector.tsx's default live symbol is MNQU6 - matching here
+    // so no mismatch is in play for this test.
+    global.fetch = vi.fn(async () => new Response(JSON.stringify(body({ symbol: "MNQU6" })), { status: 200 })) as unknown as typeof fetch;
     renderWithClient();
 
     await waitFor(() => expect(screen.getByText("97,858")).toBeInTheDocument());
@@ -75,18 +80,11 @@ describe("DatasetHealthPage", () => {
     expect(screen.getByText(/re1-phase5-freeze\.md/)).toBeInTheDocument();
   });
 
-  it("hides content and shows the mismatch banner once the live selector disagrees", async () => {
+  it("hides content and shows the mismatch banner when the dataset identity (MNQ1!) differs from the live selector's default (MNQU6)", async () => {
     global.fetch = vi.fn(async () => new Response(JSON.stringify(body()), { status: 200 })) as unknown as typeof fetch;
-    const user = userEvent.setup();
     renderWithClient();
 
-    await waitFor(() => expect(screen.getByText("97,858")).toBeInTheDocument());
-
-    const timeframeInput = screen.getByLabelText("Live timeframe");
-    await user.clear(timeframeInput);
-    await user.type(timeframeInput, "1m");
-
-    expect(screen.getByText("Frozen research baseline is available for MNQ1! / 5m.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Frozen research baseline is available for MNQ1! / 5m.")).toBeInTheDocument());
     expect(screen.queryByText("97,858")).not.toBeInTheDocument();
   });
 });

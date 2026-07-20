@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import ResearchOverviewPage from "@/app/research/page";
+import { LiveSelectorProvider } from "@/lib/liveSelector";
 
 function envelope(overrides: Record<string, unknown> = {}) {
   return {
@@ -22,7 +22,9 @@ function renderWithClient() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <ResearchOverviewPage />
+      <LiveSelectorProvider>
+        <ResearchOverviewPage />
+      </LiveSelectorProvider>
     </QueryClientProvider>,
   );
 }
@@ -34,17 +36,19 @@ describe("ResearchOverviewPage", () => {
     vi.restoreAllMocks();
   });
 
-  it("renders both reports' panels and a FROZEN badge once both requests resolve", async () => {
+  it("renders both reports' panels and a FROZEN badge when the frozen identity matches the live selector", async () => {
+    // lib/liveSelector.tsx's default live symbol is MNQU6 - matching the
+    // frozen envelope's symbol here so no mismatch is in play for this test.
     global.fetch = vi.fn(async (url: string | URL) => {
       const u = String(url);
       if (u.includes("re1/summary")) {
-        return new Response(JSON.stringify({ ok: true, envelope: envelope(), report: { fact_profiles: {} } }), { status: 200 });
+        return new Response(JSON.stringify({ ok: true, envelope: envelope({ symbol: "MNQU6" }), report: { fact_profiles: {} } }), { status: 200 });
       }
       if (u.includes("re2/summary")) {
         return new Response(
           JSON.stringify({
             ok: true,
-            envelope: envelope({ code_version: "806e4f1ae2386a68207192089ab303d77c05fa66" }),
+            envelope: envelope({ symbol: "MNQU6", code_version: "806e4f1ae2386a68207192089ab303d77c05fa66" }),
             report: { setup_profile: {}, time_distribution: {}, overlap: {}, clustering: {}, transitions: {} },
           }),
           { status: 200 },
@@ -64,7 +68,7 @@ describe("ResearchOverviewPage", () => {
     expect(screen.getByText(/FROZEN BASELINE/)).toBeInTheDocument();
   });
 
-  it("shows the mismatch banner and hides panels once the live selector disagrees with the frozen identity", async () => {
+  it("shows the mismatch banner and hides panels when the frozen identity (MNQ1!) differs from the live selector's default (MNQU6)", async () => {
     global.fetch = vi.fn(async (url: string | URL) => {
       const u = String(url);
       if (u.includes("re1/summary")) {
@@ -73,15 +77,9 @@ describe("ResearchOverviewPage", () => {
       return new Response(JSON.stringify({ ok: true, envelope: envelope(), report: { setup_profile: {} } }), { status: 200 });
     }) as unknown as typeof fetch;
 
-    const user = userEvent.setup();
     renderWithClient();
-    await waitFor(() => expect(screen.getByText("RE-1 Summary")).toBeInTheDocument());
 
-    const symbolInput = screen.getByLabelText("Live symbol");
-    await user.clear(symbolInput);
-    await user.type(symbolInput, "ESU6");
-
-    expect(screen.getByText("Frozen research baseline is available for MNQ1! / 5m.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Frozen research baseline is available for MNQ1! / 5m.")).toBeInTheDocument());
     expect(screen.queryByText("RE-1 Summary")).not.toBeInTheDocument();
   });
 });

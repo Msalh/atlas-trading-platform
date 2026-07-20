@@ -36,6 +36,66 @@ export function fetchRe2Summary(): Promise<ResearchSummaryResponse> {
   return proxyGet("research/re2/summary", {}, isResearchSummaryResponse);
 }
 
+// --- RE-2 report: setup_profile.entries[] duration distributions -----------
+// The one slice of RE-2's otherwise-`unknown` report Episode Inspector needs
+// (architecture §3.3) - narrowed here, on demand, rather than typing the
+// whole report speculatively (see this file's header comment).
+
+export interface DurationDistribution {
+  count: number;
+  max: number;
+  mean: number;
+  median: number;
+  p75: number;
+  p90: number;
+  p95: number;
+}
+
+export interface SetupProfileEntry {
+  setup_name: string;
+  episode_count: number;
+  all_episodes_duration: DurationDistribution;
+  fully_observed_duration: DurationDistribution;
+}
+
+function isDurationDistribution(value: unknown): value is DurationDistribution {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.count === "number" &&
+    typeof v.max === "number" &&
+    typeof v.mean === "number" &&
+    typeof v.median === "number" &&
+    typeof v.p75 === "number" &&
+    typeof v.p90 === "number" &&
+    typeof v.p95 === "number"
+  );
+}
+
+function isSetupProfileEntry(value: unknown): value is SetupProfileEntry {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.setup_name === "string" &&
+    typeof v.episode_count === "number" &&
+    isDurationDistribution(v.all_episodes_duration) &&
+    isDurationDistribution(v.fully_observed_duration)
+  );
+}
+
+// Returns null (never throws) on any unexpected shape - a malformed frozen
+// report should degrade Episode Inspector's historical panel gracefully,
+// not crash the page.
+export function findSetupProfileEntry(report: unknown, setupName: string): SetupProfileEntry | null {
+  if (typeof report !== "object" || report === null) return null;
+  const setupProfile = (report as Record<string, unknown>).setup_profile;
+  if (typeof setupProfile !== "object" || setupProfile === null) return null;
+  const entries = (setupProfile as Record<string, unknown>).entries;
+  if (!Array.isArray(entries)) return null;
+  const match = entries.find((e) => isSetupProfileEntry(e) && e.setup_name === setupName);
+  return match && isSetupProfileEntry(match) ? match : null;
+}
+
 // --- GET /research/dataset-health -------------------------------------------
 
 export interface DateRange {
