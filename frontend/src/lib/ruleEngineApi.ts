@@ -6,6 +6,10 @@
 // so this module never reads any API-key env var and never persists the key
 // itself; the caller (RuleEngineViewer) is the only place the key value lives.
 
+import { ApiFetchError, proxyGet } from "@/lib/proxyClient";
+
+export { ApiFetchError };
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://localhost:8000";
 
@@ -127,4 +131,49 @@ export function isStale(occurredAtIso: string, timeframe: string): boolean {
   if (Number.isNaN(occurredAt)) return false;
   const ageMinutes = (Date.now() - occurredAt) / 60_000;
   return ageMinutes > staleAfterMinutes;
+}
+
+// UI v2. `/rule-engine/latest` is on the BFF proxy's allowlist (Market View
+// is its only new consumer) - this is a second way to reach the same
+// endpoint, through the same-origin proxy with runtime-validated responses,
+// coexisting with fetchLatestRuleEngineOutput's older manual-key path above
+// (still used by the pre-UI-v2 /rule-engine page). Reuses this file's own
+// RuleEngineOutput/RuleEngineFact types rather than redefining them.
+
+function isRuleEngineFact(value: unknown): value is RuleEngineFact {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  if (typeof v.name !== "string" || typeof v.definition_version !== "string") return false;
+  if (v.status === "computed") {
+    return typeof v.value === "boolean" || typeof v.value === "string";
+  }
+  if (v.status === "insufficient_data") {
+    return typeof v.reason === "string";
+  }
+  return false;
+}
+
+function isRuleEngineOutput(value: unknown): value is RuleEngineOutput {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.schema_version === "string" &&
+    typeof v.symbol === "string" &&
+    typeof v.timeframe === "string" &&
+    typeof v.occurred_at === "string" &&
+    Array.isArray(v.facts) &&
+    v.facts.every(isRuleEngineFact)
+  );
+}
+
+function isRuleEngineLatestResponse(value: unknown): value is RuleEngineLatestResponse {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  if (v.ok !== true || typeof v.found !== "boolean") return false;
+  if (!v.found) return v.data === null;
+  return isRuleEngineOutput(v.data);
+}
+
+export function fetchLatestRuleEngineOutputViaProxy(symbol: string, timeframe: string): Promise<RuleEngineLatestResponse> {
+  return proxyGet("rule-engine/latest", { symbol, timeframe }, isRuleEngineLatestResponse);
 }
