@@ -165,6 +165,37 @@ class TestMarketDataIntegrity:
         by_check = {r.check: r for r in results}
         assert by_check["ATR validity"].verdict == certifier.FAIL
 
+    def test_39_null_atr_across_3_warmup_clusters_is_a_warning_not_a_fail(self):
+        # Empirically confirmed shape from the real 5-file RE-1 dataset: 39
+        # nulls = 3 file-start warmup clusters of 13 each. A flat
+        # single-file threshold (20) would wrongly FAIL this; scaling by
+        # the real cluster count (3 files) must WARN instead.
+        states = (
+            [_state(i, atr=None) for i in range(13)]
+            + _clean_series(5)
+            + [_state(100 + i, atr=None) for i in range(13)]
+            + _clean_series(5)
+            + [_state(200 + i, atr=None) for i in range(13)]
+        )
+        results = certifier.check_market_data_integrity(states, max_expected_warmup_clusters=3)
+        by_check = {r.check: r for r in results}
+        assert by_check["ATR validity"].verdict == certifier.WARNING
+
+    def test_same_39_nulls_fails_under_the_default_single_file_threshold(self):
+        # The same data, without raising max_expected_warmup_clusters,
+        # keeps failing - proves the scaling is opt-in via the parameter,
+        # not a silent global loosening.
+        states = (
+            [_state(i, atr=None) for i in range(13)]
+            + _clean_series(5)
+            + [_state(100 + i, atr=None) for i in range(13)]
+            + _clean_series(5)
+            + [_state(200 + i, atr=None) for i in range(13)]
+        )
+        results = certifier.check_market_data_integrity(states)
+        by_check = {r.check: r for r in results}
+        assert by_check["ATR validity"].verdict == certifier.FAIL
+
 
 class TestFeatureIntegrity:
     def test_clean_series_passes(self):
@@ -201,6 +232,34 @@ class TestFeatureIntegrity:
         results = certifier.check_feature_integrity(states)
         by_check = {r.check: r for r in results}
         assert by_check["trend_1m validity"].verdict == certifier.FAIL
+
+    def test_a_few_null_trend_at_series_start_is_a_warning(self):
+        states = [_state(i, trend_1m=None) for i in range(2)] + _clean_series(5)
+        results = certifier.check_feature_integrity(states)
+        by_check = {r.check: r for r in results}
+        assert by_check["trend_1m validity"].verdict == certifier.WARNING
+
+    def test_pervasive_null_trend_fails_rather_than_being_assumed_to_be_warmup(self):
+        # Regression for the real RE-1 finding: 27,799/97,858 (28%) of
+        # trend_1m was null on the real 5-file dataset - far too large to be
+        # warmup, and the old unconditional-WARNING behavior misleadingly
+        # reported "EMA warmup, most likely" for a rate that large. A large
+        # null count must FAIL so it gets real investigation, never be
+        # waved through as presumed warmup.
+        states = [_state(i, trend_1m=None) for i in range(50)] + _clean_series(5)
+        results = certifier.check_feature_integrity(states)
+        by_check = {r.check: r for r in results}
+        assert by_check["trend_1m validity"].verdict == certifier.FAIL
+        assert "NOT explainable by ordinary indicator warmup" in by_check["trend_1m validity"].detail
+
+    def test_null_trend_threshold_scales_with_warmup_clusters(self):
+        # 39 nulls (3 x 13, matching the real per-file-warmup shape) must
+        # WARN when max_expected_warmup_clusters=3 is supplied, mirroring
+        # the ATR scaling behavior exactly.
+        states = [_state(i, trend_1m=None) for i in range(39)] + _clean_series(5)
+        results = certifier.check_feature_integrity(states, max_expected_warmup_clusters=3)
+        by_check = {r.check: r for r in results}
+        assert by_check["trend_1m validity"].verdict == certifier.WARNING
 
 
 class TestRenderReport:
