@@ -1,93 +1,116 @@
 # UI v2 — Market Intelligence Dashboard: Implementation Plan
 
-**Status**: Planning only. No implementation code has been written from this plan. Builds directly on `docs/ui_v2/market-intelligence-dashboard-architecture.md` (revision 2) — read that first; this document does not repeat its rationale, only the task breakdown, contracts, and operational detail needed to execute it.
+**Status**: Approved, revision 2 (amended per second review). Implementation proceeds in the order below; this document is the authoritative task/contract breakdown, built on `docs/ui_v2/market-intelligence-dashboard-architecture.md` (revision 3) — read that first for rationale.
 
-**Ground rules carried in from the architecture doc, restated because every task below is checked against them**: no modification to `atlas.rule_engine`, `atlas.setup_engine`, `atlas.research.statistical_profiling`, or `atlas.research.setup_profiling`; no new statistic/aggregation/threshold anywhere; no privileged API key in browser-shipped code; no FROZEN section ever silently relabeled to a live selection it doesn't match.
+**Ground rules carried in from the architecture doc, restated because every task below is checked against them**: no modification to `atlas.rule_engine`, `atlas.setup_engine`, `atlas.research.statistical_profiling`, or `atlas.research.setup_profiling`; no new statistic/aggregation/threshold anywhere; no privileged API key in browser-shipped code; no FROZEN section ever silently relabeled to a live selection it doesn't match; no unconditional correctness claim for a cache without a documented residual limitation.
 
 ## 1. Backend tasks, dependency order
-
-Two independent tracks converge at router registration. Tasks within a track are strictly ordered; the two tracks (A: frozen snapshot export, B: live projection) have no dependency on each other and can proceed in parallel.
 
 ### Track A — frozen snapshot export
 
 | # | Task | Depends on | Notes |
 |---|---|---|---|
-| A1 | `atlas/research_export/models.py` — `SnapshotEnvelope`, `DatasetHealthSnapshot` dataclasses | — | Pure data shapes, no logic. |
-| A2 | `atlas/research_export/serialization.py` — one generic `to_jsonable()` recursive converter (dataclass fields, `Enum.value`, tuple/frozenset → sorted list, `Mapping` → dict with sorted keys) + `wrap_envelope()` helper | A1 | Reads RE-1/RE-2 dataclass **types** for `dataclasses.fields()` introspection only — never imports their computation functions. |
-| A3 | `atlas/research_export/snapshot_builder.py` — re-runs `run_statistical_profile.load_and_merge_states` + `build_statistical_profile`, and each of RE-2's 6 `build_*` functions, against the frozen five-file CSV set; serializes each result via A2; assembles `DatasetHealthSnapshot` from `certify_historical_dataset.py`'s real `certify()` output plus the small hand-transcribed `known_warnings` list (documented `warnings_source: "manual_transcription"`) | A2 | Imports RE-1/RE-2's public `build_*` functions as a **library call**, same as `run_statistical_profile.py`/`run_setup_profile.py` already do — this is the one place new code calls the frozen pipeline, and it calls it unmodified. |
-| A4 | `scripts/export_research_snapshots.py` — thin CLI wrapping A3, writes `research/snapshots/re1-summary.v1.json`, `re2-summary.v1.json`, `dataset-health.v1.json` | A3 | Mirrors `run_statistical_profile.py`'s own CLI shape. |
-| A5 | Run A4 against the frozen dataset; commit the three JSON files | A4 | The only step that touches `research/`. Checked in like the markdown reports. |
-| A6 | Reproducibility test: re-run A3 in-process inside a test and assert byte-for-byte equal (after re-serializing) to the checked-in JSON from A5, and assert specific figures (row_count=97858, code_version present, checksum verifies) | A5 | Proves the snapshot is a faithful reproduction, not hand-edited drift. |
-| A7 | `atlas/api/v1/research.py` — `GET /research/re1/summary`, `/research/re2/summary`, `/research/dataset-health`; loads the three JSON files once at process start (or lazily with an in-process cache), returns as-is wrapped in the response envelope (§3) | A5 | No computation, no markdown parsing, ever, at request time. |
-| A8 | Tests for A7: 404/error shape if a snapshot file is missing, envelope fields present, content matches the checked-in file | A7 | |
+| A1 | `atlas/research_export/models.py` — `SnapshotEnvelope` (§3.2 fields: `schema_version`, `source_computation_version`, `snapshot_exporter_version`, `source_freeze_document`, `source_report_versions`, `content_checksum`, `exported_at`, `dataset_identity`), `KnownWarning` (§3.3), `DatasetHealthPayload` | — | Pure data shapes. |
+| A2 | `atlas/research_export/serialization.py` — `to_jsonable()` (generic recursive converter) + `canonical_json()` (stable key ordering, no incidental whitespace, used for checksum input **and** for the file's own on-disk formatting so a diff of the checked-in file is meaningful) | A1 | |
+| A3 | `atlas/research_export/known_warnings.py` — hand-curated `KNOWN_BASELINE_WARNINGS: tuple[KnownWarning, ...]`, transcribed from `docs/market_engine/re1-phase5-freeze.md` and `re2-freeze.md`'s "Known limitations" sections, each with a stable `id`, `source_document`, `source_section` | A1 | |
+| A4 | `atlas/research_export/snapshot_builder.py` — for RE-2: calls `build_setup_profiling_dataset()` **exactly once**, passes the same `dataset` to all six `build_*` functions (mirrors `run_setup_profile.py`'s own established pattern — never re-run per report); for RE-1: `build_statistical_profile()` already computes its whole result in one call. Splits each result into `payload` (deterministic) and computes `content_checksum` over `canonical_json(payload)`, then attaches the `SnapshotEnvelope`'s remaining (partly dynamic) fields separately. Assembles `DatasetHealthPayload` from `certify_historical_dataset.py`'s real `certify()` output plus A3's typed warnings. | A2, A3 | |
+| A5 | `scripts/export_research_snapshots.py` — thin CLI wrapping A4 | A4 | |
+| A6 | Run A5 against the frozen dataset; commit `research/snapshots/re1-summary.v1.json`, `re2-summary.v1.json`, `dataset-health.v1.json` | A5 | |
+| A7 | Reproducibility test: rebuild `payload` fresh, `canonical_json()` it, recompute `content_checksum`, assert equality with the checked-in file's checksum; **separately** assert envelope shape (fields present, correct types) — never assert the whole file, or `exported_at`, is byte-identical across runs | A6 | The corrected test from amendment 1. |
+| A8 | Single-pass test: assert `build_setup_profiling_dataset()` is called exactly once during a full RE-2 snapshot export (call-count spy) | A4 | Amendment 7. |
+| A9 | Known-warnings coverage test: assert the full expected set of warning `id`s appears in the built `dataset-health` payload | A3, A4 | Amendment 8. |
+| A10 | `atlas/api/v1/research.py` — `GET /research/re1/summary`, `/research/re2/summary`, `/research/dataset-health`; loads the three JSON files, returns as-is wrapped in the response envelope (architecture §6), with `code_version` in the HTTP envelope set from `source_computation_version` — **never** `snapshot_exporter_version` | A6 | |
+| A11 | Tests for A10: envelope shape, `code_version` sourced correctly, error handling for a missing snapshot file | A10 | |
 
 ### Track B — live projection
 
 | # | Task | Depends on | Notes |
 |---|---|---|---|
-| B1 | `atlas/live_view/models.py` — `LeftBoundaryReason` enum, `LiveEpisodeProjection`, `LiveSetupSnapshot`, `LiveWindowResult` | — | Pure data shapes. Never imported by, and never importing internals of, `atlas.research.setup_profiling` beyond its already-public `build_*` functions and `models.RegisteredFactSnapshot`/`TerminationReason` types (reused for shape consistency, not redefined). |
-| B2 | `atlas/live_view/episode_projector.py` — the progressive-fetch + boundary-resolution algorithm (architecture doc §4.3), calling `filter_input_states` → `segment_by_gap` → `build_rule_engine_output_window` → `build_setup_engine_output_window` unmodified | B1 | The one place with real new logic in this plan — gets the deepest test coverage (§4). |
-| B3 | `atlas/live_view/cache.py` — dict-backed cache keyed by `(symbol, timeframe, window, latest_bar_timestamp)`, bounded size (LRU, small cap — cardinality is inherently tiny), plus in-flight request coalescing (one computation per key even under concurrent requests) | B1 | No TTL logic needed — the key itself expires correctness (§5.2). |
-| B4 | `atlas/api/v1/setup_engine.py` — `GET /setup-engine/latest` (zero-computation wiring around the existing `setup_engine_output_to_dict()`) | — (independent of B1-B3) | Can be built and shipped before the rest of Track B; no live-window complexity here at all. |
-| B5 | `atlas/api/v1/setup_engine.py` (continued) — `GET /setup-engine/episodes/live`, composing B2 + B3 | B2, B3 | Route code is fetch → call B2/B3 → shape response; no analytics in the route itself. |
-| B6 | Tests for B2's boundary-resolution algorithm — the four `left_boundary_reason` cases, the progressive-widening path, and the hard-maximum truncation path (§4) | B2 | |
-| B7 | Tests for B3's cache (hit/miss on bar-timestamp change, LRU eviction, coalescing under concurrent calls) | B3 | |
-| B8 | Tests for B4/B5's HTTP layer (envelope shape, `warnings` populated correctly, error handling for an unknown symbol) | B4, B5 | |
+| B1 | `atlas/live_view/models.py` — `LeftBoundaryReason`, `LiveTerminationReason` (scoped to this package, **not** RE-2's `TerminationReason` — no `dataset_end`, and `is_active`/`null` represents "still open" rather than reusing an enum member for it), `LiveEpisodeProjection` (left-boundary fields **and** right-boundary fields: `is_active`, `last_observed_timestamp`, `end_timestamp_observed`, `termination_reason`, `right_boundary_observed`), `LiveSetupSnapshot`, `LiveWindowResult` | — | |
+| B2 | `atlas/live_view/episode_projector.py` — left-boundary progressive-fetch resolution (unchanged from revision 1) **plus** right-boundary determination: after locating the run containing the latest bar, check the bar immediately after it (if any exists within the window) to set `is_active`/`termination_reason`/`end_timestamp_observed`; if the run extends to the window's own latest bar with nothing after it, `is_active=true` and every right-boundary field reflects "not yet observed" | B1 | The one place with real new logic — deepest test coverage. |
+| B3 | `atlas/live_view/cache.py` — key `(symbol, timeframe, window, latest_bar_timestamp, rule_engine_registry_fingerprint, setup_engine_registry_fingerprint)`, bounded size (LRU), **plus a short TTL** as the documented mitigation for the residual gap (no repository data-revision marker exists today, so a backfill/correction to a non-latest bar isn't detectable by the key alone); `invalidate_all()` exposed for any future in-process caller; in-flight coalescing | B1 | Amendment 4 — the correctness claim is now explicitly bounded, not unconditional. |
+| B4 | `atlas/api/v1/setup_engine.py` — `GET /setup-engine/latest` (zero-computation wiring) | — | Independent of B1-B3. |
+| B5 | `atlas/api/v1/setup_engine.py` (continued) — `GET /setup-engine/episodes/live`, composing B2 + B3 | B2, B3 | |
+| B6 | Tests for B2: the four `LeftBoundaryReason` cases, the progressive-widening path, the hard-maximum truncation path, **and** the right-boundary cases (`is_active=true` with all right-boundary fields null/unobserved; each of the three `LiveTerminationReason` values on a closed run; `recent_episodes` always closed with a real `termination_reason`) | B2 | |
+| B7 | Tests for B3's cache (hit/miss on bar-timestamp change, hit/miss on registry-fingerprint change, TTL expiry, LRU eviction, coalescing under concurrent calls) | B3 | |
+| B8 | Tests for B4/B5's HTTP layer | B4, B5 | |
 
 ### Convergence
 
 | # | Task | Depends on |
 |---|---|---|
-| C1 | Register `research.py` and `setup_engine.py` routers in `atlas/main.py`, same `dependencies=[Depends(require_api_key)]` convention every existing non-public router uses | A7, B4, B5 |
+| C1 | Register `research.py` and `setup_engine.py` routers in `atlas/main.py`, same `dependencies=[Depends(require_api_key)]` convention every existing non-public router uses | A10, B4, B5 |
 | C2 | Full backend suite + Ruff | Everything above |
 
 ## 2. Frontend tasks, dependency order
 
+Test tooling moves into the **first** frontend stage (amendment 6) — every commit from F1 onward ships with its own focused tests, not deferred to the end.
+
 | # | Task | Depends on | Notes |
 |---|---|---|---|
-| F1 | `app/api/proxy/[...path]/route.ts` — the one BFF route handler, forwards `GET` requests to the Atlas backend with the server-only `ATLAS_API_KEY` attached (§6) | Backend Track A/B routes registered (C1) at least in a dev/staging environment | |
-| F2 | `lib/setupEngineApi.ts`, `lib/researchApi.ts` — typed client functions, calling `/api/proxy/...` (never the Atlas backend directly), mirroring the shapes in §3 | F1 | |
-| F3 | `components/FreshnessBadge.tsx`, `components/MismatchBanner.tsx` | — (pure presentational, no data dependency) | Can be built in parallel with F1/F2. |
-| F4 | `lib/useLiveEpisodes.ts` — the one shared TanStack Query hook for `GET /setup-engine/episodes/live`, consumed by F7/F8/F9 | F2 | |
-| F5 | Layout-level shared LIVE symbol/timeframe selector | F2 | Drives every LIVE page; FROZEN pages read the snapshot's own identity instead (architecture §7). |
-| F6 | Market View page + `SetupEngineViewer.tsx` (sibling to existing `RuleEngineViewer.tsx`) | F2, F3, F5 | Simplest data shape — good first live page to validate F1's proxy end-to-end. |
-| F7 | Active Setup Bundle page + `ActiveSetupBundle.tsx` | F3, F4, F5 | |
-| F8 | Timeline page + `Timeline.tsx` | F3, F4, F5 | |
-| F9 | Episode Inspector page + `EpisodeInspector.tsx` + `EpisodeDurationStrip.tsx` | F3, F4, F5, F2 (for the frozen overlay + mismatch check) | The one HYBRID page — built last among the LIVE pages since it depends on both tracks. |
+| F0 | Install and configure Vitest + React Testing Library (minimal — this repo has no frontend test runner today) | — | First frontend task, not the last. |
+| F1 | `app/api/proxy/[...path]/route.ts` — BFF route handler with an **explicit allowlist** (§6), `GET`-only, validated query params, no arbitrary header forwarding, upstream timeout, sanitized error bodies | Backend routes registered (C1), F0 | |
+| F1t | Tests for F1: allowlisted path passes through correctly; an unapproved path is rejected; an unexpected query param is stripped/rejected; a browser-supplied `Authorization` header is never forwarded; upstream timeout produces a sanitized error, never a stack trace or the real key | F1 | Amendment 6 — ships with F1, not deferred. |
+| F2 | `lib/setupEngineApi.ts`, `lib/researchApi.ts` — typed clients calling `/api/proxy/...` only | F1 | |
+| F3 | `components/FreshnessBadge.tsx`, `components/MismatchBanner.tsx` | F0 | |
+| F3t | Tests for F3: `FreshnessBadge` shows `source_computation_version` (not the exporter version) on FROZEN, shows `data_as_of` on LIVE; `MismatchBanner` renders the exact required copy on a mismatch and nothing on a match | F3 | |
+| F4 | `lib/useLiveEpisodes.ts` — the shared TanStack Query hook | F2 | |
+| F4t | Test: the same query key is produced for the same `(symbol, timeframe, window)` regardless of which page calls the hook | F4 | |
+| F5 | Layout-level shared LIVE symbol/timeframe selector | F2 | |
+| F6 | Market View page + `SetupEngineViewer.tsx` | F2, F3, F5 | |
+| F7 | Active Setup Bundle page + `ActiveSetupBundle.tsx`, including left/right-boundary copy ("active for at least N bars", "active through last closed bar") | F3, F4, F5 | |
+| F7t | Boundary-rendering tests: each `LeftBoundaryReason` renders its required copy and never a false-precision timestamp; `is_active=true` renders "active through last closed bar" and never `end_timestamp_observed`; a closed `recent_episodes` entry renders its real `termination_reason` | F7 | Amendment 3, ships with F7. |
+| F8 | Timeline page + `Timeline.tsx` (open vs closed episode bar treatment) | F3, F4, F5 | |
+| F9 | Episode Inspector page + `EpisodeInspector.tsx` + `EpisodeDurationStrip.tsx` | F3, F4, F5, F2 | |
 | F10 | Research Overview page + 6 panel components | F2, F3 | |
-| F11 | Dataset Health page + panel components | F2, F3 | |
+| F11 | Dataset Health page + panel components, rendering `KnownWarning`'s full traceability (`source_document`/`source_section`) | F2, F3 | |
 | F12 | Navigation wiring across all 6 pages | F6-F11 | |
-| F13 | Frontend test setup (Vitest + React Testing Library — **does not exist in `frontend/` today**, no test runner is configured; this plan proposes adding a minimal one, not assuming it) | — | See §7. |
-| F14 | Component/hook tests: boundary-reason rendering (the "at least N bars" copy), `MismatchBanner`, `useLiveEpisodes` cache-key behavior | F13, F7, F9 | |
+| F13 | Integration/close-out tests (end of Stage 5, §8) — cross-page checks (shared fetch dedup, mismatch banner across pages), not the first introduction of test tooling | F0-F12 | What used to be "add test tooling" is now integration tests only. |
 
 ## 3. API contracts
 
-All four contracts share the envelope from the architecture doc §6. Field types below are a planning sketch (for backend/frontend agreement before code), not a schema file.
-
-### 3.1 `GET /setup-engine/latest?symbol=&timeframe=`
+### 3.1 Shared envelope
 
 ```
-envelope: { schema_version, source_track: "live", symbol, timeframe,
-            generated_at, data_as_of, code_version, warnings: string[] }
-setups: [
-  { name: string,
-    status: "computed" | "insufficient_data",
-    detected?: boolean,
-    severity?: "weak" | "normal" | "strong",
-    reason?: string,
-    evidence?: { supporting_facts: [...] } }
-]
+{ schema_version, source_track: "live" | "frozen", symbol, timeframe,
+  generated_at, data_as_of, code_version, warnings: string[] }
 ```
 
-### 3.2 `GET /setup-engine/episodes/live?symbol=&timeframe=&window=`
+`code_version` on a FROZEN response is `source_computation_version` from the snapshot's own `SnapshotEnvelope` (§3.2) — never `snapshot_exporter_version`.
+
+### 3.2 `SnapshotEnvelope` (on-disk shape, distinct from the HTTP envelope above)
 
 ```
-envelope: { ...same as 3.1... }
+{
+  schema_version: string,
+  source_computation_version: string,   // RE-1/RE-2 code commit that computed the figures -
+                                          // read from the underlying RunManifest.code_version
+  snapshot_exporter_version: string,     // atlas/research_export/ code commit at export time
+  source_freeze_document: string,        // e.g. "docs/market_engine/re2-freeze.md"
+  source_report_versions: { [filename: string]: string },
+  content_checksum: string,              // SHA256(canonical_json(payload)), excludes exported_at
+  exported_at: string,                   // the one dynamic field
+  dataset_identity: { symbol, timeframe, row_count, date_range: { start, end } }
+}
+```
+
+### 3.3 `GET /setup-engine/latest?symbol=&timeframe=`
+
+```
+envelope: { ...3.1..., source_track: "live" }
+setups: [ { name, status: "computed" | "insufficient_data",
+            detected?, severity?, reason?, evidence? } ]
+```
+
+### 3.4 `GET /setup-engine/episodes/live?symbol=&timeframe=&window=`
+
+```
+envelope: { ...3.1... }
 window: { requested: int, actually_used: int }
 setups: {
   [setup_name]: {
     current_episode: LiveEpisodeProjection | null,
-    recent_episodes: LiveEpisodeProjection[],
+    recent_episodes: LiveEpisodeProjection[],   // always is_active=false
     computability: { computable_bars, non_computable_bars, detected_true_bars,
                       detected_false_bars, insufficient_reason_counts }
   }
@@ -97,158 +120,191 @@ activation_events: [ { timestamp, activated_setups: string[] } ]
 
 LiveEpisodeProjection = {
   setup_name: string,
+
+  // left boundary
   left_boundary_reason: "observed_activation" | "insufficient_data"
                          | "segment_start" | "query_window_start",
   activation_timestamp_observed: string | null,
   observed_start_timestamp: string,
-  end_timestamp: string,
   duration_bars_observed: int,
   is_window_truncated: boolean,
+
+  // right boundary (new, amendment 3)
+  is_active: boolean,
+  last_observed_timestamp: string,
+  end_timestamp_observed: string | null,     // null whenever is_active=true
+  termination_reason: "became_false" | "insufficient_data" | "segment_end" | null,
+  right_boundary_observed: boolean,          // true only when is_active=false
+
   is_continuation: boolean,
   start_state: RegisteredFactSnapshot,
   end_state: RegisteredFactSnapshot
 }
 ```
 
-### 3.3 `GET /research/re1/summary`, `GET /research/re2/summary`
+### 3.5 `GET /research/re1/summary`, `GET /research/re2/summary`
 
 ```
-envelope: { schema_version, source_track: "frozen", symbol, timeframe,
-            generated_at, data_as_of, code_version, warnings: string[] }
-report: <the underlying StatisticalProfile / RE-2 report dataclass,
-         serialized via atlas.research_export.serialization,
-         unchanged in shape from the fields already documented in
-         atlas.research.statistical_profiling.models / atlas.research.setup_profiling.models>
+envelope: { ...3.1..., source_track: "frozen" }
+report: <StatisticalProfile / RE-2 report dataclass, serialized via
+         atlas.research_export.serialization, unchanged in shape>
 ```
 
-### 3.4 `GET /research/dataset-health`
+### 3.6 `GET /research/dataset-health`
 
 ```
-envelope: { ...same shape as 3.3... }
+envelope: { ...3.1..., source_track: "frozen" }
 dataset_identity: { symbol, timeframe, row_count, date_range: { start, end }, files: string[] }
 segment_count: int
-certification: {
-  checks_run, pass_count, warning_count, fail_count, verdict: "certified" | "certified_with_warnings" | "rejected",
-  checks: [ { section, check, verdict, detail } ]
-}
-known_warnings: [ { severity: "warning" | "fail", title, detail } ]
-warnings_source: "manual_transcription"
-frozen_version: { code_version, frozen_at }
+certification: { checks_run, pass_count, warning_count, fail_count, verdict,
+                  checks: [ { section, check, verdict, detail } ] }
+known_warnings: [
+  { id, severity: "warning" | "fail", title, detail, source_document, source_section }
+]
+frozen_version: { source_computation_version, exported_at }
 ```
 
 ## 4. Snapshot generation workflow
 
-1. RE-1/RE-2 are regenerated (this only ever happens when a human explicitly re-runs and re-certifies a new baseline, e.g. a future RE-3 or a dataset expansion — never on a schedule).
-2. Run `python scripts/export_research_snapshots.py` (Track A4) immediately after, against the same frozen CSV inputs.
-3. The script writes `research/snapshots/re1-summary.v1.json`, `re2-summary.v1.json`, `dataset-health.v1.json`, each with a fresh `checksum`.
-4. Run the reproducibility test (Track A6) locally before committing — it fails loudly if the freshly-computed serialization doesn't match what was just written (catches a snapshot-builder bug before it ships).
-5. Commit the three JSON files in the same commit as the regenerated markdown reports, so `research/RE1_*.md`, `research/RE2_*.md`, and `research/snapshots/*.json` never drift relative to each other.
-6. If RE-1 and RE-2 are ever regenerated independently of each other, bump only the affected snapshot's filename version (`re1-summary.v2.json`) rather than overwriting — the API route serves whichever version is current, and the schema_version inside each file remains the source of truth for consumers, not the filename alone.
+1. RE-1/RE-2 are regenerated (only when a human explicitly re-runs and re-certifies a new baseline).
+2. Run `python scripts/export_research_snapshots.py` (A5) against the same frozen CSV inputs.
+3. The script builds the RE-2 substrate **once** (A4/A8), serializes each report's `payload`, computes `content_checksum` over the deterministic part only, and writes the envelope's remaining fields (`source_computation_version` read from the report's own `RunManifest`, `snapshot_exporter_version` from the currently-checked-out `atlas/research_export/` commit, `exported_at` from wall-clock now).
+4. Run the reproducibility test (A7) locally before committing — it compares `content_checksum` values, not whole-file bytes, so it passes even though `exported_at` legitimately differs from the previous export.
+5. Commit the three JSON files in the same commit as any regenerated markdown reports, so they never drift relative to each other.
+6. If RE-1 and RE-2 are ever regenerated independently, bump only the affected snapshot's filename version (`re1-summary.v2.json`) rather than overwriting.
 
 ## 5. Authentication flow
 
 ### 5.1 Primary: Backend-for-Frontend (confirmed feasible today)
 
-`frontend/`'s `package.json` runs `next build && next start` — a real Node server, not a static export — so Next.js Route Handlers with server-only environment variables work today with no infrastructure change.
+`frontend/` runs `next build && next start` — a real Node server — so Route Handlers with server-only environment variables work today.
 
 ```
 Browser --(same-origin fetch, no key)--> Next.js route handler (server-side)
                                               --(Authorization: Bearer ATLAS_API_KEY)--> Atlas API
 ```
 
-- **New env var**: `ATLAS_API_KEY` — server-only (no `NEXT_PUBLIC_` prefix), never referenced in any client component, never present in `.next/`'s built client bundle. Reuses the **same value** as the backend's existing shared API key (`require_api_key`'s expected secret) — this is a delivery-mechanism change for UI v2's own new pages, not a new backend auth scheme.
-- **Reused, unchanged**: `NEXT_PUBLIC_API_BASE_URL` — the proxy's own server-side fetch target. This value is not sensitive (it's a hostname), so no change needed there.
-- **Route handler**: one generic `app/api/proxy/[...path]/route.ts`, `GET`-only (every UI v2 endpoint is read-only), forwards the path and query string to `${NEXT_PUBLIC_API_BASE_URL}/api/v1/${path}` with the `Authorization` header attached server-side, streams the JSON response back unchanged. Every UI v2 frontend call (§2, F2) goes through this one handler — no per-endpoint proxy code.
-- **Verification** (acceptance criterion, §8): `grep -r "ATLAS_API_KEY" frontend/.next/static/` after a production build returns nothing; the key never appears in any client-shipped JS.
+- **New env var**: `ATLAS_API_KEY` — server-only, never referenced in a client component, reuses the same value as the backend's existing `require_api_key` secret.
+- **Reused, unchanged**: `NEXT_PUBLIC_API_BASE_URL` — the proxy's own server-side fetch target (not sensitive).
 
-### 5.2 Documented fallback (not expected to be needed)
+### 5.2 BFF proxy allowlist (amendment 5 — corrected from a fully-generic proxy)
 
-If a future deployment target for this app *cannot* run a Node server (e.g. a static export to a CDN with no server-side execution), the fallback is a manual, explicitly-temporary session key:
-- Held only in `sessionStorage` (cleared on tab close — never `localStorage`, never a cookie, never bundled into build output).
-- Entered once per browser session via a form, mirroring `RuleEngineViewer.tsx`'s existing manual-entry UX (not reused verbatim, since that component's key lives in React state only and is scoped to one component — a session-wide variant would need a small shared context).
-- Labeled in the UI itself as temporary, with a tracked follow-up to migrate to §5.1 once the deployment supports it.
+`app/api/proxy/[...path]/route.ts` is **not** a blanket forward-everything proxy. It checks the requested path against an explicit allowlist before doing anything else:
 
-This fallback is **not implemented** unless F1 (§2) proves infeasible during actual implementation — the current deployment already supports the primary pattern.
+```
+ALLOWED_PROXY_PATHS = {
+  "rule-engine/latest":            { params: ["symbol", "timeframe"] },
+  "setup-engine/latest":           { params: ["symbol", "timeframe"] },
+  "setup-engine/episodes/live":    { params: ["symbol", "timeframe", "window"] },
+  "research/re1/summary":          { params: [] },
+  "research/re2/summary":          { params: [] },
+  "research/dataset-health":       { params: [] },
+}
+```
 
-### 5.3 Existing pages are out of scope
+No operational health endpoint (`/health`, `/status`) is included — no UI v2 page currently calls one (Dataset Health is explicitly scoped to the frozen research baseline, architecture §3.6); one would be added explicitly, by name, if a future page needed it, never opened generically.
 
-`RuleEngineViewer.tsx`'s manual key-entry and the rest of the app's `NEXT_PUBLIC_API_KEY` pattern are unchanged by this plan — a disclosed, deliberately-deferred inconsistency (architecture doc §8, item 3), not retrofitted here.
+Additional restrictions, all enforced in the route handler itself:
+- **Method**: `GET` only.
+- **Query params**: only the names listed per path are forwarded; anything else is dropped, not passed through.
+- **Headers**: only `Accept`/content-negotiation headers (if any) are forwarded from the browser request; the browser's own `Authorization` header, if somehow present, is never forwarded — the server's own `ATLAS_API_KEY` always replaces it.
+- **Timeout**: a fixed upstream fetch timeout (e.g. 10s); a timeout or upstream error returns a generic, sanitized error body (`{"error": "upstream request failed"}`) — never the raw exception text, stack trace, or any header value from the failed response.
+- **Unapproved path**: `404`, with no indication of what paths *would* have been allowed (avoid enumeration).
+
+### 5.3 Documented fallback (not implemented unless §5.1 proves infeasible)
+
+Manual session key, `sessionStorage` only, never `localStorage`, labeled temporary in the UI, with a tracked follow-up to migrate to §5.1.
+
+### 5.4 Existing pages are out of scope
+
+`RuleEngineViewer.tsx`'s manual key-entry and the rest of the app's `NEXT_PUBLIC_API_KEY` pattern are unchanged — disclosed, deliberately-deferred debt, not retrofitted here.
 
 ## 6. Caching / performance limits
 
 | Parameter | Value | Rationale |
 |---|---|---|
-| `window` default | 500 bars (≈ 41 hours at 5m) | Enough for a typical operator session's recent lookback without an oversized default fetch. |
-| `window` hard maximum (progressive widening cap, architecture §4.3) | 5,000 bars (≈ 17 days at 5m) | Bounds worst-case per-request cost; this project's own certifier already processes 20x that (97,858 bars) in low single-digit seconds, so 5,000 bars through the same pipeline is comfortably sub-second. |
-| `recent_episodes` per setup | 20 | Enough for Episode Inspector's activation history without an unbounded response. |
-| Backend cache size | 32 entries (LRU) | Realistic cardinality of concurrently-interesting `(symbol, timeframe, window)` combinations is small; this is a safety cap, not a tuned production figure. |
-| Backend cache key | `(symbol, timeframe, window, latest_bar_timestamp)` | No TTL needed — a new closed bar changes the key, so a stale entry is never served as current; an unchanged key is always still correct. |
-| In-flight coalescing | one computation per cache key, concurrent requests await the same in-progress result | Prevents duplicate pipeline runs when Active Setup Bundle, Episode Inspector, and Timeline all mount within the same polling tick. |
-| Frontend polling | same `pollInterval(sseConnected, baseMs)` pattern already established (`ActivityTimeline.tsx`); base interval per LIVE page proposed at 15-30s, matching `RuleEngineViewer.tsx`'s existing 30s manual-refresh precedent | No new streaming mechanism. |
-| Soft response-time target | < 2s for `window` ≤ 500 (cache miss), effectively instant on cache hit | Operator-dashboard usability target, not a hard SLA. |
+| `window` default | 500 bars (≈ 41 hours at 5m) | Typical operator lookback. |
+| `window` hard maximum | 5,000 bars (≈ 17 days at 5m) | Bounds worst-case cost; this project's own certifier processes 20x that in low single-digit seconds. |
+| `recent_episodes` per setup | 20 | |
+| Backend cache size | 32 entries (LRU) | Realistic cardinality is small; a safety cap. |
+| Backend cache key | `(symbol, timeframe, window, latest_bar_timestamp, rule_engine_registry_fingerprint, setup_engine_registry_fingerprint)` | Amendment 4 — bar-timestamp keying alone doesn't detect a backfill/correction to a non-latest bar, or a mismatched code version across processes; the fingerprints close the second gap cheaply and for real. |
+| Backend cache TTL | short (e.g. 60s), applied **in addition to** the key above | **Documented, bounded limitation, not an unconditional guarantee**: this project's repository layer has no data-revision marker today (`get_latest`/`get_history`/`get_range`/`ingest`/`ping` — no version field), so a backfill/correction to a non-latest historical bar within an already-cached window can be stale for up to the TTL. If a repository revision marker is ever added, it should be folded into the cache key and the TTL requirement reconsidered. |
+| Explicit invalidation | `cache.invalidate_all()`, exposed for any future in-process caller | No new HTTP admin endpoint in this phase; a process restart remains the primary invalidation path today. |
+| In-flight coalescing | one computation per cache key, concurrent requests await the same in-progress result | |
+| Frontend polling | `pollInterval(sseConnected, baseMs)`, base 15-30s | Matches `ActivityTimeline.tsx`'s existing pattern; no new streaming mechanism. |
+| Soft response-time target | < 2s for `window` ≤ 500 (cache miss), effectively instant on cache hit | |
 
 ## 7. Test strategy
 
-**Backend** (pytest, this project's existing, extensively-used convention — no new tooling needed):
-- `atlas/research_export/serialization.py`: determinism (same input → byte-identical output across two runs), round-trip shape correctness for one representative dataclass from each of RE-1/RE-2, correct `Enum`/tuple/`Mapping` handling.
-- `atlas/research_export/snapshot_builder.py`: the reproducibility test (§4 step 4 / Track A6) — freshly-computed output equals the checked-in JSON.
-- `atlas/live_view/episode_projector.py`: the four `left_boundary_reason` cases with hand-built `MarketState`/`RuleEngineOutput`/`SetupEngineOutput` fixtures (the same fixture style already established in `tests/test_setup_profiling.py`), the progressive-widening path resolving on a second fetch, and the hard-maximum-reached truncation path.
-- `atlas/live_view/cache.py`: hit/miss on a changed `latest_bar_timestamp`, LRU eviction at capacity, coalescing (two concurrent calls for the same key trigger exactly one computation — an `asyncio` concurrency test).
-- New routers (`research.py`, `setup_engine.py`): envelope shape, `warnings` population, 404/error handling, auth dependency present (same `require_api_key` test pattern already used for existing routers).
+**Backend** (pytest, existing convention):
+- Serialization determinism, round-trip shape correctness, `Enum`/tuple/`Mapping` handling (A2).
+- Reproducibility test comparing `content_checksum`, not whole-file bytes (A7).
+- Single-pass substrate test (A8).
+- Known-warnings coverage test (A9).
+- `episode_projector.py`: all four `LeftBoundaryReason` cases, progressive widening, hard-maximum truncation, **and** all right-boundary cases — `is_active=true` with every right-boundary field correctly null/unobserved, each `LiveTerminationReason` value on a closed run, `recent_episodes` always closed with a real reason (B6).
+- `cache.py`: hit/miss on bar-timestamp change, hit/miss on registry-fingerprint change, TTL expiry, LRU eviction, concurrency coalescing (B7).
+- New routers: envelope shape, `code_version` sourcing, auth dependency, error handling (A11, B8).
 
-**Frontend** (Vitest + React Testing Library — **new to this repo**, proposed minimal addition, not full coverage):
-- `MismatchBanner`: renders the exact required copy when live/frozen identity differs, renders nothing when they match.
-- The "active for at least N bars" / "activation occurred before..." copy renders correctly for each `left_boundary_reason`, and specifically that `query_window_start`/`segment_start` never render a bare timestamp as if it were the true activation.
-- `useLiveEpisodes`: same query key across the three consuming pages (a static/type-level check plus one integration test), so React Query's cache dedupes as designed.
-- The BFF proxy route handler: forwards correctly, never leaks the key into a response header or error body.
+**Frontend** (Vitest + React Testing Library — installed at F0, the **first** frontend task, not the last):
+- BFF proxy: allowlist enforcement, query-param filtering, header non-forwarding, timeout/error sanitization (F1t).
+- `FreshnessBadge`, `MismatchBanner` (F3t).
+- `useLiveEpisodes` query-key consistency (F4t).
+- Left/right-boundary rendering copy, including the negative assertions ("never shows a bare timestamp as true activation", "never shows `end_timestamp_observed` while active") (F7t).
+- Each of these ships **in the same commit** as the component/hook it tests (§9), not batched at the end.
 
-**Cross-cutting**: at the end of each rollout stage (§8), use the `verify` skill to actually drive the affected page(s) in a running instance rather than trusting tests alone — matching this project's own established practice of confirming real behavior before calling a slice done, not just "tests pass."
+**Final-stage tests are integration/close-out only** (F13): cross-page shared-fetch dedup (one network call per polling tick across the three pages that share `useLiveEpisodes`), mismatch-banner behavior across pages — not the first introduction of test tooling.
 
-**Explicitly not testing**: any RE-1/RE-2/Rule Engine/Setup Engine correctness — those are exercised by their own existing, extensive test suites, untouched here.
+**Cross-cutting**: at the end of each rollout stage, use the `verify` skill to drive the affected page(s) in a running instance.
+
+**Explicitly not testing**: any RE-1/RE-2/Rule Engine/Setup Engine correctness — exercised by their own existing suites, untouched here.
 
 ## 8. Rollout stages
 
-| Stage | Scope | Why this order |
-|---|---|---|
-| 0 | Backend Track A + Track B fully built and tested, routers registered, **no frontend changes yet** | Proves the new backend surface end-to-end (via direct API calls / the `verify` skill) before any UI depends on it. |
-| 1 | Frontend auth (F1) + Research Overview + Dataset Health (F2, F3, F10, F11) | Lowest-risk frontend slice — entirely FROZEN, static-snapshot-backed, validates the BFF proxy pattern before any live-computation page depends on it. |
-| 2 | Market View (F5, F6) | Simplest LIVE page — validates the proxy pattern against a live, per-request backend route. |
-| 3 | Active Setup Bundle + Timeline (F4, F7, F8) | Both consume the shared live-episodes fetch; shipping them together exercises the cache/coalescing design (§6) under realistic multi-page load. |
-| 4 | Episode Inspector (F9) + full navigation (F12) | Last, since it's the one HYBRID page depending on both tracks and the mismatch-banner logic. |
-| 5 | Frontend test setup + tests (F13, F14), close-out review against acceptance criteria (§9) | Confirms the whole surface, not just each stage in isolation. |
+| Stage | Scope |
+|---|---|
+| 0 | Backend Track A + Track B fully built and tested, routers registered — no frontend changes yet |
+| 1 | Frontend test tooling (F0) + BFF proxy with allowlist (F1, F1t) + typed clients (F2) + `FreshnessBadge`/`MismatchBanner` (F3, F3t) + Research Overview + Dataset Health (F10, F11) — lowest-risk, entirely FROZEN slice, validates the BFF pattern |
+| 2 | Market View (F5 partial, F6) |
+| 3 | Active Setup Bundle + Timeline (F4, F4t, F7, F7t, F8) — exercises the shared fetch/cache design under realistic multi-page load |
+| 4 | Episode Inspector (F9) + full navigation (F12) |
+| 5 | Integration/close-out tests (F13), acceptance-criteria review (§9) |
 
-Each stage ends with the `verify` skill exercising the real, running pages added in that stage — not just passing tests — before moving to the next.
+Each stage ends with the `verify` skill exercising the real, running pages added in that stage.
 
 ## 9. Acceptance criteria
 
-- **No computation modified**: `git diff` against `atlas/rule_engine/`, `atlas/setup_engine/service.py`'s existing functions, `atlas/research/statistical_profiling/`, `atlas/research/setup_profiling/` shows zero changes throughout this work (only new, additive packages/files).
-- **Snapshot reproducibility**: Track A6's test passes — the checked-in JSON is byte-for-byte what the frozen pipeline currently produces.
-- **Boundary semantics**: for each of the four `left_boundary_reason` values, a real or fixture-driven example renders the correct UI copy — in particular, `query_window_start` and `segment_start` never display a timestamp as the true activation, and always display "active for at least N bars" with the correct qualifying clause.
-- **No silent mismatch**: with the live selector set to a symbol/timeframe other than `MNQ1!`/`5m`, Research Overview, Dataset Health, and Episode Inspector's distribution overlay all show the exact mismatch message from architecture §7, and render no frozen figures underneath it.
-- **No privileged key in the browser**: the `grep` check from §5.1 passes on a production build.
-- **LIVE means last closed bar**: every LIVE response's `data_as_of` is populated and is the latest bar's `occurred_at`, never a wall-clock timestamp; the UI displays it, not just a generic "live" dot.
-- **Shared fetch**: Active Setup Bundle, Episode Inspector, and Timeline mounted together trigger exactly one `GET /setup-engine/episodes/live` network call per polling tick (verified via the browser network panel during the Stage 3/4 `verify` pass), not three.
-- **Dataset Health stays scoped**: no live ingestion/API health metric appears on the Dataset Health page; it remains fully sourced from `research/snapshots/dataset-health.v1.json`.
-- **Full test suite + Ruff clean** (backend), same standard every prior sprint in this project has held to.
+- **No computation modified**: zero changes to `atlas/rule_engine/`, `atlas/setup_engine/service.py`'s existing functions, `atlas/research/statistical_profiling/`, `atlas/research/setup_profiling/`.
+- **Snapshot reproducibility**: A7's checksum-based test passes; the whole-file-byte-identity claim is never made.
+- **Provenance clarity**: the FROZEN BASELINE badge displays `source_computation_version`; `snapshot_exporter_version` never appears as the headline value.
+- **Boundary semantics**: all four `LeftBoundaryReason` cases and the `is_active`/closed-episode right-boundary distinction render correctly; no bare timestamp is ever presented as a true activation or a true ending when unresolved/still-open.
+- **No silent mismatch**: the exact mismatch message renders on every FROZEN panel (including Episode Inspector's overlay) when the live selection differs.
+- **No privileged key in the browser**: `grep -r "ATLAS_API_KEY" frontend/.next/static/` passes empty on a production build.
+- **BFF allowlist enforced**: an unapproved path returns 404 in a test; forwarded query params are limited to the declared set per path.
+- **LIVE means last closed bar**: every LIVE response's `data_as_of` is the latest bar's `occurred_at`.
+- **Shared fetch**: exactly one `GET /setup-engine/episodes/live` call per polling tick across the three pages that use it.
+- **Cache correctness is honestly scoped**: the TTL and its rationale are documented in-repo (this file + `atlas/live_view/cache.py`'s own docstring), not silently assumed away.
+- **Known warnings preserved**: A9's coverage test passes.
+- **Full test suite + Ruff clean** (backend); frontend tests pass for every component/hook that has them.
 
 ## 10. Proposed commit boundaries
 
-Small, independently-reviewable commits, mirroring the dependency order in §1/§2 (the same granularity RE-1/RE-2 already used throughout this project):
+1. `feat(research-export): models, serialization, known warnings` (A1, A2, A3 + tests)
+2. `feat(research-export): snapshot builder with single-pass substrate + checksum split` (A4, A7, A8, A9)
+3. `feat(research-export): export script` (A5)
+4. `docs(research): commit RE-1/RE-2 JSON snapshots` (A6 — data-only commit)
+5. `feat(api): research summary and dataset-health endpoints` (A10, A11)
+6. `feat(live-view): left/right boundary projection models` (B1)
+7. `feat(live-view): episode projector (boundary resolution)` (B2, B6)
+8. `feat(live-view): fingerprint-and-TTL cache` (B3, B7)
+9. `feat(api): setup-engine latest and live episodes endpoints` (B4, B5, B8)
+10. `feat(api): register research and setup-engine routers` (C1, C2 — full suite + Ruff)
+11. `test(frontend): add Vitest + React Testing Library` (F0)
+12. `feat(frontend): BFF proxy with explicit allowlist` (F1, F1t)
+13. `feat(frontend): typed API clients, freshness badge, mismatch banner` (F2, F3, F3t)
+14. `feat(frontend): research overview and dataset health pages` (F10, F11 — Stage 1)
+15. `feat(frontend): market view page` (F5 partial, F6 — Stage 2)
+16. `feat(frontend): shared live-episodes hook, active setup bundle, timeline` (F4, F4t, F7, F7t, F8 — Stage 3)
+17. `feat(frontend): episode inspector + navigation` (F9, F12 — Stage 4)
+18. `test(frontend): integration/close-out tests` (F13 — Stage 5)
 
-1. `feat(research-export): add atlas.research_export models + serialization` (A1, A2 + tests)
-2. `feat(research-export): snapshot builder + export script` (A3, A4 + tests)
-3. `docs(research): commit RE-1/RE-2 JSON snapshots` (A5, A6 — data-only commit)
-4. `feat(api): research summary and dataset-health endpoints` (A7, A8)
-5. `feat(live-view): live episode projection models + boundary resolution` (B1, B2 + tests — the highest-scrutiny commit, given amendment 1's precision requirements)
-6. `feat(live-view): bar-keyed cache with in-flight coalescing` (B3 + tests)
-7. `feat(api): setup-engine latest and live episodes endpoints` (B4, B5, B8)
-8. `feat(api): register research and setup-engine routers` (C1, C2 — full suite + Ruff)
-9. `feat(frontend): BFF proxy route handler + typed API clients` (F1, F2)
-10. `feat(frontend): freshness badge, mismatch banner, shared live-episodes hook` (F3, F4)
-11. `feat(frontend): research overview and dataset health pages` (F5 partial, F10, F11 — Stage 1)
-12. `feat(frontend): market view page` (F6 — Stage 2)
-13. `feat(frontend): active setup bundle and timeline pages` (F7, F8 — Stage 3)
-14. `feat(frontend): episode inspector page + navigation` (F9, F12 — Stage 4)
-15. `test(frontend): add Vitest + component tests` (F13, F14 — Stage 5)
-
-Each commit runs its own scoped tests before landing; commits 8 and 15 additionally run the full-repo suite. No commit in this sequence touches `atlas/rule_engine/`, `atlas/setup_engine/service.py`'s existing functions, `atlas/research/statistical_profiling/`, or `atlas/research/setup_profiling/`.
+Each commit runs its own scoped tests before landing; commits 10 and 18 additionally run the full-repo suite. No commit touches `atlas/rule_engine/`, `atlas/setup_engine/service.py`'s existing functions, `atlas/research/statistical_profiling/`, or `atlas/research/setup_profiling/`.
