@@ -168,7 +168,7 @@ def segment_by_gap(states: list[MarketState]) -> list[list[MarketState]]:
     an arbitrary caller-supplied series meets.
 
     Assumes `states` is already filtered (FORMING bars, denylisted symbols
-    removed - see _filter_input_states) and sorted ascending by occurred_at;
+    removed - see filter_input_states) and sorted ascending by occurred_at;
     does not itself filter or sort."""
     if not states:
         return []
@@ -203,7 +203,7 @@ def segment_by_gap(states: list[MarketState]) -> list[list[MarketState]]:
     return segments
 
 
-def _filter_input_states(
+def filter_input_states(
     states: list[MarketState], excluded_symbols: frozenset[str],
 ) -> tuple[list[MarketState], int, int]:
     """Pure. Sprint 24C scope D: excludes rows whose bar_status is not
@@ -430,7 +430,7 @@ def profile_market_state_series(
     InsufficientData, exactly as the two engines themselves already report
     them, and separately tallied per segment (SegmentSummary)."""
     raw_row_count = len(states)
-    filtered, excluded_forming, excluded_synthetic = _filter_input_states(states, config.excluded_symbols)
+    filtered, excluded_forming, excluded_synthetic = filter_input_states(states, config.excluded_symbols)
     segments = segment_by_gap(filtered)
 
     rule_depth = rule_engine_required_history(RULE_ENGINE_REGISTRY)

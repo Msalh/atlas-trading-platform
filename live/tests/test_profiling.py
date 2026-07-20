@@ -25,9 +25,9 @@ from atlas.profiling.service import (
     _build_fact_profile,
     _build_hierarchy_summary,
     _build_setup_profile,
-    _filter_input_states,
     _percentile,
     _scalar_distribution,
+    filter_input_states,
     profile_market_state_range,
     profile_market_state_series,
     segment_by_gap,
@@ -146,7 +146,7 @@ class TestInputFiltering:
     def test_excludes_forming_bars(self):
         states = _series(3)
         states[1] = _state(event_id="forming", occurred_at=states[1].envelope.occurred_at.isoformat(), bar_status=BarStatus.FORMING)
-        kept, excluded_forming, excluded_synthetic = _filter_input_states(states, frozenset())
+        kept, excluded_forming, excluded_synthetic = filter_input_states(states, frozenset())
         assert len(kept) == 2
         assert excluded_forming == 1
         assert excluded_synthetic == 0
@@ -154,7 +154,7 @@ class TestInputFiltering:
     def test_excludes_default_smoketest_symbols(self):
         states = _series(2)
         states[1] = _state(event_id="smoke", occurred_at=states[1].envelope.occurred_at.isoformat(), symbol=Symbol("SMOKETEST_FULL"))
-        kept, excluded_forming, excluded_synthetic = _filter_input_states(
+        kept, excluded_forming, excluded_synthetic = filter_input_states(
             states, frozenset({"SMOKETEST_NEVER", "SMOKETEST_PARTIAL", "SMOKETEST_FULL"}),
         )
         assert len(kept) == 1
@@ -162,13 +162,13 @@ class TestInputFiltering:
 
     def test_denylist_is_overrideable(self):
         states = _series(2)
-        kept, _, excluded_synthetic = _filter_input_states(states, frozenset({"MNQU6"}))
+        kept, _, excluded_synthetic = filter_input_states(states, frozenset({"MNQU6"}))
         assert len(kept) == 0
         assert excluded_synthetic == 2
 
     def test_preserves_relative_order(self):
         states = _series(4)
-        kept, _, _ = _filter_input_states(states, frozenset())
+        kept, _, _ = filter_input_states(states, frozenset())
         assert kept == states
 
 
