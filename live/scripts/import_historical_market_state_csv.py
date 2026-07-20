@@ -68,11 +68,13 @@ import argparse
 import asyncio
 import csv
 import json
+import logging
 import os
 import selectors
 import sys
+import time
 from datetime import date, datetime, timezone
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -424,33 +426,47 @@ def build_candidates(
 
 async def process_candidates(
     candidates: list[tuple[int, datetime, dict[str, Any]]], repository: Any, apply_writes: bool,
+    on_row_done: Optional[Callable[[int, int], None]] = None,
 ) -> tuple[int, int, int, list[tuple[int, str]]]:
     """The core per-row loop, independent of where `repository` came from -
     real Postgres in production use, InMemoryMarketStateRepository in tests.
-    Returns (valid_count, inserted_count, duplicate_count, malformed)."""
+    Returns (valid_count, inserted_count, duplicate_count, malformed).
+
+    `on_row_done(index, total)` - optional, called after every row completes
+    (both dry-run and --apply), 1-indexed `index`. Diagnostic-only, added to
+    make a hang inside this loop visible instead of silent (Sprint 31 -
+    Phase 3 --apply investigation) - defaults to a no-op, so every existing
+    caller/test is unaffected."""
     valid_count = 0
     inserted_count = 0
     duplicate_count = 0
     malformed: list[tuple[int, str]] = []
+    total = len(candidates)
 
-    for row_number, _occurred_at, raw_json in candidates:
+    for index, (row_number, _occurred_at, raw_json) in enumerate(candidates, start=1):
         if not apply_writes:
             error = await _validate_only(raw_json)
             if error is not None:
                 malformed.append((row_number, error))
             else:
                 valid_count += 1
+            if on_row_done is not None:
+                on_row_done(index, total)
             continue
 
         result = await ingest_tradingview_payload(raw_json, json.dumps(raw_json), repository)
         if result.error is not None:
             malformed.append((row_number, result.error))
+            if on_row_done is not None:
+                on_row_done(index, total)
             continue
         valid_count += 1
         if result.outcome == IngestOutcome.DUPLICATE:
             duplicate_count += 1
         else:
             inserted_count += 1
+        if on_row_done is not None:
+            on_row_done(index, total)
 
     return valid_count, inserted_count, duplicate_count, malformed
 
@@ -470,16 +486,38 @@ async def _run_import(csv_path: str, symbol: str, timeframe: str, apply_writes: 
 
     pool = None
     repository = None
+    on_row_done = None
     if apply_writes:
         if not os.environ.get("DATABASE_URL"):
             raise SystemExit("DATABASE_URL is not set - required for --apply. Omit --apply for a dry run.")
         from atlas.db import create_pool
         from atlas.market_engine.repositories.postgres import PostgresMarketStateRepository
+
+        # Sprint 31 - Phase 3 --apply investigation: create_pool() itself
+        # now logs its own internal stages (migrations / construct / open -
+        # see atlas/db.py); this marks the boundary immediately before and
+        # after that whole call from the importer's side, so a hang that
+        # happens BEFORE create_pool() is ever reached (e.g. in
+        # build_candidates above) is distinguishable from one inside it.
+        print("Opening database connection pool...", flush=True)
+        pool_started = time.monotonic()
         pool = await create_pool()
+        print(f"Pool ready in {time.monotonic() - pool_started:.2f}s.", flush=True)
         repository = PostgresMarketStateRepository(pool)
 
+        first_row_started = time.monotonic()
+
+        def on_row_done(index: int, total: int) -> None:  # noqa: ANN001
+            nonlocal first_row_started
+            if index == 1:
+                print(f"First row written in {time.monotonic() - first_row_started:.2f}s.", flush=True)
+            elif index % 100 == 0 or index == total:
+                print(f"Progress: {index}/{total} rows processed.", flush=True)
+
     try:
-        valid_count, inserted_count, duplicate_count, malformed = await process_candidates(candidates, repository, apply_writes)
+        valid_count, inserted_count, duplicate_count, malformed = await process_candidates(
+            candidates, repository, apply_writes, on_row_done=on_row_done,
+        )
     finally:
         if pool is not None:
             await pool.close()
@@ -521,6 +559,15 @@ def main() -> None:
              "same comparison workflow before assuming either way.",
     )
     args = parser.parse_args()
+
+    # Sprint 31 - Phase 3 --apply investigation: atlas/db.py's create_pool()
+    # now logs its own diagnostic stages via the standard logging module,
+    # which this script never configured a handler/level for - without
+    # this, those log lines would be silently dropped under Python's
+    # default root-logger config (WARNING+, no handler), defeating the
+    # point of adding them. Harmless for --inspect/dry-run, which never
+    # reach any logging call.
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
 
     if args.inspect:
         _inspect(args.csv_path)

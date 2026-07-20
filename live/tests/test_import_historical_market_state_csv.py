@@ -228,6 +228,51 @@ class TestDryRunPerformsNoWrites:
         # AttributeError on None immediately.
 
 
+class TestRowProgressCallback:
+    """Sprint 31 - Phase 3 --apply investigation: on_row_done makes a hang
+    inside the per-row loop (stage 4) visible instead of silent. Optional
+    and defaults to a no-op, so every pre-existing call site (and test) is
+    unaffected."""
+
+    @pytest.mark.asyncio
+    async def test_called_once_per_row_with_correct_total(self):
+        column_map = _column_map()
+        rows = [_row(), _row(time="2026-07-01T13:05:00Z"), _row(time="2026-07-01T13:10:00Z")]
+        candidates, _skipped = importer.build_candidates(rows, column_map, "MNQU6", "5m")
+
+        calls = []
+        await importer.process_candidates(
+            candidates, repository=None, apply_writes=False,
+            on_row_done=lambda index, total: calls.append((index, total)),
+        )
+        assert calls == [(1, 3), (2, 3), (3, 3)]
+
+    @pytest.mark.asyncio
+    async def test_still_called_for_a_malformed_row(self):
+        column_map = _column_map()
+        rows = [_row(close="100.10")]  # off the tick grid - will be malformed
+        candidates, _skipped = importer.build_candidates(rows, column_map, "MNQU6", "5m")
+
+        calls = []
+        await importer.process_candidates(
+            candidates, repository=None, apply_writes=False,
+            on_row_done=lambda index, total: calls.append((index, total)),
+        )
+        assert calls == [(1, 1)]
+
+    @pytest.mark.asyncio
+    async def test_default_is_a_no_op_every_existing_call_site_still_works(self):
+        column_map = _column_map()
+        rows = [_row()]
+        candidates, _skipped = importer.build_candidates(rows, column_map, "MNQU6", "5m")
+        # No on_row_done passed - must not raise, matches every call site
+        # that predates this parameter.
+        valid, inserted, duplicate, malformed = await importer.process_candidates(
+            candidates, repository=None, apply_writes=False,
+        )
+        assert (valid, inserted, duplicate, malformed) == (1, 0, 0, [])
+
+
 class TestWindowsEventLoopFix:
     """Sprint 31 (post Task 8). psycopg's async pool cannot run under
     Windows' default ProactorEventLoop - --apply failed at pool-connect
