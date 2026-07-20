@@ -17,8 +17,14 @@ from datetime import datetime, timedelta, timezone
 from atlas.core.events import Event
 from atlas.core.primitives import Price, Session, Symbol, Timeframe
 from atlas.market_engine.models import BarStatus, MarketState
-from atlas.research.setup_profiling import service
-from atlas.research.setup_profiling.models import RegisteredFactSnapshot, SetupEpisode, TerminationReason
+from atlas.research.setup_profiling import reports, service
+from atlas.research.setup_profiling.models import (
+    EpisodeTransition,
+    RegisteredFactSnapshot,
+    SetupEpisode,
+    SetupTransitions,
+    TerminationReason,
+)
 from atlas.rule_engine.models import FactResult, RuleEngineOutput
 from atlas.rule_engine.models import InsufficientData as FactInsufficientData
 from atlas.setup_engine.models import SetupEngineOutput, SetupEvidence, SetupResult, Severity
@@ -423,3 +429,50 @@ def _dummy_config():
         symbol=Symbol("MNQ1!"), timeframe=Timeframe.M5,
         start=_BASE_TIME, end=_BASE_TIME + timedelta(hours=1), limit=10,
     )
+
+
+# ---------------------------------------------------------------------------
+# Transition-matrix denominator documentation (reports.py, display-only)
+# ---------------------------------------------------------------------------
+
+class TestTransitionRowSummary:
+    def _dummy_manifest(self):
+        return service.build_run_manifest(
+            config=_dummy_config(), row_count=1, generated_at=datetime.now(timezone.utc), source_description="test",
+        )
+
+    def test_expanded_destination_labels_exceed_episode_count_on_a_multi_label_tie(self):
+        # 3 non-censored transitions from "a": one single-label event, and
+        # TWO different source episodes both pointing at the SAME multi-label
+        # event (T2) - proves distinct-event dedup and label expansion both
+        # work: 3 episodes -> 2 distinct events -> 5 expanded labels
+        # (1 + 2 + 2), since the multi-label event is counted once per label
+        # for EACH source episode that names it as "next".
+        transitions = (
+            EpisodeTransition("a", _iso(0), _iso(0), "T1", ("b",), 5.0, False, None),
+            EpisodeTransition("a", _iso(1), _iso(1), "T2", ("b", "c"), 5.0, False, None),
+            EpisodeTransition("a", _iso(2), _iso(2), "T2", ("b", "c"), 5.0, False, None),
+            EpisodeTransition("a", _iso(3), _iso(3), None, (), None, True, "segment_end"),  # censored, excluded
+        )
+        result = SetupTransitions(
+            manifest=self._dummy_manifest(), transitions=transitions, matrix=(),
+            same_setup_recurrence_rate={}, cross_setup_recurrence_rate={}, by_session={},
+        )
+        summary = reports._transition_row_summary(result, "a")
+        assert summary["non_censored_episode_count"] == 3
+        assert summary["distinct_next_event_count"] == 2
+        assert summary["multi_label_next_event_count"] == 1
+        assert summary["expanded_destination_label_count"] == 5
+
+    def test_all_single_label_events_have_equal_episode_and_label_counts(self):
+        transitions = (
+            EpisodeTransition("a", _iso(0), _iso(0), "T1", ("b",), 5.0, False, None),
+            EpisodeTransition("a", _iso(1), _iso(1), "T2", ("c",), 5.0, False, None),
+        )
+        result = SetupTransitions(
+            manifest=self._dummy_manifest(), transitions=transitions, matrix=(),
+            same_setup_recurrence_rate={}, cross_setup_recurrence_rate={}, by_session={},
+        )
+        summary = reports._transition_row_summary(result, "a")
+        assert summary["non_censored_episode_count"] == summary["expanded_destination_label_count"] == 2
+        assert summary["multi_label_next_event_count"] == 0

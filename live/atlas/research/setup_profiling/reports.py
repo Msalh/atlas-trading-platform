@@ -233,6 +233,31 @@ def render_context_profile_report(context: SetupContextProfile) -> str:
     return "\n".join(lines)
 
 
+def _transition_row_summary(transitions: SetupTransitions, from_setup: str) -> dict:
+    """Display-only aggregation over already-computed SetupTransitions.transitions
+    - no change to how the matrix itself is built. `expanded_destination_label_count`
+    is the row's true normalization denominator: build_transitions() (service.py)
+    increments one matrix cell PER activated setup in a next event, so a
+    multi-label event (e.g. two setups tied on the same bar) contributes one
+    count to EACH destination row-cell from a single source episode. Row
+    probabilities are therefore normalized over expanded destination LABELS,
+    not over source episodes/events - this is why
+    expanded_destination_label_count can exceed non_censored_episode_count
+    whenever multi-label events occur, and it is why probabilities across a
+    row still sum to 1.0 (each is counted against the same denominator it
+    contributed to)."""
+    rows = [t for t in transitions.transitions if t.from_setup == from_setup and not t.censored]
+    distinct_events = {t.to_activation_event_timestamp for t in rows}
+    multi_label_events = {t.to_activation_event_timestamp for t in rows if len(t.to_activated_setups) > 1}
+    expanded_labels = sum(len(t.to_activated_setups) for t in rows)
+    return {
+        "non_censored_episode_count": len(rows),
+        "distinct_next_event_count": len(distinct_events),
+        "multi_label_next_event_count": len(multi_label_events),
+        "expanded_destination_label_count": expanded_labels,
+    }
+
+
 def render_setup_transitions_report(transitions: SetupTransitions) -> str:
     lines = _render_manifest(transitions.manifest, "RE-2 Setup Transitions")
     lines.append("Every transition points to the NEXT ActivationEvent (possibly multi-label, when two or "
@@ -247,6 +272,22 @@ def render_setup_transitions_report(transitions: SetupTransitions) -> str:
 
     lines.append("## Transition matrix (from setup -> to setup, expanding multi-label events)")
     lines.append("")
+    lines.append("**Denominator**: each row's `probability` is `count / expanded_destination_label_count` for "
+                  "that from-setup - normalized over EXPANDED DESTINATION LABELS, not over source episodes. "
+                  "When the next ActivationEvent after an episode is multi-label (two or more setups tied on "
+                  "the same bar), that ONE source episode contributes one count to EACH destination setup's "
+                  "row-cell - so `expanded_destination_label_count` can exceed `non_censored_episode_count` "
+                  "whenever ties occur, and a row's counts still sum to exactly its own "
+                  "`expanded_destination_label_count` (probabilities still sum to 100%).")
+    lines.append("")
+    lines.append("| from setup | non-censored episodes | distinct next events | multi-label next events | "
+                  "expanded destination labels |")
+    lines.append("|---|---|---|---|---|")
+    for name in sorted({m.from_setup for m in transitions.matrix}):
+        s = _transition_row_summary(transitions, name)
+        lines.append(f"| {name} | {s['non_censored_episode_count']} | {s['distinct_next_event_count']} | "
+                      f"{s['multi_label_next_event_count']} | {s['expanded_destination_label_count']} |")
+    lines.append("")
     lines.append("| from | to | count | probability |")
     lines.append("|---|---|---|---|")
     for m in sorted(transitions.matrix, key=lambda m: (m.from_setup, -m.count)):
@@ -254,6 +295,12 @@ def render_setup_transitions_report(transitions: SetupTransitions) -> str:
     lines.append("")
 
     lines.append("## Recurrence rates")
+    lines.append("")
+    lines.append("Same-setup and cross-setup recurrence are NOT mutually exclusive: a multi-label next "
+                  "ActivationEvent can include both the originating setup AND one or more other setups on the "
+                  "same bar, in which case that one transition counts toward BOTH rates independently. Their "
+                  "sum can therefore exceed 100% for a given setup - this is expected, not a double-counting "
+                  "defect.")
     lines.append("")
     lines.append("| setup | same-setup recurrence | cross-setup recurrence |")
     lines.append("|---|---|---|")
