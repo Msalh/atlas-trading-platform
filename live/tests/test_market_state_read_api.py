@@ -30,6 +30,20 @@ class TestGetLatest:
         assert body["data"]["event_id"] == "e-read-1"
         assert body["data"]["close"] == 20125.75
 
+    def test_vwap_round_trips_at_full_precision(self, client):
+        # Sprint 31 Task 2 - proves the vwap fix (Sprint 26) holds through the
+        # real HTTP ingest -> read round trip, not just at the translator/
+        # service unit level: a genuinely high-precision analytical vwap must
+        # come back byte-identical, never tick-rounded, never truncated by
+        # JSON serialization.
+        client.post("/api/v1/market-state", json=market_state_payload(
+            event_id="e-vwap-precision", vwap=28849.3104756607,
+        ))
+        resp = client.get(
+            "/api/v1/market-state/latest", params={"symbol": "MNQU6", "timeframe": "5m"}
+        )
+        assert resp.json()["data"]["vwap"] == 28849.3104756607
+
     def test_returns_the_actual_latest_of_several(self, client):
         client.post("/api/v1/market-state", json=market_state_payload(
             event_id="e-early", timestamp="2026-07-18T13:35:00Z",
