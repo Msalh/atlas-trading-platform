@@ -228,6 +228,46 @@ class TestDryRunPerformsNoWrites:
         # AttributeError on None immediately.
 
 
+class TestWindowsEventLoopFix:
+    """Sprint 31 (post Task 8). psycopg's async pool cannot run under
+    Windows' default ProactorEventLoop - --apply failed at pool-connect
+    time with 'Psycopg cannot use the ProactorEventLoop to run in async
+    mode.' _run_import() returns a coroutine OBJECT without executing
+    anything until awaited, so these tests fake asyncio.run() itself and
+    inspect how it was called - no real file, DB, or coroutine execution
+    needed."""
+
+    def _run_main_and_capture_asyncio_run_call(self, monkeypatch, platform):
+        calls = []
+
+        def fake_asyncio_run(coro, **kwargs):
+            calls.append(kwargs)
+            coro.close()  # dispose without awaiting - avoids an "never awaited" warning
+
+        monkeypatch.setattr(importer.sys, "platform", platform)
+        monkeypatch.setattr(importer.asyncio, "run", fake_asyncio_run)
+        monkeypatch.setattr(
+            importer.sys, "argv",
+            ["import_historical_market_state_csv.py", "unused.csv", "--symbol", "MNQ1!", "--timeframe", "5m"],
+        )
+        importer.main()
+        return calls
+
+    def test_windows_uses_a_selector_event_loop_via_loop_factory(self, monkeypatch):
+        calls = self._run_main_and_capture_asyncio_run_call(monkeypatch, "win32")
+        assert len(calls) == 1
+        assert "loop_factory" in calls[0]
+        loop = calls[0]["loop_factory"]()
+        try:
+            assert isinstance(loop, importer.asyncio.SelectorEventLoop)
+        finally:
+            loop.close()
+
+    def test_non_windows_uses_the_default_loop_unchanged(self, monkeypatch):
+        calls = self._run_main_and_capture_asyncio_run_call(monkeypatch, "linux")
+        assert calls == [{}]  # no loop_factory - default asyncio.run() behavior, untouched
+
+
 class TestCertifiedInvocation:
     """Sprint 31 Task 6 - the exact invocation Task 1/3 certified:
     --symbol MNQ1! --timeframe 5m --assume-bar-open-time [--apply]. No new

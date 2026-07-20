@@ -69,6 +69,7 @@ import asyncio
 import csv
 import json
 import os
+import selectors
 import sys
 from datetime import date, datetime, timezone
 from typing import Any, Optional
@@ -528,8 +529,26 @@ def main() -> None:
     if not args.symbol or not args.timeframe:
         parser.error("--symbol and --timeframe are required outside --inspect mode")
 
+    coro = _run_import(args.csv_path, args.symbol, args.timeframe, args.apply, args.assume_bar_open_time)
     try:
-        asyncio.run(_run_import(args.csv_path, args.symbol, args.timeframe, args.apply, args.assume_bar_open_time))
+        if sys.platform == "win32":
+            # Windows' default event loop (ProactorEventLoop, since Python
+            # 3.8) cannot run psycopg's async connection pool - it lacks the
+            # socket operations psycopg's async driver needs, and fails at
+            # pool-connect time with "Psycopg cannot use the
+            # 'ProactorEventLoop' to run in async mode." asyncio.run()'s own
+            # loop_factory parameter (added 3.12) is the current, non-
+            # deprecated way to select a different loop - the old
+            # WindowsSelectorEventLoopPolicy/set_event_loop_policy() API is
+            # being phased out as of Python 3.14, so this uses the
+            # replacement psycopg's own error message recommends, not the
+            # deprecated one. Applied unconditionally on Windows (not only
+            # when --apply is set) since SelectorEventLoop is a fully
+            # general-purpose loop - this changes nothing about dry-run
+            # behavior, which never touches a connection pool at all.
+            asyncio.run(coro, loop_factory=lambda: asyncio.SelectorEventLoop(selectors.SelectSelector()))
+        else:
+            asyncio.run(coro)
     except ImporterInputError as e:
         print(f"ERROR: {e}", file=sys.stderr)
         raise SystemExit(1) from None
