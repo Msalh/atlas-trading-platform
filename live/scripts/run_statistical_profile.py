@@ -33,13 +33,38 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import import_historical_market_state_csv as importer  # noqa: E402
 
-from atlas.core.primitives import Symbol, Timeframe  # noqa: E402
+from atlas.core.primitives import Price, Symbol, Timeframe  # noqa: E402
 from atlas.market_engine.adapters.tradingview.translator import to_canonical  # noqa: E402
 from atlas.market_engine.adapters.tradingview.wire_models import TradingViewMarketStatePayload  # noqa: E402
 from atlas.market_engine.models import MarketState  # noqa: E402
 from atlas.profiling.models import ProfilingRunConfig  # noqa: E402
 from atlas.research.statistical_profiling import reports  # noqa: E402
 from atlas.research.statistical_profiling.service import build_statistical_profile  # noqa: E402
+
+# The same field set scripts/verify_historical_live_equivalence.py already
+# uses for its own real/historical equivalence proof (Sprint 31 Task 3),
+# reused here rather than re-derived - what "identical Market State
+# content" means for conflict detection across overlapping files.
+_CONFLICT_COMPARISON_FIELDS = (
+    "open", "high", "low", "close", "vwap", "atr", "volume", "volume_ratio",
+    "distance_from_vwap_points", "nearest_liquidity_level", "nearest_liquidity_type",
+    "trend_1m", "trend_5m", "trend_15m", "trend_1h",
+)
+
+
+class ConflictingTimestampError(Exception):
+    """Raised when the same (symbol, timeframe, event_id) appears in more
+    than one input file with genuinely DIFFERENT Market State content - a
+    real data conflict that must never be silently resolved by picking one
+    file's version arbitrarily. An identical-content duplicate (the
+    expected, safe case for two adjacent files' overlap window) is never an
+    error - it is silently deduplicated, first file wins, matching
+    MarketStateRepository.ingest()'s own real behavior exactly."""
+
+
+def _field_value(state: MarketState, field: str):
+    value = getattr(state, field)
+    return value.value if isinstance(value, Price) else value
 
 REPORT_WRITERS = {
     "RE1_Fact_Profile.md": reports.render_fact_profile_report,
@@ -78,27 +103,68 @@ def load_states_from_csv(
 
 def load_and_merge_states(
     csv_paths: list[str], symbol: str, timeframe: str, cadence_minutes: int | None = None,
-) -> tuple[list[MarketState], list[tuple[str, int, int]]]:
+) -> tuple[list[MarketState], list[tuple[str, int, int]], dict]:
     """Loads each CSV in the given order and merges them, keeping the FIRST
     occurrence of any (symbol, timeframe, event_id) - matching
     MarketStateRepository.ingest()'s own real first-insert-wins dedup
     semantics exactly (UNIQUE(symbol, timeframe, event_id), Sprint 3),
-    never a second, independently-invented dedup rule. Returns (merged
-    states, per-file (path, rows_loaded, new_rows_after_dedup) counts) -
-    the counts alone are enough to predict Phase B's real Inserted/
-    Duplicate split before ever touching a database."""
+    never a second, independently-invented dedup rule.
+
+    Every timestamp seen more than once is compared field-by-field
+    (_CONFLICT_COMPARISON_FIELDS) against the first-seen version. Identical
+    content is a safe, silent duplicate. Any difference is a genuine
+    conflict - collected, never silently resolved - and raises
+    ConflictingTimestampError once every file has been scanned, so a
+    single run reports every conflict found, not just the first.
+
+    Returns (merged states, per-file (path, rows_loaded, new_rows_after_
+    dedup) counts, stats dict with raw_row_count/unique_row_count/
+    identical_duplicates_removed/conflict_count) - the per-file counts
+    alone are enough to predict Phase B's real Inserted/Duplicate split
+    before ever touching a database."""
     by_event_id: dict[str, MarketState] = {}
     per_file_counts: list[tuple[str, int, int]] = []
+    conflicts: list[tuple[str, str, dict, dict]] = []
+    raw_row_count = 0
+
     for csv_path in csv_paths:
         file_states = load_states_from_csv(csv_path, symbol, timeframe, cadence_minutes)
+        raw_row_count += len(file_states)
         new_count = 0
         for state in file_states:
             event_id = state.envelope.event_id
-            if event_id not in by_event_id:
+            existing = by_event_id.get(event_id)
+            if existing is None:
                 by_event_id[event_id] = state
                 new_count += 1
+                continue
+            existing_values = {f: _field_value(existing, f) for f in _CONFLICT_COMPARISON_FIELDS}
+            new_values = {f: _field_value(state, f) for f in _CONFLICT_COMPARISON_FIELDS}
+            if existing_values != new_values:
+                conflicts.append((csv_path, event_id, existing_values, new_values))
         per_file_counts.append((csv_path, len(file_states), new_count))
-    return list(by_event_id.values()), per_file_counts
+
+    unique_row_count = len(by_event_id)
+    stats = {
+        "raw_row_count": raw_row_count,
+        "unique_row_count": unique_row_count,
+        "identical_duplicates_removed": raw_row_count - unique_row_count - len(conflicts),
+        "conflict_count": len(conflicts),
+    }
+
+    if conflicts:
+        lines = [f"{len(conflicts)} conflicting timestamp(s) found across the input files - refusing to silently pick one:"]
+        for csv_path, event_id, existing_values, new_values in conflicts:
+            diffs = {
+                field: (existing_values[field], new_values[field])
+                for field in _CONFLICT_COMPARISON_FIELDS
+                if existing_values[field] != new_values[field]
+            }
+            lines.append(f"  {event_id} (conflicting version found in {csv_path}): {diffs}")
+        lines.append(f"Stats so far: {stats}")
+        raise ConflictingTimestampError("\n".join(lines))
+
+    return list(by_event_id.values()), per_file_counts, stats
 
 
 def main() -> None:
@@ -129,9 +195,22 @@ def main() -> None:
     timeframe_obj = Timeframe(args.timeframe)
     cadence_minutes = timeframe_obj.duration_minutes if args.assume_bar_open_time else None
 
-    states, per_file_counts = load_and_merge_states(args.csv, args.symbol, args.timeframe, cadence_minutes)
+    try:
+        states, per_file_counts, merge_stats = load_and_merge_states(
+            args.csv, args.symbol, args.timeframe, cadence_minutes,
+        )
+    except ConflictingTimestampError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        raise SystemExit(1) from None
+
     for csv_path, loaded, new_count in per_file_counts:
         print(f"{csv_path}: {loaded} rows loaded, {new_count} new after dedup against prior files")
+    print(
+        f"Merge stats: raw_row_count={merge_stats['raw_row_count']} "
+        f"unique_row_count={merge_stats['unique_row_count']} "
+        f"identical_duplicates_removed={merge_stats['identical_duplicates_removed']} "
+        f"conflict_count={merge_stats['conflict_count']}"
+    )
 
     if not states:
         print("ERROR: no states loaded from CSV - nothing to profile", file=sys.stderr)
