@@ -76,9 +76,40 @@ def load_states_from_csv(
     return states
 
 
+def load_and_merge_states(
+    csv_paths: list[str], symbol: str, timeframe: str, cadence_minutes: int | None = None,
+) -> tuple[list[MarketState], list[tuple[str, int, int]]]:
+    """Loads each CSV in the given order and merges them, keeping the FIRST
+    occurrence of any (symbol, timeframe, event_id) - matching
+    MarketStateRepository.ingest()'s own real first-insert-wins dedup
+    semantics exactly (UNIQUE(symbol, timeframe, event_id), Sprint 3),
+    never a second, independently-invented dedup rule. Returns (merged
+    states, per-file (path, rows_loaded, new_rows_after_dedup) counts) -
+    the counts alone are enough to predict Phase B's real Inserted/
+    Duplicate split before ever touching a database."""
+    by_event_id: dict[str, MarketState] = {}
+    per_file_counts: list[tuple[str, int, int]] = []
+    for csv_path in csv_paths:
+        file_states = load_states_from_csv(csv_path, symbol, timeframe, cadence_minutes)
+        new_count = 0
+        for state in file_states:
+            event_id = state.envelope.event_id
+            if event_id not in by_event_id:
+                by_event_id[event_id] = state
+                new_count += 1
+        per_file_counts.append((csv_path, len(file_states), new_count))
+    return list(by_event_id.values()), per_file_counts
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--csv", required=True, help="Path to a historical export CSV")
+    parser.add_argument(
+        "--csv", required=True, action="append",
+        help="Path to a historical export CSV. Repeatable, in chronological order - when the same "
+             "(symbol, timeframe, event_id) appears in more than one file, the FIRST file given wins "
+             "and later duplicates are dropped, matching MarketStateRepository.ingest()'s own real "
+             "first-insert-wins dedup semantics exactly.",
+    )
     parser.add_argument("--symbol", required=True, help="e.g. MNQ1!")
     parser.add_argument("--timeframe", required=True, help="e.g. 5m")
     parser.add_argument("--out", default="research", help="Output directory for the RE1_*.md reports")
@@ -97,7 +128,11 @@ def main() -> None:
 
     timeframe_obj = Timeframe(args.timeframe)
     cadence_minutes = timeframe_obj.duration_minutes if args.assume_bar_open_time else None
-    states = load_states_from_csv(args.csv, args.symbol, args.timeframe, cadence_minutes)
+
+    states, per_file_counts = load_and_merge_states(args.csv, args.symbol, args.timeframe, cadence_minutes)
+    for csv_path, loaded, new_count in per_file_counts:
+        print(f"{csv_path}: {loaded} rows loaded, {new_count} new after dedup against prior files")
+
     if not states:
         print("ERROR: no states loaded from CSV - nothing to profile", file=sys.stderr)
         raise SystemExit(1)
@@ -109,7 +144,7 @@ def main() -> None:
         limit=len(ordered),
     )
     generated_at = datetime.now(timezone.utc)
-    source_description = f"csv:{args.csv}"
+    source_description = "csv:" + ",".join(args.csv)
 
     profile = build_statistical_profile(ordered, config, generated_at, source_description)
 
