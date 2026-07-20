@@ -70,7 +70,7 @@ describe("fetchDatasetHealth", () => {
         pass_count: 18,
         warning_count: 2,
         fail_count: 0,
-        verdict: "WARNING",
+        verdict: "certified_with_warnings",
         checks: [{ section: "Gap detection", check: "no gap exceeds 1.5x", verdict: "WARNING", detail: "2 gaps found" }],
       },
       known_warnings: [
@@ -93,7 +93,7 @@ describe("fetchDatasetHealth", () => {
   it("parses a well-formed dataset-health response", async () => {
     mockFetchOnce(validBody());
     const result = await fetchDatasetHealth();
-    expect(result.certification.verdict).toBe("WARNING");
+    expect(result.certification.verdict).toBe("certified_with_warnings");
     expect(result.known_warnings[0].source_document).toBe("docs/market_engine/re2-freeze.md");
     expect(result.frozen_version.source_computation_version).toBe("806e4f1ae2386a68207192089ab303d77c05fa66");
   });

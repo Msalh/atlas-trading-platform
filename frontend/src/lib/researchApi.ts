@@ -50,21 +50,29 @@ export interface DatasetIdentity {
   date_range: DateRange;
 }
 
-export type CertificationVerdict = "PASS" | "WARNING" | "FAIL";
+// Per-check verdict (scripts/certify_historical_dataset.py's own PASS/WARNING/FAIL
+// constants) - a DIFFERENT domain from the summary's own aggregate verdict below.
+export type CertificationCheckVerdict = "PASS" | "WARNING" | "FAIL";
 
 export interface CertificationCheckResult {
   section: string;
   check: string;
-  verdict: CertificationVerdict;
+  verdict: CertificationCheckVerdict;
   detail: string;
 }
+
+// The summary's aggregate verdict (atlas/research_export/snapshot_builder.py) -
+// "rejected" whenever any check FAILs, "certified_with_warnings" when only
+// WARNINGs remain, "certified" only when every check PASSes. Not the same
+// three values as an individual check's own verdict above.
+export type CertificationOverallVerdict = "certified" | "certified_with_warnings" | "rejected";
 
 export interface CertificationSummary {
   checks_run: number;
   pass_count: number;
   warning_count: number;
   fail_count: number;
-  verdict: CertificationVerdict;
+  verdict: CertificationOverallVerdict;
   checks: CertificationCheckResult[];
 }
 
