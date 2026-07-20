@@ -65,4 +65,10 @@ Every difference sits in the last one or two significant digits of a ~15-16-digi
 
 This is reported honestly as a FAIL, not softened to a PASS, per instruction. It is not, however, the FAIL described by "the live and historical pipelines assign genuinely different event identities" — identity is conclusively confirmed once the timestamp convention is accounted for (OHLC/Volume/Trend/Liquidity all match exactly). The residual failure is confined to four analytical fields, at a magnitude (~1e-11 to 1e-15 relative) consistent with a benign text-serialization precision difference between TradingView's own CSV-export and live-alert formatting paths — not a data-corruption or mistranslation defect requiring a code fix.
 
-No production code was changed — this is not a translator, wire-model, or Pine defect. No new tolerance was added to the tool without being asked; the strict standard stands as documented, and this finding is reported for a human decision rather than silently accommodated.
+No production code was changed — this is not a translator, wire-model, or Pine defect. No new tolerance was added to the tool without being asked; the strict standard stands as documented, and this finding was reported for a human decision rather than silently accommodated.
+
+## 7. Disposition
+
+Decision: **accepted as a documented caveat, not a blocker** — the same treatment Sprint 31 Task 4's three WARNINGs received. Event identity is confirmed (OHLC/Volume/Trend/Liquidity exact matches); the residual ~1e-11-to-1e-15-relative mismatch on VWAP/ATR/Volume Ratio/Distance From VWAP is explained, quantified, and attributed to a TradingView text-serialization difference between its live-alert and CSV-export codepaths, not a data-identity or translation defect. Task 3 is closed on this basis. The tool's zero-tolerance standard remains unchanged in code — this is a recorded human judgment call about this specific, already-quantified finding, not a relaxation of the comparison itself.
+
+**Task 3 status: CLOSED.**
