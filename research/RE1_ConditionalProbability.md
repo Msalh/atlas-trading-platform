@@ -1,13 +1,11 @@
 # RE-1 Conditional Probability
 
-> **VALIDATION RUN** - this report exists to prove the RE-1 pipeline computes correctly, not to characterize real market behavior. The dataset behind it (1200 bars) is a correctness-validation dataset, not a basis for any market-characteristics or trading conclusion. The same pipeline, unchanged, is designed to be re-run against a much larger historical dataset once one is available.
-
 - **Symbol**: MNQ1!  **Timeframe**: 5m
-- **Requested range**: 2026-07-13T13:05:00+00:00 -> 2026-07-17T21:00:00+00:00
-- **Source**: csv:../data/CME_MINI_MNQ.csv
-- **Row count**: 1200
-- **Generated at**: 2026-07-20T11:44:35.275973+00:00
-- **Code version**: 1a97a859c72e2fbd1eed01bf891bf5c35ddd5f6c
+- **Requested range**: 2025-09-30T15:10:00+00:00 -> 2026-07-20T11:35:00+00:00
+- **Source**: csv:../data/CME_01_10_31_12.csv,../data/CME_01_01_05_04.csv,../data/CME_06_04_20_07.csv
+- **Row count**: 56490
+- **Generated at**: 2026-07-20T12:03:27.987976+00:00
+- **Code version**: faacf83cf2ac43c8ac4182629d75a5540bc7215f
 
 No trading conclusions. No alpha claims. No expectancy. No forward returns.
 This is a statistical characterization of the Market State only.
@@ -18,426 +16,426 @@ P(target = target_value | condition = condition_value), over bars where both fac
 
 | volume_spike = | displacement = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | false | 96.6% | 1043 |
-| false | true | 3.4% | 1043 |
-| true | false | 49.7% | 157 |
-| true | true | 50.3% | 157 |
+| false | false | 96.8% | 48389 |
+| false | true | 3.2% | 48389 |
+| true | false | 46.4% | 8082 |
+| true | true | 53.6% | 8082 |
 
 ## P(rejection | volume_spike)
 
 | volume_spike = | rejection = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | false | 96.8% | 1043 |
-| false | true | 3.2% | 1043 |
-| true | false | 94.3% | 157 |
-| true | true | 5.7% | 157 |
+| false | false | 97.4% | 48389 |
+| false | true | 2.6% | 48389 |
+| true | false | 94.6% | 8082 |
+| true | true | 5.4% | 8082 |
 
 ## P(trend_5m | volume_spike)
 
 | volume_spike = | trend_5m = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | down | 45.6% | 968 |
-| false | flat | 24.0% | 968 |
-| false | up | 30.5% | 968 |
-| true | down | 47.4% | 137 |
-| true | flat | 32.8% | 137 |
-| true | up | 19.7% | 137 |
+| false | down | 32.4% | 44772 |
+| false | flat | 27.0% | 44772 |
+| false | up | 40.5% | 44772 |
+| true | down | 38.4% | 7747 |
+| true | flat | 27.4% | 7747 |
+| true | up | 34.2% | 7747 |
 
 ## P(liquidity_sweep | volume_spike)
 
 | volume_spike = | liquidity_sweep = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | false | 76.5% | 1033 |
-| false | true | 23.5% | 1033 |
-| true | false | 61.8% | 157 |
-| true | true | 38.2% | 157 |
+| false | false | 79.3% | 47998 |
+| false | true | 20.7% | 47998 |
+| true | false | 62.8% | 8057 |
+| true | true | 37.2% | 8057 |
 
 ## P(reclaim | volume_spike)
 
 | volume_spike = | reclaim = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | false | 98.4% | 1033 |
-| false | true | 1.6% | 1033 |
-| true | false | 94.9% | 157 |
-| true | true | 5.1% | 157 |
+| false | false | 97.4% | 47998 |
+| false | true | 2.6% | 47998 |
+| true | false | 94.7% | 8057 |
+| true | true | 5.3% | 8057 |
 
 ## P(vwap_relationship | volume_spike)
 
 | volume_spike = | vwap_relationship = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | extended_above | 31.8% | 1043 |
-| false | extended_below | 46.1% | 1043 |
-| false | within_band | 22.1% | 1043 |
-| true | extended_above | 29.9% | 157 |
-| true | extended_below | 47.8% | 157 |
-| true | within_band | 22.3% | 157 |
+| false | extended_above | 44.2% | 48389 |
+| false | extended_below | 30.0% | 48389 |
+| false | within_band | 25.7% | 48389 |
+| true | extended_above | 43.2% | 8082 |
+| true | extended_below | 36.2% | 8082 |
+| true | within_band | 20.6% | 8082 |
 
 ## P(volume_spike | displacement)
 
 | displacement = | volume_spike = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | false | 92.8% | 1086 |
-| false | true | 7.2% | 1086 |
-| true | false | 30.7% | 114 |
-| true | true | 69.3% | 114 |
+| false | false | 92.6% | 50596 |
+| false | true | 7.4% | 50596 |
+| true | false | 26.2% | 5875 |
+| true | true | 73.8% | 5875 |
 
 ## P(rejection | displacement)
 
 | displacement = | rejection = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | false | 96.4% | 1086 |
-| false | true | 3.6% | 1086 |
-| true | false | 97.4% | 114 |
-| true | true | 2.6% | 114 |
+| false | false | 97.1% | 50602 |
+| false | true | 2.9% | 50602 |
+| true | false | 95.6% | 5875 |
+| true | true | 4.4% | 5875 |
 
 ## P(trend_5m | displacement)
 
 | displacement = | trend_5m = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | down | 45.1% | 1006 |
-| false | flat | 24.5% | 1006 |
-| false | up | 30.4% | 1006 |
-| true | down | 52.5% | 99 |
-| true | flat | 31.3% | 99 |
-| true | up | 16.2% | 99 |
+| false | down | 32.6% | 46972 |
+| false | flat | 26.9% | 46972 |
+| false | up | 40.5% | 46972 |
+| true | down | 39.2% | 5547 |
+| true | flat | 28.4% | 5547 |
+| true | up | 32.4% | 5547 |
 
 ## P(liquidity_sweep | displacement)
 
 | displacement = | liquidity_sweep = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | false | 75.9% | 1077 |
-| false | true | 24.1% | 1077 |
-| true | false | 61.9% | 113 |
-| true | true | 38.1% | 113 |
+| false | false | 78.4% | 50324 |
+| false | true | 21.6% | 50324 |
+| true | false | 64.3% | 5737 |
+| true | true | 35.7% | 5737 |
 
 ## P(reclaim | displacement)
 
 | displacement = | reclaim = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | false | 98.5% | 1077 |
-| false | true | 1.5% | 1077 |
-| true | false | 92.0% | 113 |
-| true | true | 8.0% | 113 |
+| false | false | 97.4% | 50324 |
+| false | true | 2.6% | 50324 |
+| true | false | 93.7% | 5737 |
+| true | true | 6.3% | 5737 |
 
 ## P(vwap_relationship | displacement)
 
 | displacement = | vwap_relationship = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | extended_above | 32.7% | 1086 |
-| false | extended_below | 46.1% | 1086 |
-| false | within_band | 21.2% | 1086 |
-| true | extended_above | 21.1% | 114 |
-| true | extended_below | 48.2% | 114 |
-| true | within_band | 30.7% | 114 |
+| false | extended_above | 44.5% | 50602 |
+| false | extended_below | 30.3% | 50602 |
+| false | within_band | 25.2% | 50602 |
+| true | extended_above | 40.3% | 5875 |
+| true | extended_below | 36.4% | 5875 |
+| true | within_band | 23.3% | 5875 |
 
 ## P(volume_spike | rejection)
 
 | rejection = | volume_spike = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | false | 87.2% | 1158 |
-| false | true | 12.8% | 1158 |
-| true | false | 78.6% | 42 |
-| true | true | 21.4% | 42 |
+| false | false | 86.0% | 54770 |
+| false | true | 14.0% | 54770 |
+| true | false | 74.3% | 1701 |
+| true | true | 25.7% | 1701 |
 
 ## P(displacement | rejection)
 
 | rejection = | displacement = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | false | 90.4% | 1158 |
-| false | true | 9.6% | 1158 |
-| true | false | 92.9% | 42 |
-| true | true | 7.1% | 42 |
+| false | false | 89.7% | 54776 |
+| false | true | 10.3% | 54776 |
+| true | false | 84.8% | 1701 |
+| true | true | 15.2% | 1701 |
 
 ## P(trend_5m | rejection)
 
 | rejection = | trend_5m = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | down | 45.4% | 1072 |
-| false | flat | 25.2% | 1072 |
-| false | up | 29.4% | 1072 |
-| true | down | 57.6% | 33 |
-| true | flat | 21.2% | 33 |
-| true | up | 21.2% | 33 |
+| false | down | 33.2% | 51049 |
+| false | flat | 27.4% | 51049 |
+| false | up | 39.5% | 51049 |
+| true | down | 38.0% | 1470 |
+| true | flat | 18.0% | 1470 |
+| true | up | 44.0% | 1470 |
 
 ## P(liquidity_sweep | rejection)
 
 | rejection = | liquidity_sweep = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | false | 77.1% | 1150 |
-| false | true | 22.9% | 1150 |
-| true | false | 0.0% | 40 |
-| true | true | 100.0% | 40 |
+| false | false | 79.3% | 54439 |
+| false | true | 20.7% | 54439 |
+| true | false | 0.0% | 1633 |
+| true | true | 100.0% | 1633 |
 
 ## P(reclaim | rejection)
 
 | rejection = | reclaim = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | false | 97.9% | 1150 |
-| false | true | 2.1% | 1150 |
-| true | false | 97.5% | 40 |
-| true | true | 2.5% | 40 |
+| false | false | 97.3% | 54439 |
+| false | true | 2.7% | 54439 |
+| true | false | 88.9% | 1633 |
+| true | true | 11.1% | 1633 |
 
 ## P(vwap_relationship | rejection)
 
 | rejection = | vwap_relationship = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | extended_above | 31.6% | 1158 |
-| false | extended_below | 46.0% | 1158 |
-| false | within_band | 22.4% | 1158 |
-| true | extended_above | 31.0% | 42 |
-| true | extended_below | 54.8% | 42 |
-| true | within_band | 14.3% | 42 |
+| false | extended_above | 44.0% | 54776 |
+| false | extended_below | 30.8% | 54776 |
+| false | within_band | 25.2% | 54776 |
+| true | extended_above | 46.7% | 1701 |
+| true | extended_below | 34.9% | 1701 |
+| true | within_band | 18.4% | 1701 |
 
 ## P(volume_spike | trend_5m)
 
 | trend_5m = | volume_spike = | probability | n (condition sample size) |
 |---|---|---|---|
-| down | false | 87.2% | 506 |
-| down | true | 12.8% | 506 |
-| flat | false | 83.8% | 277 |
-| flat | true | 16.2% | 277 |
-| up | false | 91.6% | 322 |
-| up | true | 8.4% | 322 |
+| down | false | 83.0% | 17488 |
+| down | true | 17.0% | 17488 |
+| flat | false | 85.1% | 14227 |
+| flat | true | 14.9% | 14227 |
+| up | false | 87.3% | 20804 |
+| up | true | 12.7% | 20804 |
 
 ## P(displacement | trend_5m)
 
 | trend_5m = | displacement = | probability | n (condition sample size) |
 |---|---|---|---|
-| down | false | 89.7% | 506 |
-| down | true | 10.3% | 506 |
-| flat | false | 88.8% | 277 |
-| flat | true | 11.2% | 277 |
-| up | false | 95.0% | 322 |
-| up | true | 5.0% | 322 |
+| down | false | 87.6% | 17488 |
+| down | true | 12.4% | 17488 |
+| flat | false | 88.9% | 14227 |
+| flat | true | 11.1% | 14227 |
+| up | false | 91.4% | 20804 |
+| up | true | 8.6% | 20804 |
 
 ## P(rejection | trend_5m)
 
 | trend_5m = | rejection = | probability | n (condition sample size) |
 |---|---|---|---|
-| down | false | 96.2% | 506 |
-| down | true | 3.8% | 506 |
-| flat | false | 97.5% | 277 |
-| flat | true | 2.5% | 277 |
-| up | false | 97.8% | 322 |
-| up | true | 2.2% | 322 |
+| down | false | 96.8% | 17488 |
+| down | true | 3.2% | 17488 |
+| flat | false | 98.1% | 14227 |
+| flat | true | 1.9% | 14227 |
+| up | false | 96.9% | 20804 |
+| up | true | 3.1% | 20804 |
 
 ## P(liquidity_sweep | trend_5m)
 
 | trend_5m = | liquidity_sweep = | probability | n (condition sample size) |
 |---|---|---|---|
-| down | false | 69.6% | 506 |
-| down | true | 30.4% | 506 |
-| flat | false | 83.0% | 277 |
-| flat | true | 17.0% | 277 |
-| up | false | 79.8% | 322 |
-| up | true | 20.2% | 322 |
+| down | false | 75.5% | 17488 |
+| down | true | 24.5% | 17488 |
+| flat | false | 85.6% | 14227 |
+| flat | true | 14.4% | 14227 |
+| up | false | 75.2% | 20804 |
+| up | true | 24.8% | 20804 |
 
 ## P(reclaim | trend_5m)
 
 | trend_5m = | reclaim = | probability | n (condition sample size) |
 |---|---|---|---|
-| down | false | 97.2% | 506 |
-| down | true | 2.8% | 506 |
-| flat | false | 98.9% | 277 |
-| flat | true | 1.1% | 277 |
-| up | false | 98.1% | 322 |
-| up | true | 1.9% | 322 |
+| down | false | 96.4% | 17488 |
+| down | true | 3.6% | 17488 |
+| flat | false | 97.0% | 14227 |
+| flat | true | 3.0% | 14227 |
+| up | false | 97.3% | 20804 |
+| up | true | 2.7% | 20804 |
 
 ## P(vwap_relationship | trend_5m)
 
 | trend_5m = | vwap_relationship = | probability | n (condition sample size) |
 |---|---|---|---|
-| down | extended_above | 11.3% | 506 |
-| down | extended_below | 72.9% | 506 |
-| down | within_band | 15.8% | 506 |
-| flat | extended_above | 43.3% | 277 |
-| flat | extended_below | 30.7% | 277 |
-| flat | within_band | 26.0% | 277 |
-| up | extended_above | 61.8% | 322 |
-| up | extended_below | 20.2% | 322 |
-| up | within_band | 18.0% | 322 |
+| down | extended_above | 17.1% | 17488 |
+| down | extended_below | 62.4% | 17488 |
+| down | within_band | 20.5% | 17488 |
+| flat | extended_above | 44.4% | 14227 |
+| flat | extended_below | 27.7% | 14227 |
+| flat | within_band | 27.8% | 14227 |
+| up | extended_above | 72.2% | 20804 |
+| up | extended_below | 10.3% | 20804 |
+| up | within_band | 17.5% | 20804 |
 
 ## P(volume_spike | liquidity_sweep)
 
 | liquidity_sweep = | volume_spike = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | false | 89.1% | 887 |
-| false | true | 10.9% | 887 |
-| true | false | 80.2% | 303 |
-| true | true | 19.8% | 303 |
+| false | false | 88.3% | 43129 |
+| false | true | 11.7% | 43129 |
+| true | false | 76.8% | 12926 |
+| true | true | 23.2% | 12926 |
 
 ## P(displacement | liquidity_sweep)
 
 | liquidity_sweep = | displacement = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | false | 92.1% | 887 |
-| false | true | 7.9% | 887 |
-| true | false | 85.8% | 303 |
-| true | true | 14.2% | 303 |
+| false | false | 91.4% | 43135 |
+| false | true | 8.6% | 43135 |
+| true | false | 84.2% | 12926 |
+| true | true | 15.8% | 12926 |
 
 ## P(rejection | liquidity_sweep)
 
 | liquidity_sweep = | rejection = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | false | 100.0% | 887 |
-| false | true | 0.0% | 887 |
-| true | false | 86.8% | 303 |
-| true | true | 13.2% | 303 |
+| false | false | 100.0% | 43143 |
+| false | true | 0.0% | 43143 |
+| true | false | 87.4% | 12929 |
+| true | true | 12.6% | 12929 |
 
 ## P(trend_5m | liquidity_sweep)
 
 | liquidity_sweep = | trend_5m = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | down | 42.0% | 839 |
-| false | flat | 27.4% | 839 |
-| false | up | 30.6% | 839 |
-| true | down | 57.9% | 266 |
-| true | flat | 17.7% | 266 |
-| true | up | 24.4% | 266 |
+| false | down | 32.2% | 41029 |
+| false | flat | 29.7% | 41029 |
+| false | up | 38.1% | 41029 |
+| true | down | 37.3% | 11490 |
+| true | flat | 17.8% | 11490 |
+| true | up | 44.9% | 11490 |
 
 ## P(reclaim | liquidity_sweep)
 
 | liquidity_sweep = | reclaim = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | false | 100.0% | 887 |
-| false | true | 0.0% | 887 |
-| true | false | 91.7% | 303 |
-| true | true | 8.3% | 303 |
+| false | false | 100.0% | 43143 |
+| false | true | 0.0% | 43143 |
+| true | false | 87.1% | 12929 |
+| true | true | 12.9% | 12929 |
 
 ## P(vwap_relationship | liquidity_sweep)
 
 | liquidity_sweep = | vwap_relationship = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | extended_above | 32.0% | 887 |
-| false | extended_below | 43.6% | 887 |
-| false | within_band | 24.4% | 887 |
-| true | extended_above | 31.4% | 303 |
-| true | extended_below | 55.4% | 303 |
-| true | within_band | 13.2% | 303 |
+| false | extended_above | 43.2% | 43135 |
+| false | extended_below | 30.0% | 43135 |
+| false | within_band | 26.8% | 43135 |
+| true | extended_above | 48.3% | 12926 |
+| true | extended_below | 34.9% | 12926 |
+| true | within_band | 16.9% | 12926 |
 
 ## P(volume_spike | reclaim)
 
 | reclaim = | volume_spike = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | false | 87.2% | 1165 |
-| false | true | 12.8% | 1165 |
-| true | false | 68.0% | 25 |
-| true | true | 32.0% | 25 |
+| false | false | 86.0% | 54390 |
+| false | true | 14.0% | 54390 |
+| true | false | 74.5% | 1665 |
+| true | true | 25.5% | 1665 |
 
 ## P(displacement | reclaim)
 
 | reclaim = | displacement = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | false | 91.1% | 1165 |
-| false | true | 8.9% | 1165 |
-| true | false | 64.0% | 25 |
-| true | true | 36.0% | 25 |
+| false | false | 90.1% | 54396 |
+| false | true | 9.9% | 54396 |
+| true | false | 78.4% | 1665 |
+| true | true | 21.6% | 1665 |
 
 ## P(rejection | reclaim)
 
 | reclaim = | rejection = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | false | 96.7% | 1165 |
-| false | true | 3.3% | 1165 |
-| true | false | 96.0% | 25 |
-| true | true | 4.0% | 25 |
+| false | false | 97.3% | 54407 |
+| false | true | 2.7% | 54407 |
+| true | false | 89.1% | 1665 |
+| true | true | 10.9% | 1665 |
 
 ## P(trend_5m | reclaim)
 
 | reclaim = | trend_5m = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | down | 45.5% | 1082 |
-| false | flat | 25.3% | 1082 |
-| false | up | 29.2% | 1082 |
-| true | down | 60.9% | 23 |
-| true | flat | 13.0% | 23 |
-| true | up | 26.1% | 23 |
+| false | down | 33.1% | 50894 |
+| false | flat | 27.1% | 50894 |
+| false | up | 39.8% | 50894 |
+| true | down | 39.1% | 1625 |
+| true | flat | 26.0% | 1625 |
+| true | up | 34.8% | 1625 |
 
 ## P(liquidity_sweep | reclaim)
 
 | reclaim = | liquidity_sweep = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | false | 76.1% | 1165 |
-| false | true | 23.9% | 1165 |
-| true | false | 0.0% | 25 |
-| true | true | 100.0% | 25 |
+| false | false | 79.3% | 54407 |
+| false | true | 20.7% | 54407 |
+| true | false | 0.0% | 1665 |
+| true | true | 100.0% | 1665 |
 
 ## P(vwap_relationship | reclaim)
 
 | reclaim = | vwap_relationship = | probability | n (condition sample size) |
 |---|---|---|---|
-| false | extended_above | 31.7% | 1165 |
-| false | extended_below | 46.5% | 1165 |
-| false | within_band | 21.8% | 1165 |
-| true | extended_above | 40.0% | 25 |
-| true | extended_below | 52.0% | 25 |
-| true | within_band | 8.0% | 25 |
+| false | extended_above | 44.5% | 54396 |
+| false | extended_below | 31.0% | 54396 |
+| false | within_band | 24.5% | 54396 |
+| true | extended_above | 39.0% | 1665 |
+| true | extended_below | 35.4% | 1665 |
+| true | within_band | 25.6% | 1665 |
 
 ## P(volume_spike | vwap_relationship)
 
 | vwap_relationship = | volume_spike = | probability | n (condition sample size) |
 |---|---|---|---|
-| extended_above | false | 87.6% | 379 |
-| extended_above | true | 12.4% | 379 |
-| extended_below | false | 86.5% | 556 |
-| extended_below | true | 13.5% | 556 |
-| within_band | false | 86.8% | 265 |
-| within_band | true | 13.2% | 265 |
+| extended_above | false | 86.0% | 24892 |
+| extended_above | true | 14.0% | 24892 |
+| extended_below | false | 83.3% | 17465 |
+| extended_below | true | 16.7% | 17465 |
+| within_band | false | 88.2% | 14114 |
+| within_band | true | 11.8% | 14114 |
 
 ## P(displacement | vwap_relationship)
 
 | vwap_relationship = | displacement = | probability | n (condition sample size) |
 |---|---|---|---|
-| extended_above | false | 93.7% | 379 |
-| extended_above | true | 6.3% | 379 |
-| extended_below | false | 90.1% | 556 |
-| extended_below | true | 9.9% | 556 |
-| within_band | false | 86.8% | 265 |
-| within_band | true | 13.2% | 265 |
+| extended_above | false | 90.5% | 24892 |
+| extended_above | true | 9.5% | 24892 |
+| extended_below | false | 87.8% | 17465 |
+| extended_below | true | 12.2% | 17465 |
+| within_band | false | 90.3% | 14120 |
+| within_band | true | 9.7% | 14120 |
 
 ## P(rejection | vwap_relationship)
 
 | vwap_relationship = | rejection = | probability | n (condition sample size) |
 |---|---|---|---|
-| extended_above | false | 96.6% | 379 |
-| extended_above | true | 3.4% | 379 |
-| extended_below | false | 95.9% | 556 |
-| extended_below | true | 4.1% | 556 |
-| within_band | false | 97.7% | 265 |
-| within_band | true | 2.3% | 265 |
+| extended_above | false | 96.8% | 24892 |
+| extended_above | true | 3.2% | 24892 |
+| extended_below | false | 96.6% | 17465 |
+| extended_below | true | 3.4% | 17465 |
+| within_band | false | 97.8% | 14120 |
+| within_band | true | 2.2% | 14120 |
 
 ## P(trend_5m | vwap_relationship)
 
 | vwap_relationship = | trend_5m = | probability | n (condition sample size) |
 |---|---|---|---|
-| extended_above | down | 15.2% | 376 |
-| extended_above | flat | 31.9% | 376 |
-| extended_above | up | 52.9% | 376 |
-| extended_below | down | 71.1% | 519 |
-| extended_below | flat | 16.4% | 519 |
-| extended_below | up | 12.5% | 519 |
-| within_band | down | 38.1% | 210 |
-| within_band | flat | 34.3% | 210 |
-| within_band | up | 27.6% | 210 |
+| extended_above | down | 12.3% | 24332 |
+| extended_above | flat | 26.0% | 24332 |
+| extended_above | up | 61.7% | 24332 |
+| extended_below | down | 64.2% | 16989 |
+| extended_below | flat | 23.2% | 16989 |
+| extended_below | up | 12.6% | 16989 |
+| within_band | down | 32.1% | 11198 |
+| within_band | flat | 35.4% | 11198 |
+| within_band | up | 32.6% | 11198 |
 
 ## P(liquidity_sweep | vwap_relationship)
 
 | vwap_relationship = | liquidity_sweep = | probability | n (condition sample size) |
 |---|---|---|---|
-| extended_above | false | 74.9% | 379 |
-| extended_above | true | 25.1% | 379 |
-| extended_below | false | 69.7% | 555 |
-| extended_below | true | 30.3% | 555 |
-| within_band | false | 84.4% | 256 |
-| within_band | true | 15.6% | 256 |
+| extended_above | false | 74.9% | 24879 |
+| extended_above | true | 25.1% | 24879 |
+| extended_below | false | 74.2% | 17454 |
+| extended_below | true | 25.8% | 17454 |
+| within_band | false | 84.1% | 13728 |
+| within_band | true | 15.9% | 13728 |
 
 ## P(reclaim | vwap_relationship)
 
 | vwap_relationship = | reclaim = | probability | n (condition sample size) |
 |---|---|---|---|
-| extended_above | false | 97.4% | 379 |
-| extended_above | true | 2.6% | 379 |
-| extended_below | false | 97.7% | 555 |
-| extended_below | true | 2.3% | 555 |
-| within_band | false | 99.2% | 256 |
-| within_band | true | 0.8% | 256 |
+| extended_above | false | 97.4% | 24879 |
+| extended_above | true | 2.6% | 24879 |
+| extended_below | false | 96.6% | 17454 |
+| extended_below | true | 3.4% | 17454 |
+| within_band | false | 96.9% | 13728 |
+| within_band | true | 3.1% | 13728 |
