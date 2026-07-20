@@ -47,7 +47,8 @@ from slowapi.middleware import SlowAPIMiddleware
 from atlas.alerting import ClaudeFailureTracker, alert_on_forward_failure
 from atlas.api.security import require_api_key, require_api_key_for_stream
 from atlas.api.v1 import (
-    activity, ai, analytics, health, market_state, risk, rule_engine, status, stats, stream, trades, webhook,
+    activity, ai, analytics, health, market_state, research, risk, rule_engine, status, stats, stream, trades,
+    webhook,
 )
 from atlas.config import settings
 from atlas.db import create_pool
@@ -195,6 +196,10 @@ app.include_router(risk.router, prefix="/api/v1", tags=["v1"], dependencies=[Dep
 app.include_router(analytics.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
 app.include_router(ai.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
 app.include_router(activity.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
+# UI v2: reads only the checked-in research/snapshots/*.json files this
+# router's own docstring describes - no computation on request, same
+# shared-key auth as every other read-only router above.
+app.include_router(research.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
 
 # Legacy, unversioned surface - preserved so the existing TradingView alert keeps
 # working without any change on TradingView's side. The legacy HTML dashboard

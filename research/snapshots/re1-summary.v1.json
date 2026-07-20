@@ -1,0 +1,4877 @@
+{
+  "envelope": {
+    "content_checksum": "6fa39b2d85f8cb25ab3cab03a901087ccef11176e1a55668393d1ddfdbec2cd0",
+    "dataset_identity": {
+      "date_range": {
+        "end": "2026-07-20T11:35:00+00:00",
+        "start": "2025-03-02T23:05:00+00:00"
+      },
+      "row_count": 97858,
+      "symbol": "MNQ1!",
+      "timeframe": "5m"
+    },
+    "exported_at": "2026-07-20T17:56:47.660759+00:00",
+    "schema_version": "1.0",
+    "snapshot_exporter_version": "d1d3ff9a1d8b78743d6fde060666f4e28524096c",
+    "source_computation_version": "a907325fbb357097fb0e8e064d46772e2b719964",
+    "source_freeze_document": "docs/market_engine/re1-phase5-freeze.md",
+    "source_report_versions": {
+      "RE1_ConditionalProbability.md": "a907325fbb357097fb0e8e064d46772e2b719964",
+      "RE1_Fact_Profile.md": "a907325fbb357097fb0e8e064d46772e2b719964",
+      "RE1_Persistence.md": "a907325fbb357097fb0e8e064d46772e2b719964",
+      "RE1_RuleRelationships.md": "a907325fbb357097fb0e8e064d46772e2b719964",
+      "RE1_TimeDistribution.md": "a907325fbb357097fb0e8e064d46772e2b719964"
+    }
+  },
+  "payload": {
+    "conditional_probabilities": [
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 83281,
+        "condition_value": "false",
+        "probability": 0.9692126655539679,
+        "target_fact": "displacement",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 83281,
+        "condition_value": "false",
+        "probability": 0.030787334446032107,
+        "target_fact": "displacement",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 14520,
+        "condition_value": "true",
+        "probability": 0.4637741046831956,
+        "target_fact": "displacement",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 14520,
+        "condition_value": "true",
+        "probability": 0.5362258953168044,
+        "target_fact": "displacement",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 83281,
+        "condition_value": "false",
+        "probability": 0.9758408280400092,
+        "target_fact": "rejection",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 83281,
+        "condition_value": "false",
+        "probability": 0.024159171959990875,
+        "target_fact": "rejection",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 14520,
+        "condition_value": "true",
+        "probability": 0.9453168044077135,
+        "target_fact": "rejection",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 14520,
+        "condition_value": "true",
+        "probability": 0.0546831955922865,
+        "target_fact": "rejection",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 77004,
+        "condition_value": "false",
+        "probability": 0.3237624019531453,
+        "target_fact": "trend_5m",
+        "target_value": "down"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 77004,
+        "condition_value": "false",
+        "probability": 0.2770245701521999,
+        "target_fact": "trend_5m",
+        "target_value": "flat"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 77004,
+        "condition_value": "false",
+        "probability": 0.39921302789465485,
+        "target_fact": "trend_5m",
+        "target_value": "up"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 14033,
+        "condition_value": "true",
+        "probability": 0.37839378607567875,
+        "target_fact": "trend_5m",
+        "target_value": "down"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 14033,
+        "condition_value": "true",
+        "probability": 0.27677617045535524,
+        "target_fact": "trend_5m",
+        "target_value": "flat"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 14033,
+        "condition_value": "true",
+        "probability": 0.344830043468966,
+        "target_fact": "trend_5m",
+        "target_value": "up"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 82608,
+        "condition_value": "false",
+        "probability": 0.8025493898895991,
+        "target_fact": "liquidity_sweep",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 82608,
+        "condition_value": "false",
+        "probability": 0.19745061011040094,
+        "target_fact": "liquidity_sweep",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 14481,
+        "condition_value": "true",
+        "probability": 0.6365582487397279,
+        "target_fact": "liquidity_sweep",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 14481,
+        "condition_value": "true",
+        "probability": 0.36344175126027206,
+        "target_fact": "liquidity_sweep",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 82608,
+        "condition_value": "false",
+        "probability": 0.9735255665310866,
+        "target_fact": "reclaim",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 82608,
+        "condition_value": "false",
+        "probability": 0.026474433468913424,
+        "target_fact": "reclaim",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 14481,
+        "condition_value": "true",
+        "probability": 0.9462053725571439,
+        "target_fact": "reclaim",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 14481,
+        "condition_value": "true",
+        "probability": 0.05379462744285616,
+        "target_fact": "reclaim",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 83281,
+        "condition_value": "false",
+        "probability": 0.43942796075935686,
+        "target_fact": "vwap_relationship",
+        "target_value": "extended_above"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 83281,
+        "condition_value": "false",
+        "probability": 0.2927798657556946,
+        "target_fact": "vwap_relationship",
+        "target_value": "extended_below"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 83281,
+        "condition_value": "false",
+        "probability": 0.26779217348494855,
+        "target_fact": "vwap_relationship",
+        "target_value": "within_band"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 14520,
+        "condition_value": "true",
+        "probability": 0.4318870523415978,
+        "target_fact": "vwap_relationship",
+        "target_value": "extended_above"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 14520,
+        "condition_value": "true",
+        "probability": 0.3578512396694215,
+        "target_fact": "vwap_relationship",
+        "target_value": "extended_below"
+      },
+      {
+        "condition_fact": "volume_spike",
+        "condition_sample_size": 14520,
+        "condition_value": "true",
+        "probability": 0.21026170798898072,
+        "target_fact": "vwap_relationship",
+        "target_value": "within_band"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 87451,
+        "condition_value": "false",
+        "probability": 0.922996878251821,
+        "target_fact": "volume_spike",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 87451,
+        "condition_value": "false",
+        "probability": 0.07700312174817898,
+        "target_fact": "volume_spike",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 10350,
+        "condition_value": "true",
+        "probability": 0.2477294685990338,
+        "target_fact": "volume_spike",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 10350,
+        "condition_value": "true",
+        "probability": 0.7522705314009662,
+        "target_fact": "volume_spike",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 87467,
+        "condition_value": "false",
+        "probability": 0.9727554391942104,
+        "target_fact": "rejection",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 87467,
+        "condition_value": "false",
+        "probability": 0.027244560805789613,
+        "target_fact": "rejection",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 10352,
+        "condition_value": "true",
+        "probability": 0.9590417310664606,
+        "target_fact": "rejection",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 10352,
+        "condition_value": "true",
+        "probability": 0.04095826893353941,
+        "target_fact": "rejection",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 81177,
+        "condition_value": "false",
+        "probability": 0.325005851411114,
+        "target_fact": "trend_5m",
+        "target_value": "down"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 81177,
+        "condition_value": "false",
+        "probability": 0.2758416792933959,
+        "target_fact": "trend_5m",
+        "target_value": "flat"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 81177,
+        "condition_value": "false",
+        "probability": 0.3991524692954901,
+        "target_fact": "trend_5m",
+        "target_value": "up"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 9860,
+        "condition_value": "true",
+        "probability": 0.39127789046653144,
+        "target_fact": "trend_5m",
+        "target_value": "down"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 9860,
+        "condition_value": "true",
+        "probability": 0.28640973630831645,
+        "target_fact": "trend_5m",
+        "target_value": "flat"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 9860,
+        "condition_value": "true",
+        "probability": 0.3223123732251521,
+        "target_fact": "trend_5m",
+        "target_value": "up"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 86981,
+        "condition_value": "false",
+        "probability": 0.7930697508651314,
+        "target_fact": "liquidity_sweep",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 86981,
+        "condition_value": "false",
+        "probability": 0.20693024913486854,
+        "target_fact": "liquidity_sweep",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 10126,
+        "condition_value": "true",
+        "probability": 0.6464546711435908,
+        "target_fact": "liquidity_sweep",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 10126,
+        "condition_value": "true",
+        "probability": 0.35354532885640927,
+        "target_fact": "liquidity_sweep",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 86981,
+        "condition_value": "false",
+        "probability": 0.9735344500523103,
+        "target_fact": "reclaim",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 86981,
+        "condition_value": "false",
+        "probability": 0.026465549947689727,
+        "target_fact": "reclaim",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 10126,
+        "condition_value": "true",
+        "probability": 0.9344262295081968,
+        "target_fact": "reclaim",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 10126,
+        "condition_value": "true",
+        "probability": 0.06557377049180328,
+        "target_fact": "reclaim",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 87467,
+        "condition_value": "false",
+        "probability": 0.44334434701087266,
+        "target_fact": "vwap_relationship",
+        "target_value": "extended_above"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 87467,
+        "condition_value": "false",
+        "probability": 0.29470543176283626,
+        "target_fact": "vwap_relationship",
+        "target_value": "extended_below"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 87467,
+        "condition_value": "false",
+        "probability": 0.2619502212262911,
+        "target_fact": "vwap_relationship",
+        "target_value": "within_band"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 10352,
+        "condition_value": "true",
+        "probability": 0.3949961360123648,
+        "target_fact": "vwap_relationship",
+        "target_value": "extended_above"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 10352,
+        "condition_value": "true",
+        "probability": 0.3678516228748068,
+        "target_fact": "vwap_relationship",
+        "target_value": "extended_below"
+      },
+      {
+        "condition_fact": "displacement",
+        "condition_sample_size": 10352,
+        "condition_value": "true",
+        "probability": 0.23715224111282843,
+        "target_fact": "vwap_relationship",
+        "target_value": "within_band"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 94995,
+        "condition_value": "false",
+        "probability": 0.855508184641297,
+        "target_fact": "volume_spike",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 94995,
+        "condition_value": "false",
+        "probability": 0.1444918153587031,
+        "target_fact": "volume_spike",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 2806,
+        "condition_value": "true",
+        "probability": 0.7170349251603706,
+        "target_fact": "volume_spike",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 2806,
+        "condition_value": "true",
+        "probability": 0.28296507483962935,
+        "target_fact": "volume_spike",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 95012,
+        "condition_value": "false",
+        "probability": 0.8955079358396834,
+        "target_fact": "displacement",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 95012,
+        "condition_value": "false",
+        "probability": 0.10449206416031659,
+        "target_fact": "displacement",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 2807,
+        "condition_value": "true",
+        "probability": 0.8489490559315995,
+        "target_fact": "displacement",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 2807,
+        "condition_value": "true",
+        "probability": 0.15105094406840042,
+        "target_fact": "displacement",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 88609,
+        "condition_value": "false",
+        "probability": 0.33104989335169116,
+        "target_fact": "trend_5m",
+        "target_value": "down"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 88609,
+        "condition_value": "false",
+        "probability": 0.27958785224977145,
+        "target_fact": "trend_5m",
+        "target_value": "flat"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 88609,
+        "condition_value": "false",
+        "probability": 0.3893622543985374,
+        "target_fact": "trend_5m",
+        "target_value": "up"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 2428,
+        "condition_value": "true",
+        "probability": 0.37355848434925865,
+        "target_fact": "trend_5m",
+        "target_value": "down"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 2428,
+        "condition_value": "true",
+        "probability": 0.18204283360790774,
+        "target_fact": "trend_5m",
+        "target_value": "flat"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 2428,
+        "condition_value": "true",
+        "probability": 0.4443986820428336,
+        "target_fact": "trend_5m",
+        "target_value": "up"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 94425,
+        "condition_value": "false",
+        "probability": 0.8000529520783691,
+        "target_fact": "liquidity_sweep",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 94425,
+        "condition_value": "false",
+        "probability": 0.19994704792163093,
+        "target_fact": "liquidity_sweep",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 2715,
+        "condition_value": "true",
+        "probability": 0.0,
+        "target_fact": "liquidity_sweep",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 2715,
+        "condition_value": "true",
+        "probability": 1.0,
+        "target_fact": "liquidity_sweep",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 94425,
+        "condition_value": "false",
+        "probability": 0.9720307122054541,
+        "target_fact": "reclaim",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 94425,
+        "condition_value": "false",
+        "probability": 0.027969287794545935,
+        "target_fact": "reclaim",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 2715,
+        "condition_value": "true",
+        "probability": 0.8802946593001841,
+        "target_fact": "reclaim",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 2715,
+        "condition_value": "true",
+        "probability": 0.11970534069981584,
+        "target_fact": "reclaim",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 95012,
+        "condition_value": "false",
+        "probability": 0.43742895634235673,
+        "target_fact": "vwap_relationship",
+        "target_value": "extended_above"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 95012,
+        "condition_value": "false",
+        "probability": 0.3010567086262788,
+        "target_fact": "vwap_relationship",
+        "target_value": "extended_below"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 95012,
+        "condition_value": "false",
+        "probability": 0.26151433503136445,
+        "target_fact": "vwap_relationship",
+        "target_value": "within_band"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 2807,
+        "condition_value": "true",
+        "probability": 0.46526540790879944,
+        "target_fact": "vwap_relationship",
+        "target_value": "extended_above"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 2807,
+        "condition_value": "true",
+        "probability": 0.3494834342714642,
+        "target_fact": "vwap_relationship",
+        "target_value": "extended_below"
+      },
+      {
+        "condition_fact": "rejection",
+        "condition_sample_size": 2807,
+        "condition_value": "true",
+        "probability": 0.18525115781973636,
+        "target_fact": "vwap_relationship",
+        "target_value": "within_band"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 30241,
+        "condition_value": "down",
+        "probability": 0.8244105684335835,
+        "target_fact": "volume_spike",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 30241,
+        "condition_value": "down",
+        "probability": 0.17558943156641646,
+        "target_fact": "volume_spike",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 25216,
+        "condition_value": "flat",
+        "probability": 0.8459708121827412,
+        "target_fact": "volume_spike",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 25216,
+        "condition_value": "flat",
+        "probability": 0.15402918781725888,
+        "target_fact": "volume_spike",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 35580,
+        "condition_value": "up",
+        "probability": 0.8639966273187184,
+        "target_fact": "volume_spike",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 35580,
+        "condition_value": "up",
+        "probability": 0.13600337268128163,
+        "target_fact": "volume_spike",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 30241,
+        "condition_value": "down",
+        "probability": 0.8724248536754737,
+        "target_fact": "displacement",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 30241,
+        "condition_value": "down",
+        "probability": 0.1275751463245263,
+        "target_fact": "displacement",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 25216,
+        "condition_value": "flat",
+        "probability": 0.888007614213198,
+        "target_fact": "displacement",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 25216,
+        "condition_value": "flat",
+        "probability": 0.11199238578680203,
+        "target_fact": "displacement",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 35580,
+        "condition_value": "up",
+        "probability": 0.9106801573917931,
+        "target_fact": "displacement",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 35580,
+        "condition_value": "up",
+        "probability": 0.08931984260820686,
+        "target_fact": "displacement",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 30241,
+        "condition_value": "down",
+        "probability": 0.9700076055685989,
+        "target_fact": "rejection",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 30241,
+        "condition_value": "down",
+        "probability": 0.029992394431401077,
+        "target_fact": "rejection",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 25216,
+        "condition_value": "flat",
+        "probability": 0.9824714467005076,
+        "target_fact": "rejection",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 25216,
+        "condition_value": "flat",
+        "probability": 0.017528553299492385,
+        "target_fact": "rejection",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 35580,
+        "condition_value": "up",
+        "probability": 0.9696739741427769,
+        "target_fact": "rejection",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 35580,
+        "condition_value": "up",
+        "probability": 0.03032602585722316,
+        "target_fact": "rejection",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 30241,
+        "condition_value": "down",
+        "probability": 0.7630700042987997,
+        "target_fact": "liquidity_sweep",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 30241,
+        "condition_value": "down",
+        "probability": 0.23692999570120035,
+        "target_fact": "liquidity_sweep",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 25216,
+        "condition_value": "flat",
+        "probability": 0.8590973984771574,
+        "target_fact": "liquidity_sweep",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 25216,
+        "condition_value": "flat",
+        "probability": 0.14090260152284265,
+        "target_fact": "liquidity_sweep",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 35580,
+        "condition_value": "up",
+        "probability": 0.7614390106801574,
+        "target_fact": "liquidity_sweep",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 35580,
+        "condition_value": "up",
+        "probability": 0.2385609893198426,
+        "target_fact": "liquidity_sweep",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 30241,
+        "condition_value": "down",
+        "probability": 0.9632948645878112,
+        "target_fact": "reclaim",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 30241,
+        "condition_value": "down",
+        "probability": 0.03670513541218875,
+        "target_fact": "reclaim",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 25216,
+        "condition_value": "flat",
+        "probability": 0.9697017766497462,
+        "target_fact": "reclaim",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 25216,
+        "condition_value": "flat",
+        "probability": 0.030298223350253808,
+        "target_fact": "reclaim",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 35580,
+        "condition_value": "up",
+        "probability": 0.9714446318156268,
+        "target_fact": "reclaim",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 35580,
+        "condition_value": "up",
+        "probability": 0.028555368184373243,
+        "target_fact": "reclaim",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 30241,
+        "condition_value": "down",
+        "probability": 0.17003405972024735,
+        "target_fact": "vwap_relationship",
+        "target_value": "extended_above"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 30241,
+        "condition_value": "down",
+        "probability": 0.6103634139082702,
+        "target_fact": "vwap_relationship",
+        "target_value": "extended_below"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 30241,
+        "condition_value": "down",
+        "probability": 0.21960252637148242,
+        "target_fact": "vwap_relationship",
+        "target_value": "within_band"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 25216,
+        "condition_value": "flat",
+        "probability": 0.4380552030456853,
+        "target_fact": "vwap_relationship",
+        "target_value": "extended_above"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 25216,
+        "condition_value": "flat",
+        "probability": 0.27553934010152287,
+        "target_fact": "vwap_relationship",
+        "target_value": "extended_below"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 25216,
+        "condition_value": "flat",
+        "probability": 0.2864054568527919,
+        "target_fact": "vwap_relationship",
+        "target_value": "within_band"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 35580,
+        "condition_value": "up",
+        "probability": 0.7232433951658235,
+        "target_fact": "vwap_relationship",
+        "target_value": "extended_above"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 35580,
+        "condition_value": "up",
+        "probability": 0.09808881394041596,
+        "target_fact": "vwap_relationship",
+        "target_value": "extended_below"
+      },
+      {
+        "condition_fact": "trend_5m",
+        "condition_sample_size": 35580,
+        "condition_value": "up",
+        "probability": 0.17866779089376053,
+        "target_fact": "vwap_relationship",
+        "target_value": "within_band"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 75515,
+        "condition_value": "false",
+        "probability": 0.8779315367807721,
+        "target_fact": "volume_spike",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 75515,
+        "condition_value": "false",
+        "probability": 0.12206846321922797,
+        "target_fact": "volume_spike",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 21574,
+        "condition_value": "true",
+        "probability": 0.7560489478075462,
+        "target_fact": "volume_spike",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 21574,
+        "condition_value": "true",
+        "probability": 0.2439510521924539,
+        "target_fact": "volume_spike",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 75528,
+        "condition_value": "false",
+        "probability": 0.9133301557038449,
+        "target_fact": "displacement",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 75528,
+        "condition_value": "false",
+        "probability": 0.08666984429615507,
+        "target_fact": "displacement",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 21579,
+        "condition_value": "true",
+        "probability": 0.834097965614718,
+        "target_fact": "displacement",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 21579,
+        "condition_value": "true",
+        "probability": 0.16590203438528198,
+        "target_fact": "displacement",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 75545,
+        "condition_value": "false",
+        "probability": 1.0,
+        "target_fact": "rejection",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 75545,
+        "condition_value": "false",
+        "probability": 0.0,
+        "target_fact": "rejection",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 21595,
+        "condition_value": "true",
+        "probability": 0.8742764528826117,
+        "target_fact": "rejection",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 21595,
+        "condition_value": "true",
+        "probability": 0.12572354711738828,
+        "target_fact": "rejection",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 71831,
+        "condition_value": "false",
+        "probability": 0.3212540546560677,
+        "target_fact": "trend_5m",
+        "target_value": "down"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 71831,
+        "condition_value": "false",
+        "probability": 0.30158288204257216,
+        "target_fact": "trend_5m",
+        "target_value": "flat"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 71831,
+        "condition_value": "false",
+        "probability": 0.3771630633013601,
+        "target_fact": "trend_5m",
+        "target_value": "up"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 19206,
+        "condition_value": "true",
+        "probability": 0.3730605019264813,
+        "target_fact": "trend_5m",
+        "target_value": "down"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 19206,
+        "condition_value": "true",
+        "probability": 0.1849942726231386,
+        "target_fact": "trend_5m",
+        "target_value": "flat"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 19206,
+        "condition_value": "true",
+        "probability": 0.44194522545038006,
+        "target_fact": "trend_5m",
+        "target_value": "up"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 75545,
+        "condition_value": "false",
+        "probability": 1.0,
+        "target_fact": "reclaim",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 75545,
+        "condition_value": "false",
+        "probability": 0.0,
+        "target_fact": "reclaim",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 21595,
+        "condition_value": "true",
+        "probability": 0.8626533919888864,
+        "target_fact": "reclaim",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 21595,
+        "condition_value": "true",
+        "probability": 0.13734660801111367,
+        "target_fact": "reclaim",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 75528,
+        "condition_value": "false",
+        "probability": 0.4324224128799915,
+        "target_fact": "vwap_relationship",
+        "target_value": "extended_above"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 75528,
+        "condition_value": "false",
+        "probability": 0.2912562228577481,
+        "target_fact": "vwap_relationship",
+        "target_value": "extended_below"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 75528,
+        "condition_value": "false",
+        "probability": 0.27632136426226034,
+        "target_fact": "vwap_relationship",
+        "target_value": "within_band"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 21579,
+        "condition_value": "true",
+        "probability": 0.4717549469391538,
+        "target_fact": "vwap_relationship",
+        "target_value": "extended_above"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 21579,
+        "condition_value": "true",
+        "probability": 0.35094304648037444,
+        "target_fact": "vwap_relationship",
+        "target_value": "extended_below"
+      },
+      {
+        "condition_fact": "liquidity_sweep",
+        "condition_sample_size": 21579,
+        "condition_value": "true",
+        "probability": 0.17730200658047177,
+        "target_fact": "vwap_relationship",
+        "target_value": "within_band"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 94123,
+        "condition_value": "false",
+        "probability": 0.8544245296048787,
+        "target_fact": "volume_spike",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 94123,
+        "condition_value": "false",
+        "probability": 0.14557547039512128,
+        "target_fact": "volume_spike",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 2966,
+        "condition_value": "true",
+        "probability": 0.7373567093728928,
+        "target_fact": "volume_spike",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 2966,
+        "condition_value": "true",
+        "probability": 0.26264329062710723,
+        "target_fact": "volume_spike",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 94141,
+        "condition_value": "false",
+        "probability": 0.8994911887487917,
+        "target_fact": "displacement",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 94141,
+        "condition_value": "false",
+        "probability": 0.1005088112512083,
+        "target_fact": "displacement",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 2966,
+        "condition_value": "true",
+        "probability": 0.7761294672960216,
+        "target_fact": "displacement",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 2966,
+        "condition_value": "true",
+        "probability": 0.22387053270397841,
+        "target_fact": "displacement",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 94174,
+        "condition_value": "false",
+        "probability": 0.974621445409561,
+        "target_fact": "rejection",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 94174,
+        "condition_value": "false",
+        "probability": 0.025378554590438973,
+        "target_fact": "rejection",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 2966,
+        "condition_value": "true",
+        "probability": 0.8904248145650708,
+        "target_fact": "rejection",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 2966,
+        "condition_value": "true",
+        "probability": 0.1095751854349292,
+        "target_fact": "rejection",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 88147,
+        "condition_value": "false",
+        "probability": 0.3304820356903808,
+        "target_fact": "trend_5m",
+        "target_value": "down"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 88147,
+        "condition_value": "false",
+        "probability": 0.27740025185201994,
+        "target_fact": "trend_5m",
+        "target_value": "flat"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 88147,
+        "condition_value": "false",
+        "probability": 0.39211771245759924,
+        "target_fact": "trend_5m",
+        "target_value": "up"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 2890,
+        "condition_value": "true",
+        "probability": 0.38408304498269896,
+        "target_fact": "trend_5m",
+        "target_value": "down"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 2890,
+        "condition_value": "true",
+        "probability": 0.2643598615916955,
+        "target_fact": "trend_5m",
+        "target_value": "flat"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 2890,
+        "condition_value": "true",
+        "probability": 0.35155709342560554,
+        "target_fact": "trend_5m",
+        "target_value": "up"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 94174,
+        "condition_value": "false",
+        "probability": 0.8021853165417206,
+        "target_fact": "liquidity_sweep",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 94174,
+        "condition_value": "false",
+        "probability": 0.19781468345827935,
+        "target_fact": "liquidity_sweep",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 2966,
+        "condition_value": "true",
+        "probability": 0.0,
+        "target_fact": "liquidity_sweep",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 2966,
+        "condition_value": "true",
+        "probability": 1.0,
+        "target_fact": "liquidity_sweep",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 94141,
+        "condition_value": "false",
+        "probability": 0.44289948056638445,
+        "target_fact": "vwap_relationship",
+        "target_value": "extended_above"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 94141,
+        "condition_value": "false",
+        "probability": 0.30311978840250264,
+        "target_fact": "vwap_relationship",
+        "target_value": "extended_below"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 94141,
+        "condition_value": "false",
+        "probability": 0.2539807310311129,
+        "target_fact": "vwap_relationship",
+        "target_value": "within_band"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 2966,
+        "condition_value": "true",
+        "probability": 0.3860418071476736,
+        "target_fact": "vwap_relationship",
+        "target_value": "extended_above"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 2966,
+        "condition_value": "true",
+        "probability": 0.34895482130815914,
+        "target_fact": "vwap_relationship",
+        "target_value": "extended_below"
+      },
+      {
+        "condition_fact": "reclaim",
+        "condition_sample_size": 2966,
+        "condition_value": "true",
+        "probability": 0.26500337154416725,
+        "target_fact": "vwap_relationship",
+        "target_value": "within_band"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 42867,
+        "condition_value": "extended_above",
+        "probability": 0.8537103132946089,
+        "target_fact": "volume_spike",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 42867,
+        "condition_value": "extended_above",
+        "probability": 0.14628968670539108,
+        "target_fact": "volume_spike",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 29579,
+        "condition_value": "extended_below",
+        "probability": 0.8243348321444268,
+        "target_fact": "volume_spike",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 29579,
+        "condition_value": "extended_below",
+        "probability": 0.1756651678555732,
+        "target_fact": "volume_spike",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 25355,
+        "condition_value": "within_band",
+        "probability": 0.8795898244922106,
+        "target_fact": "volume_spike",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 25355,
+        "condition_value": "within_band",
+        "probability": 0.12041017550778939,
+        "target_fact": "volume_spike",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 42867,
+        "condition_value": "extended_above",
+        "probability": 0.9046119392539715,
+        "target_fact": "displacement",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 42867,
+        "condition_value": "extended_above",
+        "probability": 0.09538806074602842,
+        "target_fact": "displacement",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 29585,
+        "condition_value": "extended_below",
+        "probability": 0.8712861247253676,
+        "target_fact": "displacement",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 29585,
+        "condition_value": "extended_below",
+        "probability": 0.1287138752746324,
+        "target_fact": "displacement",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 25367,
+        "condition_value": "within_band",
+        "probability": 0.9032207198328537,
+        "target_fact": "displacement",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 25367,
+        "condition_value": "within_band",
+        "probability": 0.09677928016714629,
+        "target_fact": "displacement",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 42867,
+        "condition_value": "extended_above",
+        "probability": 0.9695336739216647,
+        "target_fact": "rejection",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 42867,
+        "condition_value": "extended_above",
+        "probability": 0.030466326078335316,
+        "target_fact": "rejection",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 29585,
+        "condition_value": "extended_below",
+        "probability": 0.9668413047152273,
+        "target_fact": "rejection",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 29585,
+        "condition_value": "extended_below",
+        "probability": 0.033158695284772687,
+        "target_fact": "rejection",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 25367,
+        "condition_value": "within_band",
+        "probability": 0.9795009264004415,
+        "target_fact": "rejection",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 25367,
+        "condition_value": "within_band",
+        "probability": 0.020499073599558482,
+        "target_fact": "rejection",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 41921,
+        "condition_value": "extended_above",
+        "probability": 0.1226592877078314,
+        "target_fact": "trend_5m",
+        "target_value": "down"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 41921,
+        "condition_value": "extended_above",
+        "probability": 0.2634956227189237,
+        "target_fact": "trend_5m",
+        "target_value": "flat"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 41921,
+        "condition_value": "extended_above",
+        "probability": 0.6138450895732449,
+        "target_fact": "trend_5m",
+        "target_value": "up"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 28896,
+        "condition_value": "extended_below",
+        "probability": 0.6387735326688815,
+        "target_fact": "trend_5m",
+        "target_value": "down"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 28896,
+        "condition_value": "extended_below",
+        "probability": 0.2404485049833887,
+        "target_fact": "trend_5m",
+        "target_value": "flat"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 28896,
+        "condition_value": "extended_below",
+        "probability": 0.12077796234772979,
+        "target_fact": "trend_5m",
+        "target_value": "up"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 20220,
+        "condition_value": "within_band",
+        "probability": 0.32843719090009893,
+        "target_fact": "trend_5m",
+        "target_value": "down"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 20220,
+        "condition_value": "within_band",
+        "probability": 0.35717111770524235,
+        "target_fact": "trend_5m",
+        "target_value": "flat"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 20220,
+        "condition_value": "within_band",
+        "probability": 0.3143916913946588,
+        "target_fact": "trend_5m",
+        "target_value": "up"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 42840,
+        "condition_value": "extended_above",
+        "probability": 0.7623716153127917,
+        "target_fact": "liquidity_sweep",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 42840,
+        "condition_value": "extended_above",
+        "probability": 0.2376283846872082,
+        "target_fact": "liquidity_sweep",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 29571,
+        "condition_value": "extended_below",
+        "probability": 0.7439045010314159,
+        "target_fact": "liquidity_sweep",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 29571,
+        "condition_value": "extended_below",
+        "probability": 0.2560954989685841,
+        "target_fact": "liquidity_sweep",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 24696,
+        "condition_value": "within_band",
+        "probability": 0.8450761256883705,
+        "target_fact": "liquidity_sweep",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 24696,
+        "condition_value": "within_band",
+        "probability": 0.1549238743116294,
+        "target_fact": "liquidity_sweep",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 42840,
+        "condition_value": "extended_above",
+        "probability": 0.9732726423902894,
+        "target_fact": "reclaim",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 42840,
+        "condition_value": "extended_above",
+        "probability": 0.02672735760971055,
+        "target_fact": "reclaim",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 29571,
+        "condition_value": "extended_below",
+        "probability": 0.9649994927462717,
+        "target_fact": "reclaim",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 29571,
+        "condition_value": "extended_below",
+        "probability": 0.035000507253728316,
+        "target_fact": "reclaim",
+        "target_value": "true"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 24696,
+        "condition_value": "within_band",
+        "probability": 0.968172983479106,
+        "target_fact": "reclaim",
+        "target_value": "false"
+      },
+      {
+        "condition_fact": "vwap_relationship",
+        "condition_sample_size": 24696,
+        "condition_value": "within_band",
+        "probability": 0.03182701652089407,
+        "target_fact": "reclaim",
+        "target_value": "true"
+      }
+    ],
+    "fact_profiles": {
+      "displacement": {
+        "base": {
+          "computable_count": 97819,
+          "evidence_distributions": {
+            "range_atr_ratio": {
+              "count": 97819,
+              "max": 8.890543089433606,
+              "mean": 0.9871811196618724,
+              "min": 0.11637803995550083,
+              "p50": 0.8899480132861424,
+              "p95": 1.8179804137106552
+            }
+          },
+          "fact_name": "displacement",
+          "firing_rate": 0.10582811110315991,
+          "insufficient_data_count": 39,
+          "session_breakdown": {
+            "by_is_rth": {
+              "false": {
+                "computable_count": 70510,
+                "positive_count": 6826
+              },
+              "true": {
+                "computable_count": 27309,
+                "positive_count": 3526
+              }
+            },
+            "by_session_name": {
+              "OVERNIGHT": {
+                "computable_count": 70510,
+                "positive_count": 6826
+              },
+              "RTH": {
+                "computable_count": 27309,
+                "positive_count": 3526
+              }
+            }
+          },
+          "value_counts": {
+            "false": 87467,
+            "true": 10352
+          },
+          "value_kind": "boolean"
+        },
+        "run_length_stats": [
+          {
+            "length_histogram": {
+              "1": 1120,
+              "10": 262,
+              "11": 308,
+              "12": 255,
+              "13": 202,
+              "14": 125,
+              "15": 150,
+              "16": 127,
+              "17": 119,
+              "18": 105,
+              "19": 74,
+              "2": 684,
+              "20": 82,
+              "21": 93,
+              "22": 88,
+              "23": 111,
+              "24": 83,
+              "25": 89,
+              "26": 46,
+              "27": 47,
+              "28": 51,
+              "29": 42,
+              "3": 562,
+              "30": 48,
+              "31": 48,
+              "32": 47,
+              "33": 35,
+              "34": 40,
+              "35": 36,
+              "36": 26,
+              "37": 21,
+              "38": 35,
+              "39": 16,
+              "4": 399,
+              "40": 23,
+              "41": 15,
+              "42": 22,
+              "43": 19,
+              "44": 16,
+              "45": 10,
+              "46": 14,
+              "47": 16,
+              "48": 13,
+              "49": 12,
+              "5": 429,
+              "50": 12,
+              "51": 6,
+              "52": 12,
+              "53": 12,
+              "54": 12,
+              "55": 8,
+              "56": 8,
+              "57": 7,
+              "58": 11,
+              "59": 11,
+              "6": 322,
+              "60": 8,
+              "61": 5,
+              "62": 9,
+              "63": 12,
+              "64": 9,
+              "65": 9,
+              "66": 4,
+              "67": 2,
+              "68": 7,
+              "69": 3,
+              "7": 305,
+              "70": 1,
+              "71": 7,
+              "72": 2,
+              "76": 3,
+              "77": 1,
+              "78": 2,
+              "79": 3,
+              "8": 264,
+              "81": 1,
+              "83": 1,
+              "84": 2,
+              "89": 1,
+              "9": 251,
+              "93": 1,
+              "95": 1
+            },
+            "max_length": 95,
+            "mean_length": 11.662266666666667,
+            "median_length": 7,
+            "p95_length": 38,
+            "run_count": 7500,
+            "total_bars_in_runs": 87467,
+            "value": "false"
+          },
+          {
+            "length_histogram": {
+              "1": 5623,
+              "10": 1,
+              "2": 1082,
+              "3": 314,
+              "4": 121,
+              "5": 84,
+              "6": 58,
+              "7": 30,
+              "8": 11,
+              "9": 7
+            },
+            "max_length": 10,
+            "mean_length": 1.4120856636202428,
+            "median_length": 1,
+            "p95_length": 3,
+            "run_count": 7331,
+            "total_bars_in_runs": 10352,
+            "value": "true"
+          }
+        ],
+        "transitions": {
+          "counts": {
+            "false": {
+              "false": 79967,
+              "true": 7151
+            },
+            "true": {
+              "false": 7321,
+              "true": 3021
+            }
+          },
+          "probabilities": {
+            "false": {
+              "false": 0.9179159301177713,
+              "true": 0.0820840698822287
+            },
+            "true": {
+              "false": 0.7078901566428157,
+              "true": 0.2921098433571843
+            }
+          }
+        }
+      },
+      "liquidity_sweep": {
+        "base": {
+          "computable_count": 97140,
+          "evidence_distributions": {},
+          "fact_name": "liquidity_sweep",
+          "firing_rate": 0.22230800905908998,
+          "insufficient_data_count": 718,
+          "session_breakdown": {
+            "by_is_rth": {
+              "false": {
+                "computable_count": 69831,
+                "positive_count": 17381
+              },
+              "true": {
+                "computable_count": 27309,
+                "positive_count": 4214
+              }
+            },
+            "by_session_name": {
+              "OVERNIGHT": {
+                "computable_count": 69831,
+                "positive_count": 17381
+              },
+              "RTH": {
+                "computable_count": 27309,
+                "positive_count": 4214
+              }
+            }
+          },
+          "value_counts": {
+            "false": 75545,
+            "true": 21595
+          },
+          "value_kind": "boolean"
+        },
+        "run_length_stats": [
+          {
+            "length_histogram": {
+              "1": 844,
+              "10": 121,
+              "100": 2,
+              "101": 2,
+              "102": 4,
+              "104": 5,
+              "106": 4,
+              "107": 3,
+              "108": 2,
+              "109": 3,
+              "11": 98,
+              "110": 1,
+              "111": 1,
+              "113": 2,
+              "117": 5,
+              "119": 2,
+              "12": 72,
+              "121": 1,
+              "123": 1,
+              "126": 1,
+              "129": 2,
+              "13": 79,
+              "130": 3,
+              "131": 4,
+              "133": 2,
+              "134": 1,
+              "138": 3,
+              "14": 71,
+              "140": 1,
+              "142": 3,
+              "146": 1,
+              "15": 50,
+              "150": 1,
+              "151": 1,
+              "152": 1,
+              "153": 2,
+              "154": 1,
+              "156": 1,
+              "158": 1,
+              "16": 62,
+              "160": 1,
+              "162": 1,
+              "163": 1,
+              "165": 2,
+              "166": 1,
+              "168": 1,
+              "169": 1,
+              "17": 48,
+              "171": 1,
+              "178": 1,
+              "179": 1,
+              "18": 34,
+              "182": 1,
+              "19": 69,
+              "2": 507,
+              "20": 43,
+              "200": 1,
+              "21": 46,
+              "22": 43,
+              "23": 39,
+              "230": 1,
+              "231": 1,
+              "24": 31,
+              "25": 33,
+              "26": 34,
+              "261": 1,
+              "262": 1,
+              "27": 30,
+              "28": 21,
+              "29": 21,
+              "3": 372,
+              "30": 23,
+              "31": 22,
+              "32": 19,
+              "33": 23,
+              "34": 18,
+              "35": 19,
+              "36": 14,
+              "37": 6,
+              "38": 18,
+              "39": 15,
+              "4": 288,
+              "40": 17,
+              "41": 16,
+              "42": 16,
+              "43": 12,
+              "44": 16,
+              "45": 17,
+              "46": 6,
+              "47": 10,
+              "48": 7,
+              "49": 12,
+              "5": 245,
+              "50": 10,
+              "51": 8,
+              "52": 11,
+              "53": 14,
+              "54": 10,
+              "55": 15,
+              "56": 8,
+              "57": 10,
+              "58": 14,
+              "59": 12,
+              "6": 235,
+              "60": 15,
+              "61": 15,
+              "62": 8,
+              "63": 12,
+              "64": 11,
+              "65": 7,
+              "66": 13,
+              "67": 9,
+              "68": 14,
+              "69": 10,
+              "7": 186,
+              "70": 10,
+              "71": 7,
+              "72": 6,
+              "73": 5,
+              "74": 8,
+              "75": 10,
+              "76": 5,
+              "77": 3,
+              "78": 8,
+              "79": 6,
+              "8": 155,
+              "80": 4,
+              "81": 5,
+              "82": 7,
+              "83": 4,
+              "84": 2,
+              "85": 4,
+              "86": 5,
+              "87": 4,
+              "88": 5,
+              "89": 1,
+              "9": 132,
+              "90": 1,
+              "91": 3,
+              "92": 4,
+              "93": 4,
+              "94": 3,
+              "95": 1,
+              "96": 4,
+              "97": 1,
+              "98": 1,
+              "99": 2
+            },
+            "max_length": 262,
+            "mean_length": 15.87746952501051,
+            "median_length": 6,
+            "p95_length": 68,
+            "run_count": 4758,
+            "total_bars_in_runs": 75545,
+            "value": "false"
+          },
+          {
+            "length_histogram": {
+              "1": 661,
+              "10": 86,
+              "11": 73,
+              "12": 57,
+              "13": 27,
+              "14": 27,
+              "15": 23,
+              "16": 14,
+              "17": 7,
+              "18": 9,
+              "19": 8,
+              "2": 332,
+              "20": 3,
+              "21": 1,
+              "22": 2,
+              "23": 3,
+              "24": 1,
+              "25": 2,
+              "27": 1,
+              "29": 1,
+              "3": 1362,
+              "31": 1,
+              "4": 729,
+              "5": 458,
+              "6": 387,
+              "7": 255,
+              "8": 163,
+              "9": 126
+            },
+            "max_length": 31,
+            "mean_length": 4.4812201701597845,
+            "median_length": 4,
+            "p95_length": 11,
+            "run_count": 4819,
+            "total_bars_in_runs": 21595,
+            "value": "true"
+          }
+        ],
+        "transitions": {
+          "counts": {
+            "false": {
+              "false": 70787,
+              "true": 4525
+            },
+            "true": {
+              "false": 4693,
+              "true": 16776
+            }
+          },
+          "probabilities": {
+            "false": {
+              "false": 0.9399166135542809,
+              "true": 0.060083386445719145
+            },
+            "true": {
+              "false": 0.21859425217755835,
+              "true": 0.7814057478224417
+            }
+          }
+        }
+      },
+      "reclaim": {
+        "base": {
+          "computable_count": 97140,
+          "evidence_distributions": {},
+          "fact_name": "reclaim",
+          "firing_rate": 0.03053325097796994,
+          "insufficient_data_count": 718,
+          "session_breakdown": {
+            "by_is_rth": {
+              "false": {
+                "computable_count": 69831,
+                "positive_count": 1133
+              },
+              "true": {
+                "computable_count": 27309,
+                "positive_count": 1833
+              }
+            },
+            "by_session_name": {
+              "OVERNIGHT": {
+                "computable_count": 69831,
+                "positive_count": 1133
+              },
+              "RTH": {
+                "computable_count": 27309,
+                "positive_count": 1833
+              }
+            }
+          },
+          "value_counts": {
+            "false": 94174,
+            "true": 2966
+          },
+          "value_kind": "boolean"
+        },
+        "run_length_stats": [
+          {
+            "length_histogram": {
+              "1": 183,
+              "10": 45,
+              "100": 2,
+              "101": 3,
+              "102": 2,
+              "103": 1,
+              "104": 1,
+              "105": 1,
+              "106": 2,
+              "107": 3,
+              "108": 3,
+              "109": 2,
+              "11": 224,
+              "110": 4,
+              "111": 4,
+              "112": 1,
+              "114": 1,
+              "115": 2,
+              "116": 1,
+              "117": 3,
+              "118": 3,
+              "119": 2,
+              "12": 33,
+              "121": 2,
+              "122": 2,
+              "124": 2,
+              "125": 1,
+              "126": 2,
+              "129": 1,
+              "13": 26,
+              "130": 1,
+              "131": 1,
+              "132": 1,
+              "134": 2,
+              "136": 2,
+              "137": 3,
+              "138": 1,
+              "139": 1,
+              "14": 25,
+              "141": 1,
+              "142": 1,
+              "143": 1,
+              "146": 2,
+              "147": 3,
+              "148": 1,
+              "15": 29,
+              "150": 2,
+              "152": 2,
+              "153": 3,
+              "154": 2,
+              "155": 2,
+              "156": 4,
+              "157": 2,
+              "158": 1,
+              "16": 31,
+              "160": 2,
+              "161": 1,
+              "162": 1,
+              "164": 1,
+              "165": 1,
+              "166": 1,
+              "167": 1,
+              "17": 20,
+              "170": 2,
+              "171": 3,
+              "173": 3,
+              "174": 2,
+              "178": 4,
+              "179": 1,
+              "18": 30,
+              "180": 1,
+              "181": 4,
+              "182": 2,
+              "184": 4,
+              "185": 16,
+              "186": 11,
+              "187": 14,
+              "188": 9,
+              "189": 10,
+              "19": 18,
+              "190": 11,
+              "191": 5,
+              "192": 6,
+              "193": 4,
+              "194": 4,
+              "195": 3,
+              "196": 3,
+              "197": 2,
+              "198": 3,
+              "199": 1,
+              "2": 155,
+              "20": 12,
+              "200": 3,
+              "201": 5,
+              "202": 1,
+              "203": 4,
+              "205": 1,
+              "206": 3,
+              "207": 4,
+              "208": 2,
+              "209": 3,
+              "21": 21,
+              "210": 2,
+              "211": 1,
+              "212": 3,
+              "213": 3,
+              "214": 1,
+              "216": 1,
+              "22": 21,
+              "220": 1,
+              "221": 2,
+              "224": 2,
+              "226": 5,
+              "228": 2,
+              "229": 1,
+              "23": 11,
+              "231": 1,
+              "233": 1,
+              "234": 1,
+              "236": 1,
+              "238": 2,
+              "239": 2,
+              "24": 18,
+              "241": 1,
+              "243": 1,
+              "247": 1,
+              "25": 15,
+              "250": 1,
+              "254": 2,
+              "259": 1,
+              "26": 9,
+              "260": 3,
+              "261": 1,
+              "262": 30,
+              "268": 1,
+              "27": 10,
+              "274": 6,
+              "28": 13,
+              "29": 10,
+              "3": 99,
+              "30": 6,
+              "31": 9,
+              "32": 10,
+              "33": 4,
+              "34": 11,
+              "35": 11,
+              "36": 6,
+              "37": 8,
+              "38": 7,
+              "39": 10,
+              "4": 89,
+              "40": 11,
+              "41": 9,
+              "42": 5,
+              "43": 10,
+              "44": 12,
+              "45": 3,
+              "46": 6,
+              "47": 4,
+              "48": 3,
+              "49": 3,
+              "5": 78,
+              "50": 4,
+              "51": 4,
+              "52": 7,
+              "53": 4,
+              "54": 7,
+              "55": 7,
+              "56": 7,
+              "57": 4,
+              "58": 2,
+              "59": 4,
+              "6": 68,
+              "60": 9,
+              "61": 6,
+              "62": 5,
+              "63": 5,
+              "64": 4,
+              "65": 9,
+              "66": 8,
+              "67": 6,
+              "68": 2,
+              "69": 9,
+              "7": 57,
+              "70": 7,
+              "71": 4,
+              "72": 9,
+              "73": 4,
+              "74": 5,
+              "75": 4,
+              "76": 4,
+              "77": 2,
+              "78": 5,
+              "79": 5,
+              "8": 47,
+              "80": 2,
+              "81": 2,
+              "82": 3,
+              "83": 2,
+              "84": 5,
+              "85": 4,
+              "86": 3,
+              "87": 4,
+              "88": 2,
+              "89": 2,
+              "9": 40,
+              "90": 1,
+              "92": 2,
+              "94": 1,
+              "95": 4,
+              "96": 2,
+              "97": 2,
+              "98": 1,
+              "99": 1
+            },
+            "max_length": 274,
+            "mean_length": 44.379830348727616,
+            "median_length": 11,
+            "p95_length": 199,
+            "run_count": 2122,
+            "total_bars_in_runs": 94174,
+            "value": "false"
+          },
+          {
+            "length_histogram": {
+              "1": 639,
+              "2": 1107,
+              "3": 21,
+              "4": 10,
+              "5": 2
+            },
+            "max_length": 5,
+            "mean_length": 1.6672287802136032,
+            "median_length": 2,
+            "p95_length": 2,
+            "run_count": 1779,
+            "total_bars_in_runs": 2966,
+            "value": "true"
+          }
+        ],
+        "transitions": {
+          "counts": {
+            "false": {
+              "false": 92052,
+              "true": 1769
+            },
+            "true": {
+              "false": 1773,
+              "true": 1187
+            }
+          },
+          "probabilities": {
+            "false": {
+              "false": 0.9811449462273905,
+              "true": 0.018855053772609542
+            },
+            "true": {
+              "false": 0.5989864864864864,
+              "true": 0.4010135135135135
+            }
+          }
+        }
+      },
+      "rejection": {
+        "base": {
+          "computable_count": 97858,
+          "evidence_distributions": {
+            "wick_body_ratio": {
+              "count": 2914,
+              "max": 260.0,
+              "mean": 9.342308840782716,
+              "min": 2.0112359550561796,
+              "p50": 4.352941176470588,
+              "p95": 33.0
+            }
+          },
+          "fact_name": "rejection",
+          "firing_rate": 0.02871507694823111,
+          "insufficient_data_count": 0,
+          "session_breakdown": {
+            "by_is_rth": {
+              "false": {
+                "computable_count": 70549,
+                "positive_count": 2276
+              },
+              "true": {
+                "computable_count": 27309,
+                "positive_count": 534
+              }
+            },
+            "by_session_name": {
+              "OVERNIGHT": {
+                "computable_count": 70549,
+                "positive_count": 2276
+              },
+              "RTH": {
+                "computable_count": 27309,
+                "positive_count": 534
+              }
+            }
+          },
+          "value_counts": {
+            "false": 95048,
+            "true": 2810
+          },
+          "value_kind": "boolean"
+        },
+        "run_length_stats": [
+          {
+            "length_histogram": {
+              "1": 241,
+              "10": 76,
+              "100": 3,
+              "101": 2,
+              "102": 5,
+              "103": 6,
+              "104": 2,
+              "105": 4,
+              "106": 5,
+              "107": 5,
+              "108": 6,
+              "109": 2,
+              "11": 91,
+              "110": 4,
+              "111": 4,
+              "112": 3,
+              "113": 3,
+              "114": 9,
+              "115": 4,
+              "116": 5,
+              "117": 2,
+              "118": 3,
+              "119": 1,
+              "12": 66,
+              "120": 2,
+              "122": 4,
+              "123": 4,
+              "124": 1,
+              "125": 1,
+              "126": 4,
+              "127": 3,
+              "129": 1,
+              "13": 52,
+              "131": 4,
+              "132": 2,
+              "134": 3,
+              "136": 4,
+              "137": 4,
+              "138": 2,
+              "139": 2,
+              "14": 41,
+              "140": 2,
+              "141": 4,
+              "142": 3,
+              "143": 1,
+              "144": 2,
+              "145": 3,
+              "146": 2,
+              "147": 3,
+              "148": 1,
+              "149": 5,
+              "15": 44,
+              "150": 4,
+              "151": 1,
+              "152": 2,
+              "153": 2,
+              "154": 2,
+              "155": 2,
+              "156": 2,
+              "157": 1,
+              "158": 4,
+              "159": 1,
+              "16": 25,
+              "160": 3,
+              "161": 1,
+              "162": 2,
+              "163": 2,
+              "165": 1,
+              "166": 3,
+              "168": 1,
+              "169": 2,
+              "17": 43,
+              "170": 1,
+              "171": 3,
+              "173": 3,
+              "174": 1,
+              "175": 1,
+              "176": 1,
+              "178": 2,
+              "179": 2,
+              "18": 37,
+              "180": 2,
+              "182": 1,
+              "183": 3,
+              "185": 3,
+              "189": 1,
+              "19": 31,
+              "192": 2,
+              "196": 2,
+              "197": 1,
+              "198": 1,
+              "199": 1,
+              "2": 169,
+              "20": 27,
+              "200": 2,
+              "201": 1,
+              "202": 1,
+              "203": 2,
+              "204": 1,
+              "207": 1,
+              "21": 28,
+              "210": 1,
+              "211": 3,
+              "212": 1,
+              "214": 1,
+              "217": 1,
+              "22": 25,
+              "220": 1,
+              "227": 1,
+              "23": 27,
+              "230": 2,
+              "233": 2,
+              "239": 1,
+              "24": 25,
+              "242": 1,
+              "243": 1,
+              "25": 34,
+              "258": 1,
+              "26": 26,
+              "263": 1,
+              "266": 1,
+              "268": 2,
+              "27": 27,
+              "272": 1,
+              "273": 1,
+              "28": 21,
+              "29": 23,
+              "3": 129,
+              "30": 26,
+              "31": 18,
+              "32": 19,
+              "33": 19,
+              "34": 19,
+              "35": 14,
+              "36": 10,
+              "37": 17,
+              "38": 12,
+              "39": 13,
+              "4": 118,
+              "40": 19,
+              "41": 9,
+              "42": 9,
+              "43": 13,
+              "44": 11,
+              "45": 12,
+              "46": 8,
+              "47": 10,
+              "48": 12,
+              "49": 17,
+              "5": 104,
+              "50": 10,
+              "51": 11,
+              "52": 15,
+              "53": 9,
+              "54": 10,
+              "55": 12,
+              "56": 11,
+              "57": 17,
+              "58": 9,
+              "59": 10,
+              "6": 96,
+              "60": 6,
+              "61": 11,
+              "62": 11,
+              "63": 12,
+              "64": 7,
+              "65": 8,
+              "66": 10,
+              "67": 5,
+              "68": 10,
+              "69": 11,
+              "7": 84,
+              "70": 9,
+              "71": 10,
+              "72": 13,
+              "73": 13,
+              "74": 14,
+              "75": 7,
+              "76": 7,
+              "77": 10,
+              "78": 13,
+              "79": 2,
+              "8": 80,
+              "80": 4,
+              "81": 5,
+              "82": 5,
+              "83": 9,
+              "84": 6,
+              "85": 8,
+              "86": 5,
+              "87": 8,
+              "88": 9,
+              "89": 11,
+              "9": 98,
+              "90": 4,
+              "91": 5,
+              "92": 4,
+              "93": 6,
+              "94": 3,
+              "95": 7,
+              "96": 10,
+              "97": 4,
+              "98": 7,
+              "99": 1
+            },
+            "max_length": 273,
+            "mean_length": 33.44405348346235,
+            "median_length": 14,
+            "p95_length": 131,
+            "run_count": 2842,
+            "total_bars_in_runs": 95048,
+            "value": "false"
+          },
+          {
+            "length_histogram": {
+              "1": 2342,
+              "2": 199,
+              "3": 22,
+              "4": 1
+            },
+            "max_length": 4,
+            "mean_length": 1.0959438377535102,
+            "median_length": 1,
+            "p95_length": 2,
+            "run_count": 2564,
+            "total_bars_in_runs": 2810,
+            "value": "true"
+          }
+        ],
+        "transitions": {
+          "counts": {
+            "false": {
+              "false": 92206,
+              "true": 2501
+            },
+            "true": {
+              "false": 2546,
+              "true": 246
+            }
+          },
+          "probabilities": {
+            "false": {
+              "false": 0.9735922371102452,
+              "true": 0.026407762889754716
+            },
+            "true": {
+              "false": 0.91189111747851,
+              "true": 0.08810888252148998
+            }
+          }
+        }
+      },
+      "trend_5m": {
+        "base": {
+          "computable_count": 91037,
+          "evidence_distributions": {
+            "normalized_move": {
+              "count": 91037,
+              "max": 12.491772965148584,
+              "mean": 0.1984850415046665,
+              "min": -10.823328226099406,
+              "p50": 0.22471731006335324,
+              "p95": 4.709600860088042
+            }
+          },
+          "fact_name": "trend_5m",
+          "firing_rate": null,
+          "insufficient_data_count": 6821,
+          "session_breakdown": {
+            "by_is_rth": {
+              "false": {
+                "computable_count": 63735,
+                "positive_count": null
+              },
+              "true": {
+                "computable_count": 27302,
+                "positive_count": null
+              }
+            },
+            "by_session_name": {
+              "OVERNIGHT": {
+                "computable_count": 63735,
+                "positive_count": null
+              },
+              "RTH": {
+                "computable_count": 27302,
+                "positive_count": null
+              }
+            }
+          },
+          "value_counts": {
+            "down": 30241,
+            "flat": 25216,
+            "up": 35580
+          },
+          "value_kind": "enum"
+        },
+        "run_length_stats": [
+          {
+            "length_histogram": {
+              "1": 95,
+              "10": 102,
+              "11": 105,
+              "116": 1,
+              "12": 90,
+              "13": 80,
+              "14": 97,
+              "15": 86,
+              "16": 89,
+              "17": 67,
+              "18": 62,
+              "19": 48,
+              "2": 95,
+              "20": 50,
+              "21": 36,
+              "22": 37,
+              "23": 26,
+              "24": 33,
+              "25": 29,
+              "26": 22,
+              "27": 15,
+              "28": 30,
+              "29": 22,
+              "3": 92,
+              "30": 22,
+              "31": 26,
+              "32": 11,
+              "33": 20,
+              "34": 12,
+              "35": 17,
+              "36": 9,
+              "37": 8,
+              "38": 4,
+              "39": 5,
+              "4": 88,
+              "40": 2,
+              "41": 2,
+              "43": 6,
+              "44": 11,
+              "45": 3,
+              "46": 5,
+              "47": 3,
+              "48": 1,
+              "49": 1,
+              "5": 89,
+              "50": 3,
+              "51": 2,
+              "52": 1,
+              "53": 2,
+              "54": 1,
+              "56": 1,
+              "57": 1,
+              "58": 1,
+              "6": 108,
+              "62": 1,
+              "63": 1,
+              "64": 1,
+              "67": 1,
+              "7": 79,
+              "71": 1,
+              "74": 2,
+              "8": 91,
+              "82": 1,
+              "9": 103,
+              "90": 1
+            },
+            "max_length": 116,
+            "mean_length": 14.026437847866418,
+            "median_length": 12,
+            "p95_length": 34,
+            "run_count": 2156,
+            "total_bars_in_runs": 30241,
+            "value": "down"
+          },
+          {
+            "length_histogram": {
+              "1": 289,
+              "10": 124,
+              "11": 103,
+              "12": 88,
+              "13": 67,
+              "14": 59,
+              "15": 49,
+              "16": 36,
+              "17": 41,
+              "18": 23,
+              "19": 26,
+              "2": 695,
+              "20": 12,
+              "21": 14,
+              "22": 16,
+              "23": 6,
+              "24": 12,
+              "25": 5,
+              "26": 2,
+              "27": 8,
+              "28": 1,
+              "29": 2,
+              "3": 805,
+              "30": 3,
+              "31": 1,
+              "32": 1,
+              "33": 1,
+              "34": 1,
+              "37": 1,
+              "4": 615,
+              "45": 1,
+              "47": 1,
+              "5": 410,
+              "6": 334,
+              "7": 227,
+              "8": 169,
+              "9": 165
+            },
+            "max_length": 47,
+            "mean_length": 5.714026739179697,
+            "median_length": 4,
+            "p95_length": 15,
+            "run_count": 4413,
+            "total_bars_in_runs": 25216,
+            "value": "flat"
+          },
+          {
+            "length_histogram": {
+              "1": 101,
+              "10": 106,
+              "11": 113,
+              "12": 89,
+              "13": 91,
+              "14": 115,
+              "15": 81,
+              "16": 96,
+              "17": 86,
+              "18": 69,
+              "19": 58,
+              "2": 100,
+              "20": 39,
+              "21": 47,
+              "22": 50,
+              "23": 34,
+              "24": 33,
+              "25": 41,
+              "26": 30,
+              "27": 27,
+              "28": 36,
+              "29": 26,
+              "3": 105,
+              "30": 24,
+              "31": 22,
+              "32": 18,
+              "33": 14,
+              "34": 21,
+              "35": 16,
+              "36": 9,
+              "37": 12,
+              "38": 9,
+              "39": 11,
+              "4": 92,
+              "40": 11,
+              "41": 5,
+              "42": 2,
+              "43": 8,
+              "44": 6,
+              "45": 4,
+              "46": 6,
+              "47": 4,
+              "48": 7,
+              "49": 1,
+              "5": 77,
+              "50": 3,
+              "51": 2,
+              "52": 3,
+              "53": 2,
+              "54": 4,
+              "55": 3,
+              "56": 6,
+              "57": 2,
+              "58": 1,
+              "59": 1,
+              "6": 114,
+              "60": 1,
+              "61": 1,
+              "62": 1,
+              "63": 1,
+              "65": 1,
+              "7": 95,
+              "71": 1,
+              "72": 1,
+              "8": 99,
+              "9": 109,
+              "96": 1
+            },
+            "max_length": 96,
+            "mean_length": 14.800332778702163,
+            "median_length": 13,
+            "p95_length": 37,
+            "run_count": 2404,
+            "total_bars_in_runs": 35580,
+            "value": "up"
+          }
+        ],
+        "transitions": {
+          "counts": {
+            "down": {
+              "down": 28085,
+              "flat": 2026,
+              "up": 0
+            },
+            "flat": {
+              "down": 2049,
+              "flat": 20803,
+              "up": 2271
+            },
+            "up": {
+              "down": 0,
+              "flat": 2268,
+              "up": 33176
+            }
+          },
+          "probabilities": {
+            "down": {
+              "down": 0.9327156188768224,
+              "flat": 0.06728438112317757,
+              "up": 0.0
+            },
+            "flat": {
+              "down": 0.08155873104326712,
+              "flat": 0.8280460136130239,
+              "up": 0.09039525534370896
+            },
+            "up": {
+              "down": 0.0,
+              "flat": 0.06398826317571381,
+              "up": 0.9360117368242862
+            }
+          }
+        }
+      },
+      "volume_spike": {
+        "base": {
+          "computable_count": 97801,
+          "evidence_distributions": {
+            "volume_ratio": {
+              "count": 97801,
+              "max": 11.26153259626382,
+              "mean": 1.0465678595333072,
+              "min": 0.04874373459071888,
+              "p50": 0.8861251457442674,
+              "p95": 2.212833764899517
+            }
+          },
+          "fact_name": "volume_spike",
+          "firing_rate": 0.14846473962433923,
+          "insufficient_data_count": 57,
+          "session_breakdown": {
+            "by_is_rth": {
+              "false": {
+                "computable_count": 70492,
+                "positive_count": 10040
+              },
+              "true": {
+                "computable_count": 27309,
+                "positive_count": 4480
+              }
+            },
+            "by_session_name": {
+              "OVERNIGHT": {
+                "computable_count": 70492,
+                "positive_count": 10040
+              },
+              "RTH": {
+                "computable_count": 27309,
+                "positive_count": 4480
+              }
+            }
+          },
+          "value_counts": {
+            "false": 83281,
+            "true": 14520
+          },
+          "value_kind": "boolean"
+        },
+        "run_length_stats": [
+          {
+            "length_histogram": {
+              "1": 1266,
+              "10": 216,
+              "11": 264,
+              "12": 382,
+              "13": 147,
+              "14": 94,
+              "15": 106,
+              "16": 94,
+              "17": 89,
+              "18": 88,
+              "19": 100,
+              "2": 814,
+              "20": 110,
+              "21": 101,
+              "22": 89,
+              "23": 82,
+              "24": 115,
+              "25": 56,
+              "26": 62,
+              "27": 59,
+              "28": 44,
+              "29": 42,
+              "3": 600,
+              "30": 32,
+              "31": 33,
+              "32": 36,
+              "33": 22,
+              "34": 36,
+              "35": 32,
+              "36": 32,
+              "37": 27,
+              "38": 20,
+              "39": 28,
+              "4": 472,
+              "40": 15,
+              "41": 15,
+              "42": 25,
+              "43": 17,
+              "44": 19,
+              "45": 12,
+              "46": 15,
+              "47": 18,
+              "48": 14,
+              "49": 10,
+              "5": 438,
+              "50": 11,
+              "51": 5,
+              "52": 7,
+              "53": 10,
+              "54": 11,
+              "55": 10,
+              "56": 8,
+              "57": 6,
+              "58": 10,
+              "59": 6,
+              "6": 296,
+              "60": 8,
+              "61": 8,
+              "62": 7,
+              "63": 5,
+              "64": 9,
+              "65": 7,
+              "66": 6,
+              "67": 14,
+              "68": 6,
+              "69": 5,
+              "7": 294,
+              "70": 1,
+              "71": 1,
+              "74": 2,
+              "75": 3,
+              "78": 1,
+              "8": 224,
+              "80": 2,
+              "81": 1,
+              "82": 1,
+              "86": 1,
+              "88": 1,
+              "89": 1,
+              "9": 231
+            },
+            "max_length": 89,
+            "mean_length": 10.947942684369659,
+            "median_length": 6,
+            "p95_length": 38,
+            "run_count": 7607,
+            "total_bars_in_runs": 83281,
+            "value": "false"
+          },
+          {
+            "length_histogram": {
+              "1": 4419,
+              "10": 67,
+              "11": 21,
+              "12": 13,
+              "13": 8,
+              "14": 3,
+              "15": 1,
+              "17": 1,
+              "2": 1444,
+              "3": 544,
+              "4": 266,
+              "5": 166,
+              "6": 101,
+              "7": 65,
+              "8": 94,
+              "9": 71
+            },
+            "max_length": 17,
+            "mean_length": 1.9934102141680394,
+            "median_length": 1,
+            "p95_length": 6,
+            "run_count": 7284,
+            "total_bars_in_runs": 14520,
+            "value": "true"
+          }
+        ],
+        "transitions": {
+          "counts": {
+            "false": {
+              "false": 75674,
+              "true": 7250
+            },
+            "true": {
+              "false": 7282,
+              "true": 7236
+            }
+          },
+          "probabilities": {
+            "false": {
+              "false": 0.9125705465245285,
+              "true": 0.08742945347547151
+            },
+            "true": {
+              "false": 0.5015842402534785,
+              "true": 0.4984157597465216
+            }
+          }
+        }
+      },
+      "vwap_relationship": {
+        "base": {
+          "computable_count": 97819,
+          "evidence_distributions": {
+            "normalized_distance": {
+              "count": 97819,
+              "max": 19.926348614881306,
+              "mean": 0.7643963816591809,
+              "min": -15.823732922599682,
+              "p50": 0.5096470208427487,
+              "p95": 6.938289589261515
+            }
+          },
+          "fact_name": "vwap_relationship",
+          "firing_rate": null,
+          "insufficient_data_count": 39,
+          "session_breakdown": {
+            "by_is_rth": {
+              "false": {
+                "computable_count": 70510,
+                "positive_count": null
+              },
+              "true": {
+                "computable_count": 27309,
+                "positive_count": null
+              }
+            },
+            "by_session_name": {
+              "OVERNIGHT": {
+                "computable_count": 70510,
+                "positive_count": null
+              },
+              "RTH": {
+                "computable_count": 27309,
+                "positive_count": null
+              }
+            }
+          },
+          "value_counts": {
+            "extended_above": 42867,
+            "extended_below": 29585,
+            "within_band": 25367
+          },
+          "value_kind": "enum"
+        },
+        "run_length_stats": [
+          {
+            "length_histogram": {
+              "1": 764,
+              "10": 52,
+              "101": 2,
+              "102": 2,
+              "103": 2,
+              "104": 1,
+              "105": 2,
+              "106": 1,
+              "107": 2,
+              "108": 2,
+              "109": 1,
+              "11": 41,
+              "111": 1,
+              "112": 1,
+              "113": 1,
+              "115": 3,
+              "116": 1,
+              "118": 3,
+              "12": 41,
+              "120": 2,
+              "121": 3,
+              "122": 2,
+              "123": 1,
+              "124": 2,
+              "125": 1,
+              "127": 1,
+              "128": 1,
+              "129": 1,
+              "13": 41,
+              "131": 3,
+              "132": 1,
+              "133": 1,
+              "135": 2,
+              "137": 2,
+              "138": 3,
+              "14": 30,
+              "140": 1,
+              "141": 2,
+              "142": 1,
+              "143": 1,
+              "148": 1,
+              "149": 1,
+              "15": 20,
+              "153": 1,
+              "154": 1,
+              "156": 1,
+              "158": 1,
+              "16": 17,
+              "160": 1,
+              "165": 2,
+              "168": 1,
+              "17": 19,
+              "170": 1,
+              "173": 1,
+              "178": 1,
+              "18": 20,
+              "181": 1,
+              "184": 1,
+              "19": 20,
+              "191": 1,
+              "196": 1,
+              "199": 1,
+              "2": 372,
+              "20": 16,
+              "200": 1,
+              "21": 9,
+              "22": 6,
+              "221": 1,
+              "23": 11,
+              "239": 1,
+              "24": 15,
+              "248": 1,
+              "25": 8,
+              "251": 1,
+              "252": 1,
+              "255": 1,
+              "256": 1,
+              "26": 6,
+              "27": 13,
+              "28": 13,
+              "29": 14,
+              "3": 238,
+              "30": 15,
+              "31": 8,
+              "32": 6,
+              "33": 9,
+              "34": 11,
+              "35": 5,
+              "36": 7,
+              "37": 6,
+              "38": 7,
+              "39": 7,
+              "4": 155,
+              "40": 7,
+              "41": 6,
+              "42": 8,
+              "43": 10,
+              "44": 11,
+              "45": 6,
+              "46": 3,
+              "47": 2,
+              "48": 7,
+              "49": 7,
+              "5": 102,
+              "50": 3,
+              "51": 3,
+              "52": 9,
+              "53": 2,
+              "54": 7,
+              "55": 3,
+              "56": 6,
+              "57": 4,
+              "58": 8,
+              "59": 8,
+              "6": 97,
+              "60": 5,
+              "61": 6,
+              "62": 5,
+              "63": 8,
+              "64": 7,
+              "65": 6,
+              "66": 5,
+              "67": 3,
+              "68": 3,
+              "69": 3,
+              "7": 58,
+              "70": 2,
+              "71": 4,
+              "72": 2,
+              "73": 4,
+              "74": 7,
+              "75": 3,
+              "76": 3,
+              "77": 4,
+              "78": 6,
+              "79": 4,
+              "8": 53,
+              "80": 2,
+              "81": 7,
+              "82": 1,
+              "83": 3,
+              "84": 7,
+              "85": 1,
+              "86": 4,
+              "87": 2,
+              "88": 2,
+              "89": 3,
+              "9": 54,
+              "90": 6,
+              "93": 2,
+              "94": 2,
+              "95": 3,
+              "98": 3,
+              "99": 1
+            },
+            "max_length": 256,
+            "mean_length": 15.71947194719472,
+            "median_length": 3,
+            "p95_length": 78,
+            "run_count": 2727,
+            "total_bars_in_runs": 42867,
+            "value": "extended_above"
+          },
+          {
+            "length_histogram": {
+              "1": 831,
+              "10": 36,
+              "101": 1,
+              "105": 2,
+              "108": 1,
+              "11": 38,
+              "110": 1,
+              "111": 2,
+              "112": 1,
+              "115": 1,
+              "116": 1,
+              "117": 1,
+              "119": 1,
+              "12": 35,
+              "124": 1,
+              "125": 1,
+              "126": 1,
+              "127": 1,
+              "129": 1,
+              "13": 38,
+              "134": 1,
+              "135": 2,
+              "14": 25,
+              "140": 1,
+              "143": 1,
+              "149": 1,
+              "15": 25,
+              "150": 1,
+              "151": 1,
+              "152": 1,
+              "153": 1,
+              "155": 1,
+              "158": 2,
+              "16": 18,
+              "165": 1,
+              "17": 19,
+              "171": 1,
+              "18": 21,
+              "181": 1,
+              "19": 17,
+              "2": 427,
+              "20": 12,
+              "208": 1,
+              "21": 10,
+              "22": 16,
+              "224": 1,
+              "23": 9,
+              "24": 10,
+              "25": 14,
+              "26": 12,
+              "27": 14,
+              "28": 11,
+              "29": 6,
+              "3": 238,
+              "30": 12,
+              "31": 7,
+              "32": 6,
+              "33": 9,
+              "34": 4,
+              "35": 6,
+              "36": 4,
+              "37": 5,
+              "38": 3,
+              "39": 5,
+              "4": 170,
+              "40": 4,
+              "41": 8,
+              "42": 2,
+              "43": 7,
+              "44": 5,
+              "45": 6,
+              "46": 2,
+              "47": 4,
+              "48": 8,
+              "49": 2,
+              "5": 106,
+              "50": 5,
+              "51": 2,
+              "52": 2,
+              "53": 6,
+              "54": 6,
+              "55": 4,
+              "56": 2,
+              "57": 4,
+              "58": 4,
+              "59": 1,
+              "6": 100,
+              "60": 3,
+              "61": 5,
+              "62": 3,
+              "63": 3,
+              "64": 6,
+              "65": 1,
+              "66": 5,
+              "67": 2,
+              "68": 1,
+              "69": 1,
+              "7": 62,
+              "70": 3,
+              "71": 2,
+              "72": 2,
+              "73": 3,
+              "74": 4,
+              "75": 2,
+              "76": 4,
+              "78": 2,
+              "79": 2,
+              "8": 65,
+              "81": 3,
+              "82": 2,
+              "83": 2,
+              "84": 2,
+              "85": 1,
+              "86": 5,
+              "87": 2,
+              "88": 3,
+              "89": 2,
+              "9": 43,
+              "90": 3,
+              "91": 3,
+              "93": 1,
+              "97": 2,
+              "98": 1,
+              "99": 1
+            },
+            "max_length": 224,
+            "mean_length": 10.97773654916512,
+            "median_length": 3,
+            "p95_length": 55,
+            "run_count": 2695,
+            "total_bars_in_runs": 29585,
+            "value": "extended_below"
+          },
+          {
+            "length_histogram": {
+              "1": 1597,
+              "10": 120,
+              "11": 94,
+              "12": 83,
+              "13": 79,
+              "14": 59,
+              "15": 40,
+              "16": 41,
+              "17": 28,
+              "18": 38,
+              "19": 26,
+              "2": 901,
+              "20": 24,
+              "21": 10,
+              "22": 17,
+              "23": 13,
+              "24": 13,
+              "25": 7,
+              "26": 4,
+              "27": 4,
+              "28": 7,
+              "29": 1,
+              "3": 569,
+              "30": 4,
+              "31": 3,
+              "32": 2,
+              "33": 1,
+              "36": 2,
+              "4": 431,
+              "42": 1,
+              "45": 1,
+              "5": 333,
+              "58": 1,
+              "6": 271,
+              "7": 216,
+              "8": 187,
+              "9": 159
+            },
+            "max_length": 58,
+            "mean_length": 4.7089289029144235,
+            "median_length": 3,
+            "p95_length": 15,
+            "run_count": 5387,
+            "total_bars_in_runs": 25367,
+            "value": "within_band"
+          }
+        ],
+        "transitions": {
+          "counts": {
+            "extended_above": {
+              "extended_above": 40140,
+              "extended_below": 43,
+              "within_band": 2499
+            },
+            "extended_below": {
+              "extended_above": 23,
+              "extended_below": 26890,
+              "within_band": 2544
+            },
+            "within_band": {
+              "extended_above": 2695,
+              "extended_below": 2646,
+              "within_band": 19980
+            }
+          },
+          "probabilities": {
+            "extended_above": {
+              "extended_above": 0.940443278196898,
+              "extended_below": 0.0010074504474954313,
+              "within_band": 0.05854927135560658
+            },
+            "extended_below": {
+              "extended_above": 0.0007807991309366195,
+              "extended_below": 0.912856027429813,
+              "within_band": 0.08636317343925043
+            },
+            "within_band": {
+              "extended_above": 0.1064333952055606,
+              "extended_below": 0.1044982425654595,
+              "within_band": 0.7890683622289799
+            }
+          }
+        }
+      }
+    },
+    "manifest": {
+      "code_version": "a907325fbb357097fb0e8e064d46772e2b719964",
+      "generated_at": "2026-07-20T12:55:24.093399+00:00",
+      "requested_end": "2026-07-20T11:35:00+00:00",
+      "requested_start": "2025-03-02T23:05:00+00:00",
+      "row_count": 97858,
+      "schema_version": "1.0",
+      "source_description": "csv:C:\\Projects\\Trading\\data\\CME_03_03_25_16_06_25.csv,C:\\Projects\\Trading\\data\\CME_16_06_25_30_09_25.csv,C:\\Projects\\Trading\\data\\CME_01_10_31_12.csv,C:\\Projects\\Trading\\data\\CME_01_01_05_04.csv,C:\\Projects\\Trading\\data\\CME_06_04_20_07.csv",
+      "symbol": "MNQ1!",
+      "timeframe": "5m"
+    },
+    "pairwise_relationships": [
+      {
+        "both_boolean": true,
+        "category_joint_counts": null,
+        "conditional_dependence": 0.603805791776627,
+        "correlation": 0.584214162561846,
+        "fact_a": "volume_spike",
+        "fact_b": "displacement",
+        "jointly_computable_count": 97801,
+        "lift": 5.066997950519689,
+        "p_a_true": 0.14846473962433923,
+        "p_b_true": 0.10582713878181205,
+        "p_both_true": 0.07961063792803755
+      },
+      {
+        "both_boolean": true,
+        "category_joint_counts": null,
+        "conditional_dependence": 0.13450033521529012,
+        "correlation": 0.06501354508744157,
+        "fact_a": "volume_spike",
+        "fact_b": "rejection",
+        "jointly_computable_count": 97801,
+        "lift": 1.905941273029655,
+        "p_a_true": 0.14846473962433923,
+        "p_b_true": 0.028690913180846822,
+        "p_both_true": 0.00811852639543563
+      },
+      {
+        "both_boolean": false,
+        "category_joint_counts": {
+          "false": {
+            "down": 24931,
+            "flat": 21332,
+            "up": 30741
+          },
+          "true": {
+            "down": 5310,
+            "flat": 3884,
+            "up": 4839
+          }
+        },
+        "conditional_dependence": null,
+        "correlation": null,
+        "fact_a": "volume_spike",
+        "fact_b": "trend_5m",
+        "jointly_computable_count": 91037,
+        "lift": null,
+        "p_a_true": null,
+        "p_b_true": null,
+        "p_both_true": null
+      },
+      {
+        "both_boolean": true,
+        "category_joint_counts": null,
+        "conditional_dependence": 0.09479924302766693,
+        "correlation": 0.14223723151821566,
+        "fact_a": "volume_spike",
+        "fact_b": "liquidity_sweep",
+        "jointly_computable_count": 97089,
+        "lift": 1.6355889583808543,
+        "p_a_true": 0.14915180916478696,
+        "p_b_true": 0.22220848911823174,
+        "p_both_true": 0.05420799472648807
+      },
+      {
+        "both_boolean": true,
+        "category_joint_counts": null,
+        "conditional_dependence": 0.11349148146232027,
+        "correlation": 0.05655365202040019,
+        "fact_a": "volume_spike",
+        "fact_b": "reclaim",
+        "jointly_computable_count": 97089,
+        "lift": 1.760912536682219,
+        "p_a_true": 0.14915180916478696,
+        "p_b_true": 0.03054928982685989,
+        "p_both_true": 0.008023566006447692
+      },
+      {
+        "both_boolean": false,
+        "category_joint_counts": {
+          "false": {
+            "extended_above": 36596,
+            "extended_below": 24383,
+            "within_band": 22302
+          },
+          "true": {
+            "extended_above": 6271,
+            "extended_below": 5196,
+            "within_band": 3053
+          }
+        },
+        "conditional_dependence": null,
+        "correlation": null,
+        "fact_a": "volume_spike",
+        "fact_b": "vwap_relationship",
+        "jointly_computable_count": 97801,
+        "lift": null,
+        "p_a_true": null,
+        "p_b_true": null,
+        "p_both_true": null
+      },
+      {
+        "both_boolean": true,
+        "category_joint_counts": null,
+        "conditional_dependence": 0.0452228329652405,
+        "correlation": 0.025268456419306983,
+        "fact_a": "displacement",
+        "fact_b": "rejection",
+        "jointly_computable_count": 97819,
+        "lift": 1.4273234445350524,
+        "p_a_true": 0.10582811110315991,
+        "p_b_true": 0.028695856633169425,
+        "p_both_true": 0.004334536235291712
+      },
+      {
+        "both_boolean": false,
+        "category_joint_counts": {
+          "false": {
+            "down": 26383,
+            "flat": 22392,
+            "up": 32402
+          },
+          "true": {
+            "down": 3858,
+            "flat": 2824,
+            "up": 3178
+          }
+        },
+        "conditional_dependence": null,
+        "correlation": null,
+        "fact_a": "displacement",
+        "fact_b": "trend_5m",
+        "jointly_computable_count": 91037,
+        "lift": null,
+        "p_a_true": null,
+        "p_b_true": null,
+        "p_both_true": null
+      },
+      {
+        "both_boolean": true,
+        "category_joint_counts": null,
+        "conditional_dependence": 0.061625308711540636,
+        "correlation": 0.10778048926605228,
+        "fact_a": "displacement",
+        "fact_b": "liquidity_sweep",
+        "jointly_computable_count": 97107,
+        "lift": 1.590978555505785,
+        "p_a_true": 0.10427672567374134,
+        "p_b_true": 0.22221878958262536,
+        "p_both_true": 0.03686654927039246
+      },
+      {
+        "both_boolean": true,
+        "category_joint_counts": null,
+        "conditional_dependence": 0.11959380703023707,
+        "correlation": 0.06945831418395093,
+        "fact_a": "displacement",
+        "fact_b": "reclaim",
+        "jointly_computable_count": 97107,
+        "lift": 2.146888783259454,
+        "p_a_true": 0.10427672567374134,
+        "p_b_true": 0.03054362713295643,
+        "p_both_true": 0.006837818076966645
+      },
+      {
+        "both_boolean": false,
+        "category_joint_counts": {
+          "false": {
+            "extended_above": 38778,
+            "extended_below": 25777,
+            "within_band": 22912
+          },
+          "true": {
+            "extended_above": 4089,
+            "extended_below": 3808,
+            "within_band": 2455
+          }
+        },
+        "conditional_dependence": null,
+        "correlation": null,
+        "fact_a": "displacement",
+        "fact_b": "vwap_relationship",
+        "jointly_computable_count": 97819,
+        "lift": null,
+        "p_a_true": null,
+        "p_b_true": null,
+        "p_both_true": null
+      },
+      {
+        "both_boolean": false,
+        "category_joint_counts": {
+          "false": {
+            "down": 29334,
+            "flat": 24774,
+            "up": 34501
+          },
+          "true": {
+            "down": 907,
+            "flat": 442,
+            "up": 1079
+          }
+        },
+        "conditional_dependence": null,
+        "correlation": null,
+        "fact_a": "rejection",
+        "fact_b": "trend_5m",
+        "jointly_computable_count": 91037,
+        "lift": null,
+        "p_a_true": null,
+        "p_b_true": null,
+        "p_both_true": null
+      },
+      {
+        "both_boolean": true,
+        "category_joint_counts": null,
+        "conditional_dependence": 0.097774195665875,
+        "correlation": 0.31715216382208467,
+        "fact_a": "rejection",
+        "fact_b": "liquidity_sweep",
+        "jointly_computable_count": 97140,
+        "lift": 4.498263486918268,
+        "p_a_true": 0.02794935145151328,
+        "p_b_true": 0.22230800905908998,
+        "p_both_true": 0.02794935145151328
+      },
+      {
+        "both_boolean": true,
+        "category_joint_counts": null,
+        "conditional_dependence": 0.08162583398341591,
+        "correlation": 0.08788553112768697,
+        "fact_a": "rejection",
+        "fact_b": "reclaim",
+        "jointly_computable_count": 97140,
+        "lift": 3.920491165064097,
+        "p_a_true": 0.02794935145151328,
+        "p_b_true": 0.03053325097796994,
+        "p_both_true": 0.0033456866378422895
+      },
+      {
+        "both_boolean": false,
+        "category_joint_counts": {
+          "false": {
+            "extended_above": 41561,
+            "extended_below": 28604,
+            "within_band": 24847
+          },
+          "true": {
+            "extended_above": 1306,
+            "extended_below": 981,
+            "within_band": 520
+          }
+        },
+        "conditional_dependence": null,
+        "correlation": null,
+        "fact_a": "rejection",
+        "fact_b": "vwap_relationship",
+        "jointly_computable_count": 97819,
+        "lift": null,
+        "p_a_true": null,
+        "p_b_true": null,
+        "p_both_true": null
+      },
+      {
+        "both_boolean": false,
+        "category_joint_counts": {
+          "down": {
+            "false": 23076,
+            "true": 7165
+          },
+          "flat": {
+            "false": 21663,
+            "true": 3553
+          },
+          "up": {
+            "false": 27092,
+            "true": 8488
+          }
+        },
+        "conditional_dependence": null,
+        "correlation": null,
+        "fact_a": "trend_5m",
+        "fact_b": "liquidity_sweep",
+        "jointly_computable_count": 91037,
+        "lift": null,
+        "p_a_true": null,
+        "p_b_true": null,
+        "p_both_true": null
+      },
+      {
+        "both_boolean": false,
+        "category_joint_counts": {
+          "down": {
+            "false": 29131,
+            "true": 1110
+          },
+          "flat": {
+            "false": 24452,
+            "true": 764
+          },
+          "up": {
+            "false": 34564,
+            "true": 1016
+          }
+        },
+        "conditional_dependence": null,
+        "correlation": null,
+        "fact_a": "trend_5m",
+        "fact_b": "reclaim",
+        "jointly_computable_count": 91037,
+        "lift": null,
+        "p_a_true": null,
+        "p_b_true": null,
+        "p_both_true": null
+      },
+      {
+        "both_boolean": false,
+        "category_joint_counts": {
+          "down": {
+            "extended_above": 5142,
+            "extended_below": 18458,
+            "within_band": 6641
+          },
+          "flat": {
+            "extended_above": 11046,
+            "extended_below": 6948,
+            "within_band": 7222
+          },
+          "up": {
+            "extended_above": 25733,
+            "extended_below": 3490,
+            "within_band": 6357
+          }
+        },
+        "conditional_dependence": null,
+        "correlation": null,
+        "fact_a": "trend_5m",
+        "fact_b": "vwap_relationship",
+        "jointly_computable_count": 91037,
+        "lift": null,
+        "p_a_true": null,
+        "p_b_true": null,
+        "p_both_true": null
+      },
+      {
+        "both_boolean": true,
+        "category_joint_counts": null,
+        "conditional_dependence": 0.77769199094091,
+        "correlation": 0.3319298603972333,
+        "fact_a": "liquidity_sweep",
+        "fact_b": "reclaim",
+        "jointly_computable_count": 97140,
+        "lift": 4.498263486918268,
+        "p_a_true": 0.22230800905908998,
+        "p_b_true": 0.03053325097796994,
+        "p_both_true": 0.03053325097796994
+      },
+      {
+        "both_boolean": false,
+        "category_joint_counts": {
+          "false": {
+            "extended_above": 32660,
+            "extended_below": 21998,
+            "within_band": 20870
+          },
+          "true": {
+            "extended_above": 10180,
+            "extended_below": 7573,
+            "within_band": 3826
+          }
+        },
+        "conditional_dependence": null,
+        "correlation": null,
+        "fact_a": "liquidity_sweep",
+        "fact_b": "vwap_relationship",
+        "jointly_computable_count": 97107,
+        "lift": null,
+        "p_a_true": null,
+        "p_b_true": null,
+        "p_both_true": null
+      },
+      {
+        "both_boolean": false,
+        "category_joint_counts": {
+          "false": {
+            "extended_above": 41695,
+            "extended_below": 28536,
+            "within_band": 23910
+          },
+          "true": {
+            "extended_above": 1145,
+            "extended_below": 1035,
+            "within_band": 786
+          }
+        },
+        "conditional_dependence": null,
+        "correlation": null,
+        "fact_a": "reclaim",
+        "fact_b": "vwap_relationship",
+        "jointly_computable_count": 97107,
+        "lift": null,
+        "p_a_true": null,
+        "p_b_true": null,
+        "p_both_true": null
+      }
+    ],
+    "time_distribution": {
+      "by_hour_ct": [
+        {
+          "bar_count": 4284,
+          "boolean_fact_true_rates": {
+            "displacement": 0.12885154061624648,
+            "liquidity_sweep": 0.200046685340803,
+            "reclaim": 0.012138188608776844,
+            "rejection": 0.02404295051353875,
+            "volume_spike": 0.17390289449112978
+          },
+          "bucket_key": "00:00",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 1457,
+              "flat": 1258,
+              "up": 1569
+            },
+            "vwap_relationship": {
+              "extended_above": 1972,
+              "extended_below": 1530,
+              "within_band": 782
+            }
+          }
+        },
+        {
+          "bar_count": 4284,
+          "boolean_fact_true_rates": {
+            "displacement": 0.1400560224089636,
+            "liquidity_sweep": 0.21498599439775912,
+            "reclaim": 0.013071895424836602,
+            "rejection": 0.026143790849673203,
+            "volume_spike": 0.1907096171802054
+          },
+          "bucket_key": "01:00",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 1429,
+              "flat": 1141,
+              "up": 1714
+            },
+            "vwap_relationship": {
+              "extended_above": 2058,
+              "extended_below": 1557,
+              "within_band": 669
+            }
+          }
+        },
+        {
+          "bar_count": 4284,
+          "boolean_fact_true_rates": {
+            "displacement": 0.19397759103641457,
+            "liquidity_sweep": 0.24929971988795518,
+            "reclaim": 0.018207282913165267,
+            "rejection": 0.03338001867413632,
+            "volume_spike": 0.2507002801120448
+          },
+          "bucket_key": "02:00",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 1398,
+              "flat": 1038,
+              "up": 1848
+            },
+            "vwap_relationship": {
+              "extended_above": 2031,
+              "extended_below": 1363,
+              "within_band": 890
+            }
+          }
+        },
+        {
+          "bar_count": 4284,
+          "boolean_fact_true_rates": {
+            "displacement": 0.12581699346405228,
+            "liquidity_sweep": 0.2376283846872082,
+            "reclaim": 0.012138188608776844,
+            "rejection": 0.025210084033613446,
+            "volume_spike": 0.13748832866479926
+          },
+          "bucket_key": "03:00",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 1442,
+              "flat": 1082,
+              "up": 1760
+            },
+            "vwap_relationship": {
+              "extended_above": 2108,
+              "extended_below": 1368,
+              "within_band": 808
+            }
+          }
+        },
+        {
+          "bar_count": 4284,
+          "boolean_fact_true_rates": {
+            "displacement": 0.05205415499533147,
+            "liquidity_sweep": 0.1531279178338002,
+            "reclaim": 0.01750700280112045,
+            "rejection": 0.016339869281045753,
+            "volume_spike": 0.05438842203548086
+          },
+          "bucket_key": "04:00",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 1502,
+              "flat": 1181,
+              "up": 1601
+            },
+            "vwap_relationship": {
+              "extended_above": 2091,
+              "extended_below": 1391,
+              "within_band": 802
+            }
+          }
+        },
+        {
+          "bar_count": 4284,
+          "boolean_fact_true_rates": {
+            "displacement": 0.08053221288515407,
+            "liquidity_sweep": 0.1360877684407096,
+            "reclaim": 0.01353874883286648,
+            "rejection": 0.014705882352941176,
+            "volume_spike": 0.1323529411764706
+          },
+          "bucket_key": "05:00",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 1344,
+              "flat": 1392,
+              "up": 1548
+            },
+            "vwap_relationship": {
+              "extended_above": 2055,
+              "extended_below": 1381,
+              "within_band": 848
+            }
+          }
+        },
+        {
+          "bar_count": 4280,
+          "boolean_fact_true_rates": {
+            "displacement": 0.12710280373831775,
+            "liquidity_sweep": 0.1530373831775701,
+            "reclaim": 0.012383177570093457,
+            "rejection": 0.020560747663551402,
+            "volume_spike": 0.2296728971962617
+          },
+          "bucket_key": "06:00",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 1417,
+              "flat": 1240,
+              "up": 1623
+            },
+            "vwap_relationship": {
+              "extended_above": 2119,
+              "extended_below": 1349,
+              "within_band": 812
+            }
+          }
+        },
+        {
+          "bar_count": 4277,
+          "boolean_fact_true_rates": {
+            "displacement": 0.16436754734627074,
+            "liquidity_sweep": 0.21029239766081873,
+            "reclaim": 0.01801169590643275,
+            "rejection": 0.021744213233574936,
+            "volume_spike": 0.30231470657002574
+          },
+          "bucket_key": "07:00",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 1466,
+              "flat": 1188,
+              "up": 1618
+            },
+            "vwap_relationship": {
+              "extended_above": 2113,
+              "extended_below": 1378,
+              "within_band": 786
+            }
+          }
+        },
+        {
+          "bar_count": 4276,
+          "boolean_fact_true_rates": {
+            "displacement": 0.4020112254443405,
+            "liquidity_sweep": 0.23175865294667913,
+            "reclaim": 0.05519176800748363,
+            "rejection": 0.031805425631431246,
+            "volume_spike": 0.6152946679139383
+          },
+          "bucket_key": "08:00",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 1510,
+              "flat": 1132,
+              "up": 1622
+            },
+            "vwap_relationship": {
+              "extended_above": 1931,
+              "extended_below": 1437,
+              "within_band": 908
+            }
+          }
+        },
+        {
+          "bar_count": 4272,
+          "boolean_fact_true_rates": {
+            "displacement": 0.18281835205992508,
+            "liquidity_sweep": 0.21839887640449437,
+            "reclaim": 0.09129213483146068,
+            "rejection": 0.028792134831460675,
+            "volume_spike": 0.28581460674157305
+          },
+          "bucket_key": "09:00",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 1501,
+              "flat": 978,
+              "up": 1791
+            },
+            "vwap_relationship": {
+              "extended_above": 1750,
+              "extended_below": 1251,
+              "within_band": 1271
+            }
+          }
+        },
+        {
+          "bar_count": 4272,
+          "boolean_fact_true_rates": {
+            "displacement": 0.04915730337078652,
+            "liquidity_sweep": 0.161750936329588,
+            "reclaim": 0.07373595505617977,
+            "rejection": 0.01802434456928839,
+            "volume_spike": 0.014747191011235955
+          },
+          "bucket_key": "10:00",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 1454,
+              "flat": 990,
+              "up": 1828
+            },
+            "vwap_relationship": {
+              "extended_above": 1821,
+              "extended_below": 1324,
+              "within_band": 1127
+            }
+          }
+        },
+        {
+          "bar_count": 4272,
+          "boolean_fact_true_rates": {
+            "displacement": 0.03698501872659176,
+            "liquidity_sweep": 0.125,
+            "reclaim": 0.0475187265917603,
+            "rejection": 0.01849250936329588,
+            "volume_spike": 0.02457865168539326
+          },
+          "bucket_key": "11:00",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 1309,
+              "flat": 1147,
+              "up": 1816
+            },
+            "vwap_relationship": {
+              "extended_above": 1989,
+              "extended_below": 1315,
+              "within_band": 968
+            }
+          }
+        },
+        {
+          "bar_count": 4138,
+          "boolean_fact_true_rates": {
+            "displacement": 0.05292411793136781,
+            "liquidity_sweep": 0.1123731271145481,
+            "reclaim": 0.05751570807153214,
+            "rejection": 0.012566457225712905,
+            "volume_spike": 0.05219913001449976
+          },
+          "bucket_key": "12:00",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 1380,
+              "flat": 1153,
+              "up": 1605
+            },
+            "vwap_relationship": {
+              "extended_above": 2005,
+              "extended_below": 1442,
+              "within_band": 691
+            }
+          }
+        },
+        {
+          "bar_count": 4116,
+          "boolean_fact_true_rates": {
+            "displacement": 0.05879494655004859,
+            "liquidity_sweep": 0.10811467444120505,
+            "reclaim": 0.051263362487852286,
+            "rejection": 0.01141885325558795,
+            "volume_spike": 0.07434402332361516
+          },
+          "bucket_key": "13:00",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 1220,
+              "flat": 1274,
+              "up": 1622
+            },
+            "vwap_relationship": {
+              "extended_above": 2086,
+              "extended_below": 1408,
+              "within_band": 622
+            }
+          }
+        },
+        {
+          "bar_count": 4116,
+          "boolean_fact_true_rates": {
+            "displacement": 0.1032555879494655,
+            "liquidity_sweep": 0.13119533527696792,
+            "reclaim": 0.0619533527696793,
+            "rejection": 0.015306122448979591,
+            "volume_spike": 0.1326530612244898
+          },
+          "bucket_key": "14:00",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 1346,
+              "flat": 1334,
+              "up": 1436
+            },
+            "vwap_relationship": {
+              "extended_above": 2089,
+              "extended_below": 1419,
+              "within_band": 608
+            }
+          }
+        },
+        {
+          "bar_count": 4116,
+          "boolean_fact_true_rates": {
+            "displacement": 0.061224489795918366,
+            "liquidity_sweep": 0.6098153547133139,
+            "reclaim": 0.0672983479105928,
+            "rejection": 0.0923226433430515,
+            "volume_spike": 0.07750242954324588
+          },
+          "bucket_key": "15:00",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 1489,
+              "flat": 1104,
+              "up": 1523
+            },
+            "vwap_relationship": {
+              "extended_above": 2027,
+              "extended_below": 1331,
+              "within_band": 758
+            }
+          }
+        },
+        {
+          "bar_count": 343,
+          "boolean_fact_true_rates": {
+            "displacement": 0.014577259475218658,
+            "liquidity_sweep": 0.358600583090379,
+            "reclaim": 0.01749271137026239,
+            "rejection": 0.04956268221574344,
+            "volume_spike": 0.0
+          },
+          "bucket_key": "16:00",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 126,
+              "flat": 87,
+              "up": 130
+            },
+            "vwap_relationship": {
+              "extended_above": 174,
+              "extended_below": 123,
+              "within_band": 46
+            }
+          }
+        },
+        {
+          "bar_count": 3938,
+          "boolean_fact_true_rates": {
+            "displacement": 0.08169014084507042,
+            "liquidity_sweep": 0.452203600248293,
+            "reclaim": 0.014276846679081317,
+            "rejection": 0.06424581005586592,
+            "volume_spike": 0.028681177976952625
+          },
+          "bucket_key": "17:00",
+          "enum_fact_value_counts": {
+            "trend_5m": {},
+            "vwap_relationship": {
+              "extended_above": 324,
+              "extended_below": 244,
+              "within_band": 3337
+            }
+          }
+        },
+        {
+          "bar_count": 4296,
+          "boolean_fact_true_rates": {
+            "displacement": 0.05501165501165501,
+            "liquidity_sweep": 0.30749534450651766,
+            "reclaim": 0.010242085661080074,
+            "rejection": 0.041666666666666664,
+            "volume_spike": 0.11821161048689138
+          },
+          "bucket_key": "18:00",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 418,
+              "flat": 473,
+              "up": 541
+            },
+            "vwap_relationship": {
+              "extended_above": 993,
+              "extended_below": 703,
+              "within_band": 2594
+            }
+          }
+        },
+        {
+          "bar_count": 4296,
+          "boolean_fact_true_rates": {
+            "displacement": 0.1180167597765363,
+            "liquidity_sweep": 0.36033519553072624,
+            "reclaim": 0.016527001862197393,
+            "rejection": 0.04632216014897579,
+            "volume_spike": 0.22579143389199255
+          },
+          "bucket_key": "19:00",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 1290,
+              "flat": 1273,
+              "up": 1733
+            },
+            "vwap_relationship": {
+              "extended_above": 1570,
+              "extended_below": 1026,
+              "within_band": 1700
+            }
+          }
+        },
+        {
+          "bar_count": 4294,
+          "boolean_fact_true_rates": {
+            "displacement": 0.05775500698649278,
+            "liquidity_sweep": 0.2647880763856544,
+            "reclaim": 0.014671634839310665,
+            "rejection": 0.03493246390312063,
+            "volume_spike": 0.06963204471355379
+          },
+          "bucket_key": "20:00",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 1457,
+              "flat": 1063,
+              "up": 1774
+            },
+            "vwap_relationship": {
+              "extended_above": 1799,
+              "extended_below": 1134,
+              "within_band": 1361
+            }
+          }
+        },
+        {
+          "bar_count": 4284,
+          "boolean_fact_true_rates": {
+            "displacement": 0.04598506069094305,
+            "liquidity_sweep": 0.19281045751633988,
+            "reclaim": 0.007236227824463119,
+            "rejection": 0.02404295051353875,
+            "volume_spike": 0.06092436974789916
+          },
+          "bucket_key": "21:00",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 1377,
+              "flat": 1241,
+              "up": 1666
+            },
+            "vwap_relationship": {
+              "extended_above": 1854,
+              "extended_below": 1270,
+              "within_band": 1160
+            }
+          }
+        },
+        {
+          "bar_count": 4284,
+          "boolean_fact_true_rates": {
+            "displacement": 0.049953314659197015,
+            "liquidity_sweep": 0.15756302521008403,
+            "reclaim": 0.00980392156862745,
+            "rejection": 0.02030812324929972,
+            "volume_spike": 0.06489262371615313
+          },
+          "bucket_key": "22:00",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 1486,
+              "flat": 1282,
+              "up": 1516
+            },
+            "vwap_relationship": {
+              "extended_above": 1945,
+              "extended_below": 1397,
+              "within_band": 942
+            }
+          }
+        },
+        {
+          "bar_count": 4284,
+          "boolean_fact_true_rates": {
+            "displacement": 0.06605975723622783,
+            "liquidity_sweep": 0.17320261437908496,
+            "reclaim": 0.008636788048552755,
+            "rejection": 0.01984126984126984,
+            "volume_spike": 0.09033613445378151
+          },
+          "bucket_key": "23:00",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 1423,
+              "flat": 1165,
+              "up": 1696
+            },
+            "vwap_relationship": {
+              "extended_above": 1963,
+              "extended_below": 1444,
+              "within_band": 877
+            }
+          }
+        }
+      ],
+      "by_session": [
+        {
+          "bar_count": 70549,
+          "boolean_fact_true_rates": {
+            "displacement": 0.09680896326762162,
+            "liquidity_sweep": 0.24890091793043204,
+            "reclaim": 0.016224885795706776,
+            "rejection": 0.032261265219918074,
+            "volume_spike": 0.14242750950462463
+          },
+          "bucket_key": "OVERNIGHT",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 21308,
+              "flat": 17679,
+              "up": 24748
+            },
+            "vwap_relationship": {
+              "extended_above": 30229,
+              "extended_below": 20726,
+              "within_band": 19555
+            }
+          }
+        },
+        {
+          "bar_count": 27309,
+          "boolean_fact_true_rates": {
+            "displacement": 0.12911494379142407,
+            "liquidity_sweep": 0.15430810355560437,
+            "reclaim": 0.06712072942985829,
+            "rejection": 0.019553993189058552,
+            "volume_spike": 0.16404848218536014
+          },
+          "bucket_key": "RTH",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 8933,
+              "flat": 7537,
+              "up": 10832
+            },
+            "vwap_relationship": {
+              "extended_above": 12638,
+              "extended_below": 8859,
+              "within_band": 5812
+            }
+          }
+        }
+      ],
+      "by_weekday_ct": [
+        {
+          "bar_count": 19712,
+          "boolean_fact_true_rates": {
+            "displacement": 0.10562094155844155,
+            "liquidity_sweep": 0.21979762878168438,
+            "reclaim": 0.027289452166802945,
+            "rejection": 0.02947443181818182,
+            "volume_spike": 0.149705762987013
+          },
+          "bucket_key": "Monday",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 5867,
+              "flat": 5192,
+              "up": 7285
+            },
+            "vwap_relationship": {
+              "extended_above": 9600,
+              "extended_below": 5541,
+              "within_band": 4571
+            }
+          }
+        },
+        {
+          "bar_count": 19872,
+          "boolean_fact_true_rates": {
+            "displacement": 0.10381441223832528,
+            "liquidity_sweep": 0.21872465531224655,
+            "reclaim": 0.029805352798053526,
+            "rejection": 0.025412640901771335,
+            "volume_spike": 0.14638687600644124
+          },
+          "bucket_key": "Tuesday",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 6200,
+              "flat": 5029,
+              "up": 7275
+            },
+            "vwap_relationship": {
+              "extended_above": 8036,
+              "extended_below": 6443,
+              "within_band": 5393
+            }
+          }
+        },
+        {
+          "bar_count": 19661,
+          "boolean_fact_true_rates": {
+            "displacement": 0.11199837241239001,
+            "liquidity_sweep": 0.22473233953178628,
+            "reclaim": 0.031760667998565646,
+            "rejection": 0.027770713595442753,
+            "volume_spike": 0.15365444280555415
+          },
+          "bucket_key": "Wednesday",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 5934,
+              "flat": 4898,
+              "up": 7499
+            },
+            "vwap_relationship": {
+              "extended_above": 8702,
+              "extended_below": 5466,
+              "within_band": 5493
+            }
+          }
+        },
+        {
+          "bar_count": 19224,
+          "boolean_fact_true_rates": {
+            "displacement": 0.10512900540990429,
+            "liquidity_sweep": 0.22780630961115186,
+            "reclaim": 0.03553086678545226,
+            "rejection": 0.030066583437369954,
+            "volume_spike": 0.14591136079900124
+          },
+          "bucket_key": "Thursday",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 6208,
+              "flat": 4808,
+              "up": 6859
+            },
+            "vwap_relationship": {
+              "extended_above": 7953,
+              "extended_below": 6054,
+              "within_band": 5217
+            }
+          }
+        },
+        {
+          "bar_count": 13330,
+          "boolean_fact_true_rates": {
+            "displacement": 0.12070517629407351,
+            "liquidity_sweep": 0.2073829531812725,
+            "reclaim": 0.03548919567827131,
+            "rejection": 0.02835708927231808,
+            "volume_spike": 0.17674418604651163
+          },
+          "bucket_key": "Friday",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 4634,
+              "flat": 3918,
+              "up": 4759
+            },
+            "vwap_relationship": {
+              "extended_above": 5944,
+              "extended_below": 4789,
+              "within_band": 2597
+            }
+          }
+        },
+        {
+          "bar_count": 6059,
+          "boolean_fact_true_rates": {
+            "displacement": 0.06229235880398671,
+            "liquidity_sweep": 0.2504650769490952,
+            "reclaim": 0.012345679012345678,
+            "rejection": 0.0366397095230236,
+            "volume_spike": 0.07964011996001333
+          },
+          "bucket_key": "Sunday",
+          "enum_fact_value_counts": {
+            "trend_5m": {
+              "down": 1398,
+              "flat": 1371,
+              "up": 1903
+            },
+            "vwap_relationship": {
+              "extended_above": 2632,
+              "extended_below": 1292,
+              "within_band": 2096
+            }
+          }
+        }
+      ]
+    }
+  }
+}
