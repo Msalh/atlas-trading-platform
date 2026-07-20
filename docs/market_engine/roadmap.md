@@ -15,12 +15,33 @@ recoverable. Rather than reconstruct it from memory, this document replaces it, 
 the actual state of the codebase after Sprint 8. It is persisted here specifically so this cannot
 happen again.
 
-## Current System Baseline (as of Sprint 24C)
+## Current System Baseline (as of Sprint 31)
 
-**Updated 2026-07-19** — this section originally described the system as of Sprint 8, the point
-this document was first written. It now reflects everything completed through Sprint 24C; see
-"Sprint Roadmap" below for how Sprints 9 onward got here, and the Phase 3 entry above for the
-Rule Engine/Setup Engine detail this section summarizes rather than repeats.
+**Updated 2026-07-20** — this section originally described the system as of Sprint 8, then Sprint
+24C. It now reflects everything completed through Sprint 31; see "Sprint Roadmap" below for how
+Sprints 9 onward got here, and the Phase 3 entry above for the Rule Engine/Setup Engine detail
+this section summarizes rather than repeats.
+
+**Sprints 24D–31, summarized** (full detail lives in each Sprint's own commits/reports, not
+repeated here): a production incident (`vwap` incorrectly tick-grid-validated, since it is a
+continuous Pine-computed average, never a traded print) was root-caused, fixed
+(`84a1765d5f09c1f85c685fd066f6f9a1d20c8b25`), and deployed — see `atlas/market_engine/models.py`'s
+own `vwap` field comment for the permanent record. A historical CSV bootstrap pipeline (`plot()`
++ chart-data-export, Sprint 25A.5/25B, not Pine Logs — alert delivery does not fire on historical
+bars) was built and its importer (`scripts/import_historical_market_state_csv.py`) committed
+Sprint 31 after being reused uncommitted for several Sprints. A Research Engine MVP
+(`atlas/research/`, Sprint 28) now exists one layer above the Profiler — `Hypothesis →
+DatasetManifest → Profiler (unchanged) → Experiment → ResearchReport`, file-backed append-only
+stores, proven end to end against real historical data. Sprint 31 resolved the project's
+instrument-identity uncertainty empirically: the live production symbol is `MNQ1!` (not `MNQU6`,
+which was never a literal wire value anywhere in this project's evidence); the historical CSV
+export's native `time` column is bar-OPEN time while the live webhook uses bar-CLOSE time
+(`time_close`) — a TradingView platform convention difference, not a bug, resolved via the
+importer's existing `--assume-bar-open-time` flag; the real historical dataset
+(`data/CME_MINI_MNQ1!, 5_504af.csv`, 1200 bars) is **CERTIFIED WITH WARNINGS** (Sprint 31 Task 4;
+warnings are all documented, by-design properties, not defects). Full detail:
+`docs/market_engine/sprint31-task3-equivalence-report.md` and the Sprint 31 commit history on
+`feature/market-engine-rule-setup-engine`.
 
 **Completed**: core primitives (`atlas/core/`); TradingView ingest (validate → translate →
 idempotent persist); Postgres + in-memory repositories; read API (`latest`, `history`); Pine v6
@@ -95,8 +116,31 @@ calling `MarketStateRepository.get_range` directly), not a wrapper added inside 
 package itself. That distinction — impure assembly stays one layer above pure orchestration, never
 merged into it — is deliberate, not a partial retreat from the Sprint 17A posture.
 
-**Known debt** (updated through Sprint 24C; entries marked resolved, not removed, per this
+**Known debt** (updated through Sprint 31; entries marked resolved, not removed, per this
 project's standing rule):
+- **No per-instrument identity/tick-size registry** — `TICK_SIZE = 0.25` (`atlas/market_engine/
+  constants.py`) is a single global constant, applied identically regardless of the `symbol`
+  string on any given event; `Symbol` performs no validation beyond non-blank. This is the
+  identified root cause behind two independent findings this project has had: the `vwap`
+  tick-validation incident, and the `MNQ1!`/`MNQU6`/`MNQU2026` instrument-identity ambiguity
+  (Sprint 29A.6). Deliberately not built ahead of a second real instrument (no-speculative-
+  abstraction rule) — now a documented, evidence-backed candidate for whenever that need becomes
+  concrete, not a hypothetical one.
+- **Roll policy decided, not yet operationalized**: dated contracts (not continuous/`MNQ1!`) are
+  the adopted policy for tick-validated price fields (Sprint 29A.6 §4) — because a back-adjusted
+  continuous series can silently stop representing a literal traded print, which is the entire
+  justification for tick-grid validation. No roll/stitch mechanism exists yet; none is needed
+  until research spans a contract rollover.
+- **No `MARKET_STATE_REJECTED` event/observability** — `atlas/api/v1/market_state.py`'s 422
+  rejection path logs a structured warning (added Sprint M4/Sprint 31 diagnostic work) but never
+  publishes to the `EventBus`, so `GET /status` (`atlas/status.py`) has no visibility into
+  rejections at all, only successes. Identified, not yet built (Sprint 29A §4) — the recommended
+  fix reuses the existing `EventBus`/`SystemStatus` mechanism, not new infrastructure.
+- **Sprint 26 Phase 3/4 (real historical import execution + post-import audit) still open** —
+  blocked on `DATABASE_URL`/`TEST_DATABASE_URL` access, unchanged since Sprint 24D. The correct
+  invocation is known and requires no new code: `--symbol MNQ1! --timeframe 5m
+  --assume-bar-open-time --apply`. See Sprint 31 Task 8's exact commands, this document's own
+  history (git log on this file) or the Sprint 31 commit range for the full audit.
 - The historical profiler (`atlas/profiling/`, Sprint 24C) does not attempt automatic contract-roll
   detection — only explicitly-configured roll timestamps are recorded in its data-quality summary
   (`observations_near_roll_boundary`); an un-configured roll inside a profiled range is silently
@@ -117,8 +161,9 @@ project's standing rule):
   unresolved; now also the reason `build_rule_engine_output_window`'s strict contiguity check will
   misclassify a window spanning an exchange holiday as an integrity violation (disclosed in
   `rule-engine-architecture.md`'s §3, Sprint 17A).
-- `find_gaps`'s 1.5x jitter tolerance is an unvalidated heuristic — no real production traffic
-  has ever flowed through this system.
+- `find_gaps`'s 1.5x jitter tolerance is an unvalidated heuristic — real production traffic now
+  flows (confirmed Sprint 31), but this specific tolerance value has not been independently
+  re-validated against it.
 - `vwap_relationship`'s threshold (1.0, Sprint 22B) is a provisional, explicitly unvalidated
   heuristic borrowed from `trend_5m`'s own threshold shape — the same disclosed status as every
   other threshold in this project.
@@ -132,9 +177,13 @@ project's standing rule):
   calibrate a genuine severity metric against). Not a bug; named here so it isn't mistaken for a
   completed feature.
 
-**Operational risks**: no real production TradingView traffic has ever exercised this system —
-everything is validated against in-memory or local/CI Postgres only. Alerting is a silent no-op
-if `ALERT_WEBHOOK_URL` is unconfigured. In-memory state is lost on process restart.
+**Operational risks**: real production TradingView traffic now flows through this system
+(confirmed directly, Sprint 31 Tasks 1-3 — the `vwap` incident was a real production failure and
+its fix independently re-verified against live data multiple times since). `DATABASE_URL`/
+`TEST_DATABASE_URL` access has not been available in any working session this project has had
+through Sprint 31 — every historical-import and audit capability beyond translation-only proof
+remains unexercised against a real database (Sprint 26 Phase 3/4, still open). Alerting is a
+silent no-op if `ALERT_WEBHOOK_URL` is unconfigured. In-memory state is lost on process restart.
 
 **Production test fixtures (Sprint 15)**: three synthetic symbols were ingested into the real
 production `market_state_events` table during Sprint 15's live smoke test —
@@ -146,6 +195,14 @@ permanent. **They are operational test fixtures, not real traded instruments** �
 Sprint or tool that lists or aggregates over symbols in production should exclude or otherwise
 account for these three names, the same way `test_closed` is excluded from `stats.today`'s real
 trade counts in the original trading-platform project.
+
+**Real historical dataset (Sprint 25B/26/31)**: `data/CME_MINI_MNQ1!, 5_504af.csv` — 1200 real
+5m bars, `2026-07-13T13:00:00Z` → `2026-07-17T20:55:00Z`, symbol `MNQ1!` (confirmed, Sprint 31
+Task 1 — the original Sprint 25B/26 import commands used `MNQU6`, now known to be unverified).
+Certified **CERTIFIED WITH WARNINGS** (`scripts/certify_historical_dataset.py`, Sprint 31 Task 4)
+— all warnings documented, by-design properties, not defects. Not yet imported into any real
+repository (Sprint 26 Phase 3, still open on `DATABASE_URL` access) — translation-level proof
+only so far.
 
 **Architectural assumptions**: modular monolith remains correct as long as Market Engine, AI, and
 trading logic share one process; "AI never writes to Market Engine" is non-negotiable; hexagonal
@@ -270,6 +327,26 @@ available, the `trend_aligned_liquidity_sweep` design pass, a different candidat
 and Rule Fact Utilization matrices, not from a list written before this Sprint existed), or scoping
 Phase 4 (Strategy & Signal Layer). Naming that now would repeat the speculative-planning risk this
 project has consistently avoided; it gets its own decision when actually taken up.
+
+**Updated Sprint 31** — what happened next was decided: production incident response (`vwap`,
+Sprint 26) and building the Research Engine MVP (Sprint 28) one layer above the profiler, rather
+than the `trend_aligned_*` design passes above, which remain exactly as blocked as described. The
+profiler *has* now been run against real production-adjacent data (the certified historical CSV
+and, indirectly, real production reads — Sprint 31 Tasks 2-4); it has not yet been run against a
+real Postgres-backed repository (Sprint 26 Phase 3/4, still open).
+
+A formal Research Readiness Gate exists (design: Sprint 29A.5 §5) with these items still
+outstanding before Forward Return Analysis or any statistical research begins:
+- Sprint 26 Phase 3 (historical import execution) and Phase 4 (post-import audit) — blocked on
+  `DATABASE_URL`/`TEST_DATABASE_URL` access; exact commands are recorded in Sprint 31 Task 8's
+  report (this Sprint's commit history) once that access exists.
+- Roll policy (dated contracts, decided Sprint 29A.6) is not yet operationalized into ingestion
+  or research code — no research has yet needed to span a contract rollover, so nothing is
+  currently blocked by this, but it must be handled before any research does.
+- A sustained live production observation window (Sprint 29A §2, design only — never executed).
+
+The `trend_aligned_liquidity_sweep`/`trend_aligned_displacement` blockers from Sprint 24C remain
+exactly as described above — untouched by any of this, not reopened, not resolved.
 
 ## Why this ordering is technically correct
 
