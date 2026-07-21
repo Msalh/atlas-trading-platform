@@ -50,7 +50,59 @@ router = APIRouter()
 
 _SCHEMA_VERSION = "1.0"
 _cache = LiveWindowCache()
-_in_flight_locks: dict[tuple, asyncio.Lock] = {}
+
+
+class _RefCountedLock:
+    """A per-key coalescing lock paired with a count of callers currently
+    holding a reference to it, so `_in_flight_locks` can drop the entry the
+    moment nobody needs it - otherwise every distinct cache key ever seen
+    (a new one on every bar, per symbol/timeframe/window) would accumulate
+    in the dict for the lifetime of the process."""
+
+    __slots__ = ("lock", "waiters")
+
+    def __init__(self) -> None:
+        self.lock = asyncio.Lock()
+        self.waiters = 0
+
+
+_in_flight_locks: dict[tuple, _RefCountedLock] = {}
+_in_flight_locks_guard = asyncio.Lock()
+
+
+async def _acquire_coalescing_lock(key: tuple) -> _RefCountedLock:
+    """Returns the shared `_RefCountedLock` for `key`, registering a new one
+    if this is the first concurrent caller. Every read/write of
+    `_in_flight_locks` (here and in `_release_coalescing_lock`) happens only
+    while holding `_in_flight_locks_guard`, which is never held across an
+    `await` of the actual computation - so this is a brief, uncontended
+    dict mutation, not a bottleneck on the real work. Because registration
+    and removal are serialized through the same guard, a caller that finds
+    an existing entry here is guaranteed to see the *same* lock object every
+    other concurrent caller for that key sees; the entry can never be
+    removed by a racing release between this call's dict lookup and its
+    waiter-count increment, since both happen atomically under the guard.
+    """
+    async with _in_flight_locks_guard:
+        entry = _in_flight_locks.get(key)
+        if entry is None:
+            entry = _RefCountedLock()
+            _in_flight_locks[key] = entry
+        entry.waiters += 1
+        return entry
+
+
+async def _release_coalescing_lock(key: tuple, entry: _RefCountedLock) -> None:
+    """Decrements `entry`'s waiter count and deletes the registry entry once
+    it reaches zero - the only place `_in_flight_locks` entries are ever
+    removed. The `is entry` check guards against the (otherwise impossible
+    under the guard, but cheap to assert) case of deleting a *newer* entry
+    that a later caller registered under the same key after this one was
+    already removed."""
+    async with _in_flight_locks_guard:
+        entry.waiters -= 1
+        if entry.waiters == 0 and _in_flight_locks.get(key) is entry:
+            del _in_flight_locks[key]
 
 
 async def evaluate_latest_setup_engine_output(
@@ -164,17 +216,20 @@ async def _get_or_compute(
     if cached is not None:
         return cached
 
-    lock = _in_flight_locks.setdefault(key, asyncio.Lock())
-    async with lock:
-        cached = _cache.get(key)  # re-check: another request may have finished while we waited
-        if cached is not None:
-            return cached
-        result = await episode_projector.build_live_window_result(
-            repository, symbol, timeframe, window=window, hard_max_window=hard_max_window,
-        )
-        if result is not None:
-            _cache.put(key, result)
-        return result
+    entry = await _acquire_coalescing_lock(key)
+    try:
+        async with entry.lock:
+            cached = _cache.get(key)  # re-check: another request may have finished while we waited
+            if cached is not None:
+                return cached
+            result = await episode_projector.build_live_window_result(
+                repository, symbol, timeframe, window=window, hard_max_window=hard_max_window,
+            )
+            if result is not None:
+                _cache.put(key, result)
+            return result
+    finally:
+        await _release_coalescing_lock(key, entry)
 
 
 @router.get("/setup-engine/episodes/live")
