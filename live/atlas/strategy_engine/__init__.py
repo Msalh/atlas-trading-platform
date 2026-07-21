@@ -19,9 +19,15 @@ choice (Protocol over ABC, single-ReplayFrame evaluation over a windowed
 sequence, open string reason/setup identifiers over a closed enum).
 
 Strategy Engine may depend only on atlas.replay_engine.models,
-atlas.setup_engine.models, atlas.market_context.models, atlas.core
-primitives where genuinely needed, and the Python standard library -
-never atlas.market_engine, atlas.rule_engine, repositories, the API,
-events, execution, paper trading, brokers, LLM services, the research
-engine, or market data providers.
+atlas.setup_engine.models, atlas.market_context.models,
+atlas.setup_interpretation.models (added Sprint 6, when the reference
+strategy migrated to consuming ReplayFrame.setup_interpretations instead
+of Rule Engine facts directly - see atlas.setup_interpretation's own
+ADR-0003), atlas.core primitives where genuinely needed, and the Python
+standard library - never atlas.market_engine, atlas.rule_engine,
+repositories, the API, events, execution, paper trading, brokers, LLM
+services, the research engine, or market data providers. Sprint 3's own
+narrow, disclosed atlas.rule_engine.models exception (needed only to read
+trend_5m directly) was fully removed by the Sprint 6 migration - Strategy
+Engine has zero direct atlas.rule_engine imports as of this sprint.
 """

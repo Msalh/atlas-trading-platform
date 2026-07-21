@@ -22,10 +22,13 @@ Engine's own windowing landed only once a real consumer needed it -
 Sprint 24C).
 
 Replay Engine may depend on Market Engine models, Rule Engine output
-models, Setup Engine output models, Market Context models, and
+models and service functions, Setup Engine output models and service
+functions, Market Context models and service functions, Setup
+Interpretation models and service functions (added Sprint 5 - see
+atlas.setup_interpretation's own ADR-0003), and
 atlas.profiling.service.segment_by_gap. Nothing under atlas.rule_engine,
-atlas.setup_engine, atlas.market_context, or atlas.profiling imports this
-package - the dependency arrow points one way only, the same acyclic
-shape atlas.market_context's own ADR-0001 already documents for itself
-one layer down.
+atlas.setup_engine, atlas.market_context, atlas.setup_interpretation, or
+atlas.profiling imports this package - the dependency arrow points one
+way only, the same acyclic shape atlas.market_context's own ADR-0001
+already documents for itself one layer down.
 """

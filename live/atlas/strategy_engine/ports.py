@@ -18,10 +18,12 @@ the same "single-bar first, widen only once a real need is demonstrated"
 discipline every other evaluator in this codebase already follows (Rule
 Engine's own single_bar_adapter default; Setup Engine's registry defaults
 required_history to 1, only raised once a specific setup's real logic
-needed more). No concrete strategy exists yet (Sprint 1's scope
-deliberately excludes one) to justify windowing - a future strategy that
-genuinely needs trailing history is the trigger to widen this contract,
-not a guess made speculatively here.
+needed more). No concrete strategy justified windowing at Sprint 1 (this
+Protocol's own foundation sprint, before any plugin existed); the one
+concrete strategy built since (Phase N3 Sprint 3, migrated to consume
+Setup Interpretation at Sprint 6) still needs only the current bar - a
+future strategy that genuinely needs trailing history remains the trigger
+to widen this contract, not a guess made speculatively here.
 
 Recomputing MarketState, Rule Engine facts, Setup Engine setups, or Market
 Context from inside a plugin is never permitted - a conforming plugin

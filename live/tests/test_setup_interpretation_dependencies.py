@@ -12,6 +12,8 @@ import pytest
 
 _ATLAS_ROOT = Path(__file__).resolve().parent.parent / "atlas"
 _SETUP_INTERPRETATION_DIR = _ATLAS_ROOT / "setup_interpretation"
+_REPLAY_ENGINE_DIR = _ATLAS_ROOT / "replay_engine"
+_STRATEGY_ENGINE_DIR = _ATLAS_ROOT / "strategy_engine"
 
 # Sprint 1's real, current imports per file - intra-package imports
 # (atlas.setup_interpretation.*) are always allowed; only cross-package
@@ -86,11 +88,18 @@ def test_definitions_only_imports_models_intra_package():
     assert imported <= {"atlas.setup_interpretation.models"}
 
 
-# ---- zero dependents (Sprint 1 is foundational only) ----
+# ---- only approved downstream consumers may depend on Setup Interpretation ----
 
-def test_nothing_outside_setup_interpretation_imports_it_yet():
+def test_nothing_outside_setup_interpretation_or_its_approved_downstream_consumers_imports_it():
+    """atlas.replay_engine (Sprint 5 - build_replay_output_window() calls
+    interpret_setups() to populate ReplayFrame.setup_interpretations) and
+    atlas.strategy_engine (Sprint 6 - the reference strategy reads
+    ReplayFrame.setup_interpretations directly) are the two approved
+    downstream consumers as of this sprint. Nothing else may import
+    atlas.setup_interpretation."""
+    exempt_dirs = {_SETUP_INTERPRETATION_DIR, _REPLAY_ENGINE_DIR, _STRATEGY_ENGINE_DIR}
     for py_file in _ATLAS_ROOT.rglob("*.py"):
-        if _SETUP_INTERPRETATION_DIR == py_file.parent or _SETUP_INTERPRETATION_DIR in py_file.parents:
+        if any(exempt == py_file.parent or exempt in py_file.parents for exempt in exempt_dirs):
             continue
         imported = _imported_module_roots(py_file)
         offending = {name for name in imported if name.startswith("atlas.setup_interpretation")}
@@ -101,9 +110,13 @@ def test_nothing_outside_setup_interpretation_imports_it_yet():
 
 @pytest.mark.parametrize(
     "directory_name",
-    ["core", "market_engine", "rule_engine", "setup_engine", "market_context", "replay_engine", "strategy_engine"],
+    ["core", "market_engine", "rule_engine", "setup_engine", "market_context"],
 )
 def test_no_frozen_or_sibling_package_imports_setup_interpretation_back(directory_name):
+    """replay_engine and strategy_engine are deliberately absent from this
+    list (Sprints 5 and 6 respectively made them the two approved,
+    one-way, non-circular downstream consumers - see the exemption above,
+    not packages that must never import Setup Interpretation)."""
     directory = _ATLAS_ROOT / directory_name
     for py_file in directory.rglob("*.py"):
         imported = _imported_module_roots(py_file)

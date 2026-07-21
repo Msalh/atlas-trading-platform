@@ -176,6 +176,26 @@ async def test_exact_alignment_of_all_four_replay_frame_components(repo):
         assert frame.market_context.occurred_at == expected_at
 
 
+# ---- 7b. Sprint 5: replay() exposes setup_interpretations automatically ----
+
+@pytest.mark.asyncio
+async def test_replay_exposes_setup_interpretations_automatically(repo):
+    """replay() itself is unchanged by Sprint 5 - it only fetches, segments,
+    and yields whatever build_replay_output_window() already produces. This
+    proves setup_interpretations rides along for free through the full
+    async orchestration path, with no new replay() parameter or API
+    needed."""
+    states = _series(5, _BASE)
+    await _seed(repo, states)
+
+    frames = await _collect(repository=repo)
+
+    for frame in frames:
+        assert len(frame.setup_interpretations) == len(frame.setup_engine_output.setups)
+        for interpretation in frame.setup_interpretations:
+            assert interpretation.occurred_at == frame.market_state.envelope.occurred_at
+
+
 # ---- 8. repository arguments forwarded correctly ----
 
 @pytest.mark.asyncio

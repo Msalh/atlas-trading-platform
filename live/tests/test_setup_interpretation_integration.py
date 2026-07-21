@@ -453,13 +453,20 @@ def _rule_engine_imports(file_path: Path) -> set:
     return roots
 
 
-def test_displacement_volume_context_is_the_only_direct_rule_engine_consumer_in_strategy_engine():
+def test_no_file_under_strategy_engine_imports_rule_engine():
+    """Sprint 3 through Sprint 5, displacement_volume_context.py was the
+    one disclosed exception (importing exactly atlas.rule_engine.models.
+    FactResult to read trend_5m directly). Setup Interpretation Sprint 6
+    migrated it to consume frame.setup_interpretations instead, removing
+    that dependency entirely - Strategy Engine now has zero direct Rule
+    Engine imports anywhere, confirmed here rather than assumed from the
+    migration report alone."""
     offenders = {}
     for py_file in _STRATEGY_ENGINE_DIR.rglob("*.py"):
         imports = _rule_engine_imports(py_file)
         if imports:
             offenders[py_file.name] = imports
-    assert offenders == {"displacement_volume_context.py": {"atlas.rule_engine.models"}}
+    assert offenders == {}
 
 
 def _facts_attribute_accesses(file_path: Path) -> int:
@@ -476,22 +483,17 @@ def _facts_attribute_accesses(file_path: Path) -> int:
     return sum(1 for node in ast.walk(tree) if isinstance(node, ast.Attribute) and node.attr == "facts")
 
 
-def test_displacement_volume_context_reads_facts_dict_directly_exactly_once():
-    """Confirms the exact scope of the direct-read dependency this
-    migration would remove - a single `.facts.get(...)` call site, not
-    scattered reads. AST-based (see _facts_attribute_accesses): the
-    module's own docstring mentions "rule_engine_output.facts" three
-    times in prose while explaining the design rationale - a substring
-    count over raw source would overcount those, not just the one real
-    attribute access at runtime."""
+def test_displacement_volume_context_no_longer_reads_facts_dict_at_all():
+    """Sprint 6: the single `.facts.get(...)` call site this test used to
+    confirm the exact scope of (Sprint 3 through Sprint 5) is now gone
+    entirely - the migrated strategy reads frame.setup_interpretations
+    instead."""
     target = _STRATEGY_ENGINE_DIR / "strategies" / "displacement_volume_context.py"
-    assert _facts_attribute_accesses(target) == 1
+    assert _facts_attribute_accesses(target) == 0
 
 
-def test_no_other_strategy_engine_file_reads_rule_engine_output_facts():
+def test_no_strategy_engine_file_reads_rule_engine_output_facts():
     for py_file in _STRATEGY_ENGINE_DIR.rglob("*.py"):
-        if py_file.name == "displacement_volume_context.py":
-            continue
         assert _facts_attribute_accesses(py_file) == 0, f"{py_file} reads .facts directly"
 
 

@@ -1,8 +1,9 @@
 """
-Phase N2, Sprint 1. Tests for atlas.replay_engine.models.ReplayFrame - a
-frozen, aligned bundle of the four objects that already describe one
-historical bar. No behavior beyond immutability and value equality is
-exercised here - ReplayFrame computes nothing.
+Phase N2, Sprint 1; widened Sprint 5 (Setup Interpretation integration).
+Tests for atlas.replay_engine.models.ReplayFrame - a frozen, aligned
+bundle of the five objects that already describe one historical bar. No
+behavior beyond immutability and value equality is exercised here -
+ReplayFrame computes nothing.
 """
 import atlas.replay_engine.models as replay_engine_models
 import pytest
@@ -22,6 +23,7 @@ from atlas.market_engine.models import BarStatus, MarketState
 from atlas.replay_engine.models import ReplayFrame
 from atlas.rule_engine.models import RuleEngineOutput
 from atlas.setup_engine.models import SetupEngineOutput
+from atlas.setup_interpretation.models import DirectionSource, SetupDirection, SetupInterpretation
 from dataclasses import FrozenInstanceError
 from datetime import datetime, timezone
 
@@ -71,30 +73,60 @@ def _market_context() -> MarketContext:
     )
 
 
+def _setup_interpretations() -> tuple:
+    """A single, real-shaped, hand-built SetupInterpretation - deliberately
+    non-empty (unlike _setup_engine_output()'s own empty setups=()) so the
+    identity/equality tests below exercise a genuine object, not CPython's
+    interned empty-tuple singleton (which would make an identity check
+    trivially true regardless of whether wiring is actually correct)."""
+    return (
+        SetupInterpretation(
+            occurred_at=_OCCURRED_AT, setup_id="displacement_with_volume_confirmation",
+            detected=False, direction=SetupDirection.UNAVAILABLE, source=DirectionSource.INSUFFICIENT_DATA,
+            source_fact_ids=(), reason_codes=("not_detected_or_source_fact_insufficient_data",),
+            interpretation_version="SETUP_INTERPRETATION_V1", interpretation_fingerprint="fedcba9876543210",
+        ),
+    )
+
+
 def _frame() -> ReplayFrame:
     return ReplayFrame(
         market_state=_market_state(), rule_engine_output=_rule_engine_output(),
         setup_engine_output=_setup_engine_output(), market_context=_market_context(),
+        setup_interpretations=_setup_interpretations(),
     )
 
 
-# ---- 1. bundles the four approved objects ----
+# ---- 1. bundles the five approved objects ----
 
-def test_replay_frame_bundles_the_four_approved_objects():
+def test_replay_frame_bundles_the_five_approved_objects():
     market_state = _market_state()
     rule_engine_output = _rule_engine_output()
     setup_engine_output = _setup_engine_output()
     market_context = _market_context()
+    setup_interpretations = _setup_interpretations()
 
     frame = ReplayFrame(
         market_state=market_state, rule_engine_output=rule_engine_output,
         setup_engine_output=setup_engine_output, market_context=market_context,
+        setup_interpretations=setup_interpretations,
     )
 
     assert frame.market_state == market_state
     assert frame.rule_engine_output == rule_engine_output
     assert frame.setup_engine_output == setup_engine_output
     assert frame.market_context == market_context
+    assert frame.setup_interpretations == setup_interpretations
+
+
+# ---- setup_interpretations is required, not defaulted ----
+
+def test_replay_frame_requires_setup_interpretations():
+    with pytest.raises(TypeError):
+        ReplayFrame(
+            market_state=_market_state(), rule_engine_output=_rule_engine_output(),
+            setup_engine_output=_setup_engine_output(), market_context=_market_context(),
+        )
 
 
 # ---- 2 & 3. frozen, mutation raises FrozenInstanceError ----
@@ -106,6 +138,7 @@ def test_replay_frame_bundles_the_four_approved_objects():
         pytest.param("rule_engine_output", _rule_engine_output(), id="rule_engine_output"),
         pytest.param("setup_engine_output", _setup_engine_output(), id="setup_engine_output"),
         pytest.param("market_context", _market_context(), id="market_context"),
+        pytest.param("setup_interpretations", (), id="setup_interpretations"),
     ],
 )
 def test_replay_frame_is_frozen_mutation_raises(field_name, new_value):
@@ -121,16 +154,19 @@ def test_replay_frame_preserves_the_exact_supplied_object_instances():
     rule_engine_output = _rule_engine_output()
     setup_engine_output = _setup_engine_output()
     market_context = _market_context()
+    setup_interpretations = _setup_interpretations()
 
     frame = ReplayFrame(
         market_state=market_state, rule_engine_output=rule_engine_output,
         setup_engine_output=setup_engine_output, market_context=market_context,
+        setup_interpretations=setup_interpretations,
     )
 
     assert frame.market_state is market_state
     assert frame.rule_engine_output is rule_engine_output
     assert frame.setup_engine_output is setup_engine_output
     assert frame.market_context is market_context
+    assert frame.setup_interpretations is setup_interpretations
 
 
 # ---- 5. equality is value-based and deterministic ----
@@ -155,8 +191,21 @@ def test_replay_frame_equality_is_value_based_and_deterministic():
             classifier_version="REGIME_CLASSIFIER_V1", calendar_version="CME_RTH_V1",
             context_fingerprint="0123456789abcdef",
         ),
+        setup_interpretations=_setup_interpretations(),
     )
     assert a != c
+
+
+# ---- setup_interpretations is a genuinely distinguishing field too ----
+
+def test_replay_frame_equality_distinguishes_on_setup_interpretations_alone():
+    a = _frame()
+    d = ReplayFrame(
+        market_state=_market_state(), rule_engine_output=_rule_engine_output(),
+        setup_engine_output=_setup_engine_output(), market_context=_market_context(),
+        setup_interpretations=(),  # the one differing value: empty instead of one entry
+    )
+    assert a != d
 
 
 # ---- 6. no ReplaySession class exists ----

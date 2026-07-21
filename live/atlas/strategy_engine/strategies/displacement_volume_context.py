@@ -1,55 +1,46 @@
 """
-DisplacementVolumeContext - Phase N3, Sprint 3. The first concrete
-StrategyPlugin: a deliberately minimal reference implementation proving
-the full Strategy Engine path (evaluate_strategies -> StrategyPlugin ->
-StrategyDecision) against real ReplayFrame inputs.
+DisplacementVolumeContext - Phase N3, Sprint 3; migrated Sprint 6 (Setup
+Interpretation integration) to consume the certified SetupInterpretation
+already present on ReplayFrame.setup_interpretations (Replay Engine
+Sprint 5) instead of reading Rule Engine facts directly.
 
 Recomputes nothing: every input this plugin reads is an already-computed,
 already-typed field on the ReplayFrame it is given -
 frame.setup_engine_output.setups (the "displacement_with_volume_confirmation"
-SetupOutcome), frame.rule_engine_output.facts["trend_5m"] (Rule Engine's
-own three-way up/down/flat classification), and frame.market_context.quality
-(Market Context's own three-state ContextQuality). No OHLC is read
-directly; no displacement/volume/trend value is recalculated.
+SetupOutcome), frame.setup_interpretations (the matching
+SetupInterpretation - Setup Interpretation's own canonical direction for
+that same setup), and frame.market_context.quality (Market Context's own
+three-state ContextQuality). No OHLC is read directly; no displacement/
+volume/trend value is recalculated, and interpret_setups() is never
+called from here - Replay Engine already called it once, and this plugin
+only reads what it produced.
 
---- Dependency boundary correction, disclosed ---
+--- Sprint 6 migration: what changed, what didn't ---
 
-Sprint 1's dependency ceiling for atlas.strategy_engine (models.py/ports.py)
-deliberately excluded atlas.rule_engine, reasoning that Strategy Engine
-would only ever reach RuleEngineOutput through ReplayFrame's own
-already-typed field, never needing to import atlas.rule_engine.models
-directly. A concrete strategy that actually reads a specific fact's
-outcome breaks that reasoning: frame.rule_engine_output.facts values are
-typed FactOutcome = Union[FactResult, InsufficientData]
-(atlas.rule_engine.models), and there is no way to safely branch on
-"was this fact actually computed" without importing at least FactResult -
-the exact same thing atlas.setup_engine.evidence.require_computed_fact
-already does (`isinstance(outcome, FactResult)`) to safely consume one
-Rule Engine fact from inside Setup Engine. This module imports exactly
-FactResult, nothing else from atlas.rule_engine - the same narrow,
-disclosed-not-invented widening precedent
-atlas.market_context.regime's own window_integrity exception already
-established one layer down. Sprint 3's own instructions explicitly
-anticipated this ("derive LONG/SHORT only from existing typed Setup
-Engine OR RULE ENGINE output").
+Sprint 3's disclosed, narrow widening of Strategy Engine's dependency
+ceiling (importing exactly atlas.rule_engine.models.FactResult, nothing
+else) is fully removed by this migration - this module no longer imports
+anything from atlas.rule_engine, and never reads
+frame.rule_engine_output.facts. The one narrow widening this migration
+introduces in its place is atlas.setup_interpretation.models
+(SetupDirection) - the same "narrow, disclosed, not invented" precedent,
+now pointing at the canonical interpretation layer instead of a raw Rule
+Engine fact. See atlas.setup_interpretation's own ADR-0003 for why that
+package exists and why Setup Engine/Rule Engine were never modified to
+support it.
 
---- Direction source: why trend_5m, and why Market Context has none ---
-
-atlas.rule_engine.facts.evaluate_displacement's own evidence
-({"range_atr_ratio", "threshold"}) and evaluate_volume_spike's own
-evidence ({"volume_ratio", "threshold"}) are both magnitude-only - a bar's
-range and volume relative to their own baselines, never a sign. The
-displacement_with_volume_confirmation setup itself is `detected =
-displacement.value AND volume_spike.value`, a pure boolean AND of two
-magnitude facts - it carries no directional information on its own.
-Market Context (SessionPhase, SessionProgress, DriftStatus,
-VolatilityRegime, ContextQuality) carries none either - volatility REGIME
-is about the magnitude of movement, not its sign, and session/drift
-concern time-of-day and upstream agreement, not price direction. The only
-existing, typed, directional signal anywhere in this pipeline is Rule
-Engine's own trend_5m fact (a three-way "up"/"down"/"flat"
-classification) - read directly off
-frame.rule_engine_output.facts["trend_5m"], never recomputed.
+Every StrategyDecision this plugin can produce for a state genuinely
+reachable through the real pipeline is unchanged from Sprint 3 - same
+disposition, same direction, same reason_codes strings
+("setup_absent"/"context_insufficient"/"context_conflict"/"accepted") -
+proven by a dedicated real-data exact-equivalence study (Sprint 6's own
+migration report), not merely asserted. StrategyDecision.reason_codes
+intentionally does NOT adopt SetupInterpretation's own reason codes
+(e.g. "trend_up") - the two vocabularies describe different layers (this
+plugin's own acceptance rule vs. the interpretation's own evidence), the
+same architectural split already established between
+StrategyDecision.context_fingerprint and
+SetupInterpretation.interpretation_fingerprint.
 
 --- Context filter: exactly what the real Market Context contract supports ---
 
@@ -60,61 +51,92 @@ disagreement"), UNKNOWN ("don't trust it"). Only UNKNOWN is rejected here:
 DEGRADED is explicitly documented as still-trustworthy for volatility (the
 only Market Context signal this plugin's acceptance logic reads), so
 treating it as untrusted would misuse Market Context's own documented
-semantics rather than honor them.
+semantics rather than honor them. Unchanged by this migration - this gate
+is orthogonal to Setup Interpretation entirely and is checked BEFORE the
+interpretation lookup below, exactly as it was checked before the old
+trend_5m read.
 
-Rule 2 (regime/trend conflicts with direction -> reject): Market Context's
-own models carry no directional semantics at all (see above) - there is
-no second, independent "regime" signal to cross-check trend_5m's
-direction against without inventing one, which this Sprint's instructions
-explicitly forbid. The one faithful, non-invented reading of this rule is
-trend_5m's own "flat" value: a real, computed, neutral trend that does
-not support asserting either LONG or SHORT - a genuine conflict between
-the trend classification and any directional claim this plugin might
-otherwise make, using no signal beyond what already exists.
+Rule 2 (interpretation direction determines acceptance): SetupDirection.
+BULLISH/BEARISH accept as LONG/SHORT; AMBIGUOUS (a real, computed,
+neutral/conflicting reading - e.g. this setup's own trend_5m coming back
+"flat") rejects as context_conflict, exactly like the old "flat trend"
+case did; UNAVAILABLE (the interpretation itself could not be produced -
+e.g. trend_5m was insufficient_data) rejects as context_insufficient,
+exactly like the old "trend not a FactResult" case did.
 
-Rule 3 (accept neutral/unknown only if defensible): this implementation
-never defaults to acceptance for an unclear signal - ContextQuality.UNKNOWN,
-trend_5m's own InsufficientData, and trend_5m's "flat" value are all
-rejected, never treated as "safe to trade" by default.
+Rule 3 (NEUTRAL - defensive only): this setup's own interpretation rule
+(SETUP_INTERPRETATION_V1) is RULE_FACT-sourced, and SetupInterpretation's
+own model invariants require source=INTENTIONALLY_NEUTRAL for
+direction=NEUTRAL - a combination _interpret_rule_fact() can never
+produce. NEUTRAL is therefore structurally unreachable here through the
+real pipeline (the same class of guarantee already established elsewhere
+in this codebase, e.g. Setup Interpretation's own empty-qualifying-levels
+case). It still gets a real, named branch - REJECTED/FLAT with a distinct,
+honestly-labeled reason code - rather than a raise or a silent fallback,
+because StrategyPlugin.evaluate()'s own contract promises it never raises
+for an ordinary outcome, and a defensively-unreachable state is not the
+same thing as a genuine internal contract violation (see
+MissingSetupInterpretationError below for that distinct case).
 
 --- Reason codes ---
 
-Exactly the four this Sprint's own instructions gave as examples -
-nothing invented beyond them:
+Unchanged from Sprint 3, plus one new defensive-only addition:
 
-    setup_absent          the target setup was not present in
-                           frame.setup_engine_output.setups, could not be
-                           evaluated (InsufficientData), or was evaluated
-                           and did not detect (detected=False). All three
-                           collapse to one NO_SIGNAL/FLAT outcome - "not
-                           present or did not trigger" is one condition,
-                           per this Sprint's own wording.
-    context_insufficient   ContextQuality.UNKNOWN, or trend_5m itself
-                           could not be computed (InsufficientData) - not
-                           enough information to accept a candidate.
-    context_conflict       trend_5m computed a real "flat" classification -
-                           conflicts with asserting any direction.
-    accepted               the setup triggered, ContextQuality was TRUSTED
-                           or DEGRADED, and trend_5m gave a real up/down
-                           direction.
+    setup_absent                    the target setup was not present in
+                                     frame.setup_engine_output.setups,
+                                     could not be evaluated
+                                     (InsufficientData), or was evaluated
+                                     and did not detect (detected=False).
+    context_insufficient            ContextQuality.UNKNOWN, or the
+                                     matching SetupInterpretation's own
+                                     direction is UNAVAILABLE.
+    context_conflict                the matching SetupInterpretation's
+                                     own direction is AMBIGUOUS.
+    accepted                        the setup triggered, ContextQuality
+                                     was TRUSTED or DEGRADED, and the
+                                     matching SetupInterpretation gave a
+                                     real BULLISH/BEARISH direction.
+    unexpected_neutral_interpretation   Sprint 6's one new reason code -
+                                     the defensive NEUTRAL branch above.
+                                     Never expected in practice; included
+                                     for total, honest evaluate() coverage.
 """
 from atlas.market_context.models import ContextQuality
 from atlas.replay_engine.models import ReplayFrame
-from atlas.rule_engine.models import FactResult
 from atlas.setup_engine.models import SetupResult
+from atlas.setup_interpretation.models import SetupDirection
 from atlas.strategy_engine.models import StrategyDecision, StrategyDirection, StrategyDisposition
 
 STRATEGY_ID = "displacement_volume_context"
 STRATEGY_VERSION = "1.0.0"
 TARGET_SETUP_NAME = "displacement_with_volume_confirmation"
 
-_TREND_DIRECTION = {"up": StrategyDirection.LONG, "down": StrategyDirection.SHORT}
+_INTERPRETED_DIRECTION = {
+    SetupDirection.BULLISH: StrategyDirection.LONG,
+    SetupDirection.BEARISH: StrategyDirection.SHORT,
+}
+
+
+class MissingSetupInterpretationError(Exception):
+    """Raised when frame.setup_interpretations has no entry for
+    TARGET_SETUP_NAME. ReplayFrame's own Sprint 5 contract guarantees a
+    dense tuple - one SetupInterpretation per SetupOutcome in
+    frame.setup_engine_output.setups - so a missing entry means Setup
+    Engine's registry and Setup Interpretation's own SETUP_INTERPRETATION_V1
+    rule set have gone out of sync: a real internal contract violation,
+    never an ordinary market condition, and never silently papered over by
+    falling back to Rule Engine facts. This mirrors the same "a real
+    contract violation raises a typed, named exception" posture
+    atlas.strategy_engine.service's own StrategyEvaluationError family
+    already established for the service layer's own alignment checks -
+    applied here one layer down, for a concrete plugin's own internal
+    lookup."""
 
 
 class DisplacementVolumeContext:
     """A deterministic reference strategy: displacement_with_volume_confirmation
-    plus a minimal Market Context/trend acceptance filter. See this
-    module's own docstring for the full decision-tree rationale."""
+    plus a minimal Market Context/Setup Interpretation acceptance filter.
+    See this module's own docstring for the full decision-tree rationale."""
 
     @property
     def strategy_id(self) -> str:
@@ -147,17 +169,26 @@ class DisplacementVolumeContext:
                 context_fingerprint=context_fingerprint,
             )
 
-        trend = frame.rule_engine_output.facts.get("trend_5m")
-        if not isinstance(trend, FactResult):
+        interpretation = next(
+            (entry for entry in frame.setup_interpretations if entry.setup_id == TARGET_SETUP_NAME), None,
+        )
+        if interpretation is None:
+            raise MissingSetupInterpretationError(
+                f"{TARGET_SETUP_NAME!r} has no entry in frame.setup_interpretations - ReplayFrame's own "
+                "dense contract guarantees one, so this is an internal contract violation, not an "
+                "ordinary market condition"
+            )
+
+        direction = _INTERPRETED_DIRECTION.get(interpretation.direction)
+        if direction is not None:
             return StrategyDecision(
                 occurred_at=occurred_at, strategy_id=STRATEGY_ID, strategy_version=STRATEGY_VERSION,
-                disposition=StrategyDisposition.REJECTED, direction=StrategyDirection.FLAT,
-                setup_ids=(TARGET_SETUP_NAME,), reason_codes=("context_insufficient",),
+                disposition=StrategyDisposition.CANDIDATE, direction=direction,
+                setup_ids=(TARGET_SETUP_NAME,), reason_codes=("accepted",),
                 context_fingerprint=context_fingerprint,
             )
 
-        direction = _TREND_DIRECTION.get(trend.value)
-        if direction is None:
+        if interpretation.direction == SetupDirection.AMBIGUOUS:
             return StrategyDecision(
                 occurred_at=occurred_at, strategy_id=STRATEGY_ID, strategy_version=STRATEGY_VERSION,
                 disposition=StrategyDisposition.REJECTED, direction=StrategyDirection.FLAT,
@@ -165,9 +196,22 @@ class DisplacementVolumeContext:
                 context_fingerprint=context_fingerprint,
             )
 
+        if interpretation.direction == SetupDirection.UNAVAILABLE:
+            return StrategyDecision(
+                occurred_at=occurred_at, strategy_id=STRATEGY_ID, strategy_version=STRATEGY_VERSION,
+                disposition=StrategyDisposition.REJECTED, direction=StrategyDirection.FLAT,
+                setup_ids=(TARGET_SETUP_NAME,), reason_codes=("context_insufficient",),
+                context_fingerprint=context_fingerprint,
+            )
+
+        # SetupDirection.NEUTRAL - defensive only, structurally unreachable
+        # through the real pipeline for this RULE_FACT-sourced setup (see
+        # this module's own docstring). Kept as a real, named branch so
+        # evaluate() stays total rather than raising for a state its own
+        # Protocol promises never to raise for.
         return StrategyDecision(
             occurred_at=occurred_at, strategy_id=STRATEGY_ID, strategy_version=STRATEGY_VERSION,
-            disposition=StrategyDisposition.CANDIDATE, direction=direction,
-            setup_ids=(TARGET_SETUP_NAME,), reason_codes=("accepted",),
+            disposition=StrategyDisposition.REJECTED, direction=StrategyDirection.FLAT,
+            setup_ids=(TARGET_SETUP_NAME,), reason_codes=("unexpected_neutral_interpretation",),
             context_fingerprint=context_fingerprint,
         )

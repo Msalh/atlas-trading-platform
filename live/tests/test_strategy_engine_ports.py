@@ -98,6 +98,7 @@ def _frame() -> ReplayFrame:
     return ReplayFrame(
         market_state=_market_state(), rule_engine_output=_rule_engine_output(),
         setup_engine_output=_setup_engine_output(), market_context=_market_context(),
+        setup_interpretations=(),  # Sprint 5 schema field, unused by StrategyPlugin's own contract test
     )
 
 

@@ -1,14 +1,17 @@
 """
-Phase N2, Sprint 2. Tests for atlas.replay_engine.service.build_replay_output_window()
-- the pure composition core that zips Rule Engine + Setup Engine + Market
-Context output into ReplayFrame, one per input MarketState.
+Phase N2, Sprint 2; extended Sprint 5 (Setup Interpretation integration).
+Tests for atlas.replay_engine.service.build_replay_output_window() - the
+pure composition core that zips Rule Engine + Setup Engine + Market
+Context + Setup Interpretation output into ReplayFrame, one per input
+MarketState.
 
-No test here re-verifies Rule Engine's, Setup Engine's, or Market Context's
-own already-certified internals (fact values, setup detection, session/regime
-classification) - only that build_replay_output_window composes and aligns
-their existing outputs correctly. Fixtures deliberately omit most optional
-MarketState fields (open/high/low/close/volume/vwap/etc.) - every Rule Engine
-fact already degrades to InsufficientData when its inputs are missing rather
+No test here re-verifies Rule Engine's, Setup Engine's, Market Context's,
+or Setup Interpretation's own already-certified internals (fact values,
+setup detection, session/regime classification, interpretation rules) -
+only that build_replay_output_window composes and aligns their existing
+outputs correctly. Fixtures deliberately omit most optional MarketState
+fields (open/high/low/close/volume/vwap/etc.) - every Rule Engine fact
+already degrades to InsufficientData when its inputs are missing rather
 than raising, so a bare fixture is sufficient to exercise composition/
 alignment without asserting anything about fact content.
 """
@@ -36,6 +39,7 @@ from atlas.replay_engine.service import (
 )
 from atlas.rule_engine.service import build_rule_engine_output_window
 from atlas.setup_engine.service import build_setup_engine_output_window
+from atlas.setup_interpretation.service import SetupInterpretationUnknownSetupError, interpret_setups
 
 _BASE = datetime(2026, 7, 20, 13, 0, tzinfo=timezone.utc)
 _CENTRAL = ZoneInfo("America/Chicago")
@@ -80,6 +84,16 @@ def _build_market_contexts(window: list[MarketState]) -> list:
             window=window[: i + 1], upstream_session_name=None, upstream_is_rth=None,
         )
         for i, state in enumerate(window)
+    ]
+
+
+def _build_setup_interpretations(rule_outputs: list, setup_outputs: list) -> list:
+    """Mirrors service.py's own per-position construction, for tests that
+    need a valid setup_interpretations list to mutate/slice directly
+    against _assert_aligned."""
+    return [
+        interpret_setups(rule_engine_output=rule_outputs[i], setup_engine_output=setup_outputs[i])
+        for i in range(len(rule_outputs))
     ]
 
 
@@ -149,9 +163,10 @@ def test_assert_aligned_raises_on_length_mismatch():
     rule_outputs = build_rule_engine_output_window(window)
     setup_outputs = build_setup_engine_output_window(rule_outputs)
     market_contexts = _build_market_contexts(window)
+    setup_interpretations = _build_setup_interpretations(rule_outputs, setup_outputs)
 
     with pytest.raises(ReplayLengthMismatchError):
-        _assert_aligned(window, rule_outputs, setup_outputs, market_contexts[:-1])  # one short
+        _assert_aligned(window, rule_outputs, setup_outputs, market_contexts[:-1], setup_interpretations)  # one short
 
 
 def test_assert_aligned_reports_every_mismatched_list_by_name():
@@ -159,9 +174,21 @@ def test_assert_aligned_reports_every_mismatched_list_by_name():
     rule_outputs = build_rule_engine_output_window(window)
     setup_outputs = build_setup_engine_output_window(rule_outputs)
     market_contexts = _build_market_contexts(window)
+    setup_interpretations = _build_setup_interpretations(rule_outputs, setup_outputs)
 
     with pytest.raises(ReplayLengthMismatchError, match="setup_engine_outputs"):
-        _assert_aligned(window, rule_outputs, setup_outputs[:-1], market_contexts)
+        _assert_aligned(window, rule_outputs, setup_outputs[:-1], market_contexts, setup_interpretations)
+
+
+def test_assert_aligned_reports_setup_interpretations_length_mismatch_by_name():
+    window = _window(3)
+    rule_outputs = build_rule_engine_output_window(window)
+    setup_outputs = build_setup_engine_output_window(rule_outputs)
+    market_contexts = _build_market_contexts(window)
+    setup_interpretations = _build_setup_interpretations(rule_outputs, setup_outputs)
+
+    with pytest.raises(ReplayLengthMismatchError, match="setup_interpretations"):
+        _assert_aligned(window, rule_outputs, setup_outputs, market_contexts, setup_interpretations[:-1])
 
 
 # ---- timestamp mismatch ----
@@ -171,12 +198,13 @@ def test_assert_aligned_raises_on_rule_engine_output_occurred_at_mismatch():
     rule_outputs = build_rule_engine_output_window(window)
     setup_outputs = build_setup_engine_output_window(rule_outputs)
     market_contexts = _build_market_contexts(window)
+    setup_interpretations = _build_setup_interpretations(rule_outputs, setup_outputs)
 
     tampered = replace(rule_outputs[1], occurred_at="2099-01-01T00:00:00+00:00")
     corrupted = rule_outputs[:1] + [tampered] + rule_outputs[2:]
 
     with pytest.raises(ReplayOccurredAtMismatchError, match="rule_engine_output"):
-        _assert_aligned(window, corrupted, setup_outputs, market_contexts)
+        _assert_aligned(window, corrupted, setup_outputs, market_contexts, setup_interpretations)
 
 
 def test_assert_aligned_raises_on_setup_engine_output_occurred_at_mismatch():
@@ -184,12 +212,13 @@ def test_assert_aligned_raises_on_setup_engine_output_occurred_at_mismatch():
     rule_outputs = build_rule_engine_output_window(window)
     setup_outputs = build_setup_engine_output_window(rule_outputs)
     market_contexts = _build_market_contexts(window)
+    setup_interpretations = _build_setup_interpretations(rule_outputs, setup_outputs)
 
     tampered = replace(setup_outputs[1], occurred_at="2099-01-01T00:00:00+00:00")
     corrupted = setup_outputs[:1] + [tampered] + setup_outputs[2:]
 
     with pytest.raises(ReplayOccurredAtMismatchError, match="setup_engine_output"):
-        _assert_aligned(window, rule_outputs, corrupted, market_contexts)
+        _assert_aligned(window, rule_outputs, corrupted, market_contexts, setup_interpretations)
 
 
 def test_assert_aligned_raises_on_market_context_occurred_at_mismatch():
@@ -197,12 +226,28 @@ def test_assert_aligned_raises_on_market_context_occurred_at_mismatch():
     rule_outputs = build_rule_engine_output_window(window)
     setup_outputs = build_setup_engine_output_window(rule_outputs)
     market_contexts = _build_market_contexts(window)
+    setup_interpretations = _build_setup_interpretations(rule_outputs, setup_outputs)
 
     tampered = replace(market_contexts[1], occurred_at=datetime(2099, 1, 1, tzinfo=timezone.utc))
     corrupted = market_contexts[:1] + [tampered] + market_contexts[2:]
 
     with pytest.raises(ReplayOccurredAtMismatchError, match="market_context"):
-        _assert_aligned(window, rule_outputs, setup_outputs, corrupted)
+        _assert_aligned(window, rule_outputs, setup_outputs, corrupted, setup_interpretations)
+
+
+def test_assert_aligned_raises_on_setup_interpretation_occurred_at_mismatch():
+    window = _window(3)
+    rule_outputs = build_rule_engine_output_window(window)
+    setup_outputs = build_setup_engine_output_window(rule_outputs)
+    market_contexts = _build_market_contexts(window)
+    setup_interpretations = _build_setup_interpretations(rule_outputs, setup_outputs)
+
+    tampered_entry = replace(setup_interpretations[1][0], occurred_at=datetime(2099, 1, 1, tzinfo=timezone.utc))
+    tampered_tuple = (tampered_entry,) + setup_interpretations[1][1:]
+    corrupted = setup_interpretations[:1] + [tampered_tuple] + setup_interpretations[2:]
+
+    with pytest.raises(ReplayOccurredAtMismatchError, match="setup_interpretation"):
+        _assert_aligned(window, rule_outputs, setup_outputs, market_contexts, corrupted)
 
 
 def test_assert_aligned_passes_for_genuinely_aligned_input():
@@ -213,8 +258,9 @@ def test_assert_aligned_passes_for_genuinely_aligned_input():
     rule_outputs = build_rule_engine_output_window(window)
     setup_outputs = build_setup_engine_output_window(rule_outputs)
     market_contexts = _build_market_contexts(window)
+    setup_interpretations = _build_setup_interpretations(rule_outputs, setup_outputs)
 
-    _assert_aligned(window, rule_outputs, setup_outputs, market_contexts)  # must not raise
+    _assert_aligned(window, rule_outputs, setup_outputs, market_contexts, setup_interpretations)  # must not raise
 
 
 # ---- determinism ----
@@ -255,3 +301,58 @@ def test_every_frame_is_a_replay_frame_instance():
     window = _window(3)
     frames = build_replay_output_window(window)
     assert all(isinstance(frame, ReplayFrame) for frame in frames)
+
+
+# ---- Sprint 5: setup_interpretations integration ----
+
+def test_frame_setup_interpretations_matches_a_direct_interpret_setups_call():
+    """The interpretation tuple build_replay_output_window attaches to each
+    frame must be exactly what calling interpret_setups() directly against
+    that same frame's own rule_engine_output/setup_engine_output pair would
+    produce - proving composition, not a second, independently-drifting
+    computation."""
+    window = _window(6)
+    frames = build_replay_output_window(window)
+    for frame in frames:
+        expected = interpret_setups(
+            rule_engine_output=frame.rule_engine_output, setup_engine_output=frame.setup_engine_output,
+        )
+        assert frame.setup_interpretations == expected
+
+
+def test_frame_setup_interpretations_dense_length_matches_setup_engine_output():
+    window = _window(6)
+    frames = build_replay_output_window(window)
+    for frame in frames:
+        assert len(frame.setup_interpretations) == len(frame.setup_engine_output.setups)
+
+
+def test_frame_setup_interpretations_occurred_at_matches_every_frame():
+    window = _window(6)
+    frames = build_replay_output_window(window)
+    for frame in frames:
+        for interpretation in frame.setup_interpretations:
+            assert interpretation.occurred_at == frame.market_state.envelope.occurred_at
+
+
+def test_build_replay_output_window_propagates_setup_interpretation_errors_uncaught(monkeypatch):
+    """No real MarketState window can currently drive interpret_setups()
+    into raising (REGISTRY always evaluates every fact/setup, so
+    SetupInterpretationMissingFactError/InvalidFactValueError/
+    UnknownSetupError/AlignmentError are all structurally unreachable
+    through the real construction path - the same class of guarantee
+    Setup Interpretation's own Sprint 3 Integration Review already
+    established). This proves the "no try/except" contract directly, by
+    substituting a poisoned interpret_setups that always raises, the only
+    way to exercise this path without a hand-poisoned RuleEngineOutput/
+    SetupEngineOutput pair build_replay_output_window itself would never
+    produce."""
+    window = _window(3)
+
+    def _boom(*, rule_engine_output, setup_engine_output):
+        raise SetupInterpretationUnknownSetupError("simulated contract violation")
+
+    monkeypatch.setattr("atlas.replay_engine.service.interpret_setups", _boom)
+
+    with pytest.raises(SetupInterpretationUnknownSetupError):
+        build_replay_output_window(window)

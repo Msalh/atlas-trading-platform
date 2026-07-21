@@ -1,7 +1,7 @@
 # ADR-0003: Setup Interpretation
 
-**Status:** Accepted
-**Date:** 2026-07-21
+**Status:** Accepted — integration complete
+**Date:** 2026-07-21 (integrated into Replay Engine Sprint 5; Strategy Engine migrated Sprint 6; certified Sprint 7 — Phase N3 final certification)
 **Package:** `live/atlas/setup_interpretation/`
 
 ## Purpose
@@ -177,25 +177,52 @@ shape — a setup that is not detected still gets an explicit
 `detected=False, direction=UNAVAILABLE, source=INSUFFICIENT_DATA` entry,
 not an omission.
 
-## Future migration path
+## Migration completed (Sprints 5–6)
 
-Setup Interpretation was validated (Sprint 3) but is **not yet wired into
-any production consumer**. `displacement_volume_context.py` still reads
-`frame.rule_engine_output.facts["trend_5m"]` directly — unchanged by this
-ADR. The Integration Review's equivalence study proved, empirically
-against real replay-shaped data, that a hypothetical migrated version of
-that strategy (consuming `SetupInterpretation` instead of `trend_5m`
-directly) would produce identical `disposition`/`direction` decisions on
-every tested bar, with reason codes that differ in exact string but are
-translatable. Two things remain deliberately deferred, each requiring its
-own future, separately-approved sprint:
+Setup Interpretation was validated stand-alone (Sprint 3), certified as a
+stable component (Sprint 4), and is now fully wired into production. Both
+steps the original architecture review deferred are done:
 
-- **Widening `ReplayFrame`** to carry `SetupInterpretation` output
-  alongside its existing four fields — not done here; `ReplayFrame`
-  remains exactly as ADR-0002 left it.
-- **Migrating `DisplacementVolumeContext`** (or any future plugin) to
-  actually consume `SetupInterpretation` instead of raw Rule Engine facts
-  — not done here; the strategy's production logic is untouched.
+- **`ReplayFrame` was widened** (Sprint 5) to carry
+  `setup_interpretations: tuple[SetupInterpretation, ...]` as its fifth
+  field, populated by `atlas.replay_engine.service.build_replay_output_window()`
+  calling `interpret_setups()` once per bar — see ADR-0002's own "Setup
+  Interpretation composition" section for the construction-side detail.
+- **`DisplacementVolumeContext` was migrated** (Sprint 6) to read
+  `frame.setup_interpretations` instead of `frame.rule_engine_output.facts["trend_5m"]`
+  directly. It no longer imports anything from `atlas.rule_engine` and
+  never accesses `RuleEngineOutput.facts` — confirmed by AST-based
+  dependency audits in three independent places (the strategy's own test
+  file, `test_strategy_engine_dependencies.py`'s whole-package audit, and
+  Setup Interpretation's own integration test suite).
+
+The Sprint 3 Integration Review's equivalence study had already proven,
+against synthetic-but-real-pipeline replay data, that a hypothetical
+migrated strategy would produce identical `disposition`/`direction`
+decisions with translatable-but-different reason codes. Sprint 6's actual
+migration confirmed this empirically rather than hypothetically: an exact
+`StrategyDecision` equivalence study (every field — disposition,
+direction, `reason_codes`, `strategy_id`, `strategy_version`, `setup_ids`,
+`occurred_at`, `context_fingerprint`) against both a synthetic real-pipeline
+dataset (80 bars) and a real 21,062-bar MNQ1! export produced **zero
+mismatches** in both cases — the legacy strategy's exact string reason
+codes (`"accepted"`, `"context_conflict"`, `"context_insufficient"`,
+`"setup_absent"`) were preserved unchanged, per Sprint 6's own strict
+full-output-equivalence decision (see that sprint's report for the
+architectural reasoning: `StrategyDecision.reason_codes` names the
+strategy's own acceptance rule, `SetupInterpretation.reason_codes` names
+the interpretation's own evidence — two legitimate, distinct vocabularies,
+never merged).
+
+The production path is now, and is intended to remain, exactly:
+
+```
+Rule Engine → Setup Engine → Setup Interpretation → Replay Engine → Strategy Engine
+```
+
+with Setup Interpretation composed once, inside Replay Engine, and consumed
+by Strategy Engine only through `ReplayFrame`'s own already-typed field —
+never called a second time, never re-derived, never duplicated.
 
 ## Why Setup Engine was never modified
 
@@ -218,12 +245,15 @@ Setup Interpretation depends on: Rule Engine (`models` only — `FactResult`,
 `SetupResult`), and the Python standard library. Nothing else — never
 `atlas.market_engine`, `atlas.replay_engine`, `atlas.market_context`,
 `atlas.strategy_engine`, repositories, the API, events, research, or any
-LLM service. The Sprint 4 Certification's dependency audit confirms: no
-forbidden import, no circular import (nothing under `atlas.core`,
-`atlas.market_engine`, `atlas.rule_engine`, `atlas.setup_engine`,
-`atlas.market_context`, `atlas.replay_engine`, or `atlas.strategy_engine`
-imports `atlas.setup_interpretation` back), and **zero dependents** —
-nothing under `atlas/` imports `atlas.setup_interpretation` except its own
-tests. Like Replay Engine at its own certification, it is a pure,
-currently-unconsumed downstream layer, validated and ready, not yet wired
-into anything.
+LLM service. The Sprint 7 Phase N3 Certification's whole-project
+dependency audit confirms: no forbidden import, no circular import
+(nothing under `atlas.core`, `atlas.market_engine`, `atlas.rule_engine`,
+`atlas.setup_engine`, or `atlas.market_context` imports
+`atlas.setup_interpretation` back), and **exactly two approved
+dependents** — `atlas.replay_engine` (Sprint 5, calls
+`interpret_setups()` to populate `ReplayFrame.setup_interpretations`) and
+`atlas.strategy_engine` (Sprint 6, imports `.models.SetupDirection` only,
+to read the already-computed field — never calls `interpret_setups()`
+itself). Nothing else under `atlas/` imports `atlas.setup_interpretation`.
+The package remains a pure, one-way downstream layer exactly as designed —
+now genuinely consumed, not merely validated and waiting.

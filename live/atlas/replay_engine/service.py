@@ -1,13 +1,16 @@
 """
-Replay Engine composition core - Phase N2. build_replay_output_window()
-(Sprint 2) is the pure synchronous core: given a single, already-contiguous
-window of MarketState (Sprint 1's segment_replay_window is the caller's own
+Replay Engine composition core - Phase N2, extended Sprint 5 (Setup
+Interpretation integration). build_replay_output_window() (Sprint 2) is
+the pure synchronous core: given a single, already-contiguous window of
+MarketState (Sprint 1's segment_replay_window is the caller's own
 responsibility for producing one - this function does not re-segment or
-re-validate contiguity itself), it composes Rule Engine, Setup Engine, and
-Market Context's existing public functions - unchanged, unduplicated - into
-one ReplayFrame per input bar. replay() (Sprint 3) is the thin async
-orchestration boundary on top of it - see that function's own docstring
-below for its contract.
+re-validate contiguity itself), it composes Rule Engine, Setup Engine,
+Market Context, and (Sprint 5) Setup Interpretation's existing public
+functions - unchanged, unduplicated - into one ReplayFrame per input bar.
+replay() (Sprint 3) is the thin async orchestration boundary on top of
+it - see that function's own docstring below for its contract; Sprint 5
+makes no change to replay() at all, since ReplayFrame carrying a fifth
+field is entirely transparent to it.
 
 Pure and synchronous throughout: no repository, no async, no database, no
 event bus, no logging, no wall-clock read, no randomness, no global mutable
@@ -15,24 +18,39 @@ state, no caching. Given the same market_state_window (and the same
 calendar/classifier), this function always returns the same list[ReplayFrame] -
 the same "same input, same output" guarantee every other windowed composer in
 this codebase (build_rule_engine_output_window, build_setup_engine_output_window,
-build_market_context) already provides one layer down.
+build_market_context, interpret_setups) already provides one layer down.
 
 --- Composition, not reimplementation ---
 
-Three existing functions do all the real work, exactly as already certified:
+Four existing functions do all the real work, exactly as already certified:
 
     build_rule_engine_output_window(market_state_window)  -> list[RuleEngineOutput]
     build_setup_engine_output_window(rule_engine_outputs)  -> list[SetupEngineOutput]
     build_market_context(...)  (called once per position)  -> MarketContext
+    interpret_setups(...)  (called once per position, Sprint 5)  -> tuple[SetupInterpretation, ...]
 
-Nothing in this module recomputes a fact, a setup, a session phase, or a
-volatility regime - it only calls these three, in this order, and zips their
-outputs into ReplayFrame. If market_state_window is not actually contiguous,
-build_rule_engine_output_window's own validate_market_state_window call raises
-a WindowIntegrityError - propagated uncaught, exactly as it already would for
-any other caller; this module adds no try/except around it (a caller violating
-Sprint 1's "pass one already-segmented window" contract is a programming
-error, not a condition to hide).
+Nothing in this module recomputes a fact, a setup, a session phase, a
+volatility regime, or a setup's direction - it only calls these four, in
+this order, and zips their outputs into ReplayFrame. If market_state_window
+is not actually contiguous, build_rule_engine_output_window's own
+validate_market_state_window call raises a WindowIntegrityError -
+propagated uncaught, exactly as it already would for any other caller;
+this module adds no try/except around it (a caller violating Sprint 1's
+"pass one already-segmented window" contract is a programming error, not
+a condition to hide). The same "no try/except" posture applies to Sprint
+5's own interpret_setups() call: SetupInterpretationMissingFactError,
+SetupInterpretationUnknownSetupError, SetupInterpretationInvalidFactValueError,
+and SetupInterpretationAlignmentError are all real, upstream contract
+violations if they ever fire here - reported, never caught, wrapped, or
+silently papered over. In practice, none of the four can actually fire
+against a RuleEngineOutput/SetupEngineOutput pair this module itself
+produced (both are always built from the same real registries, in the
+same position, so alignment is guaranteed by construction and every fact/
+setup name interpret_setups looks for is always present) - the same
+"structurally unreachable through the real construction path, still
+checked" class of guarantee this codebase already relies on elsewhere
+(e.g. Setup Interpretation's own empty-qualifying-levels case); they stay
+live, uncaught guards, not dead code removed for being unreachable today.
 
 --- Market Context's per-position window ---
 
@@ -61,15 +79,20 @@ constant across the whole window.
 
 --- Alignment ---
 
-ReplayFrame[i] must describe exactly the same historical bar across all four
-of its fields. This is guaranteed by construction (each of the three composed
-functions already promises "exactly one output per input, same order," and
-market_context is built directly from market_state_window[i]'s own
+ReplayFrame[i] must describe exactly the same historical bar across all five
+of its fields. This is guaranteed by construction (each of the four composed
+functions already promises "exactly one output per input, same order" -
+interpret_setups's own dense-tuple guarantee is a slightly different shape
+(one SetupInterpretation per SetupOutcome within a position, not one output
+per position), so what Sprint 5 checks for it is "every entry in this
+position's tuple shares this position's own occurred_at," not a fifth
+length comparison against market_state_window itself - and market_context
+is built directly from market_state_window[i]'s own
 symbol/timeframe/occurred_at) - _assert_aligned re-checks it anyway, the same
 defense-in-depth posture atlas.profiling.service.segment_by_gap already takes
 toward invariants a caller "should" already guarantee (re-checking symbol/
 timeframe even though its own docstring says the input is assumed already
-filtered). A violation here would mean one of the three composed functions'
+filtered). A violation here would mean one of the four composed functions'
 own contract broke - a real bug, not an expected condition - so it is raised,
 never silently truncated, padded, or fabricated around.
 """
@@ -89,6 +112,8 @@ from atlas.rule_engine.models import RuleEngineOutput
 from atlas.rule_engine.service import build_rule_engine_output_window
 from atlas.setup_engine.models import SetupEngineOutput
 from atlas.setup_engine.service import build_setup_engine_output_window
+from atlas.setup_interpretation.models import SetupInterpretation
+from atlas.setup_interpretation.service import interpret_setups
 
 
 class ReplayAlignmentError(Exception):
@@ -139,12 +164,14 @@ def _assert_aligned(
     rule_engine_outputs: list[RuleEngineOutput],
     setup_engine_outputs: list[SetupEngineOutput],
     market_contexts: list[MarketContext],
+    setup_interpretations: list[tuple[SetupInterpretation, ...]],
 ) -> None:
     expected_length = len(market_state_window)
     lengths = {
         "rule_engine_outputs": len(rule_engine_outputs),
         "setup_engine_outputs": len(setup_engine_outputs),
         "market_contexts": len(market_contexts),
+        "setup_interpretations": len(setup_interpretations),
     }
     mismatched = {name: n for name, n in lengths.items() if n != expected_length}
     if mismatched:
@@ -174,6 +201,13 @@ def _assert_aligned(
                 f"{market_contexts[index].occurred_at!r} does not match "
                 f"market_state.envelope.occurred_at={expected_at!r}"
             )
+        for interpretation in setup_interpretations[index]:
+            if interpretation.occurred_at != expected_at:
+                raise ReplayOccurredAtMismatchError(
+                    f"position {index}: setup_interpretation for "
+                    f"{interpretation.setup_id!r} occurred_at={interpretation.occurred_at!r} "
+                    f"does not match market_state.envelope.occurred_at={expected_at!r}"
+                )
 
 
 def build_replay_output_window(
@@ -188,7 +222,11 @@ def build_replay_output_window(
     exactly one ReplayFrame per input MarketState, in the same order -
     never a shorter or reordered list; an empty input produces an empty
     output, the same "no position to build" posture
-    build_setup_engine_output_window already uses one layer down."""
+    build_setup_engine_output_window already uses one layer down. Each
+    frame's setup_interpretations (Sprint 5) is produced by calling
+    interpret_setups() against that same position's own
+    rule_engine_output/setup_engine_output pair - never a separate window
+    or a different position's pair."""
     if not market_state_window:
         return []
 
@@ -198,8 +236,16 @@ def build_replay_output_window(
         _market_context_for_position(market_state_window, index, calendar, classifier)
         for index in range(len(market_state_window))
     ]
+    setup_interpretations = [
+        interpret_setups(
+            rule_engine_output=rule_engine_outputs[index], setup_engine_output=setup_engine_outputs[index],
+        )
+        for index in range(len(market_state_window))
+    ]
 
-    _assert_aligned(market_state_window, rule_engine_outputs, setup_engine_outputs, market_contexts)
+    _assert_aligned(
+        market_state_window, rule_engine_outputs, setup_engine_outputs, market_contexts, setup_interpretations,
+    )
 
     return [
         ReplayFrame(
@@ -207,6 +253,7 @@ def build_replay_output_window(
             rule_engine_output=rule_engine_outputs[index],
             setup_engine_output=setup_engine_outputs[index],
             market_context=market_contexts[index],
+            setup_interpretations=setup_interpretations[index],
         )
         for index in range(len(market_state_window))
     ]
