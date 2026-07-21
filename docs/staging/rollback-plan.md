@@ -18,6 +18,18 @@ broken and I want it back to a known-good state," not for anything touching real
 3. If you need to roll back the *code* (not just config), and the bad commit hasn't
    been redeployed over by a fix yet, use Railway's deployment history the same way -
    no git revert needed on your end, Railway keeps prior build artifacts.
+4. **Migrations are forward-only** (`migrations/runner.py` has no `down` migration
+   support, by design - see `docs/sprint1/architecture-decisions.md`), same as
+   production. An application-only rollback (step 1/3 above) is safe only when the
+   older code is schema-compatible with whatever migrations have already applied -
+   check that before assuming a code rollback fixes things. If it isn't compatible,
+   staging has a cheaper escape hatch production doesn't: wipe and restart clean (see
+   "If the Postgres data looks wrong" below), rather than writing a corrective forward
+   migration - there's no real trading history here to preserve. See
+   `docs/ui_v2/deployment-runbook.md` §8 for the fuller production-grade treatment of
+   this policy (application-only rollback vs. roll-forward, operator compatibility
+   check) - it applies unchanged to this project's backend regardless of which
+   Railway environment is running it.
 
 ## If the Postgres data looks wrong
 

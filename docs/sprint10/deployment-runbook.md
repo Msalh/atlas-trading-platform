@@ -17,9 +17,10 @@ an incident.
    frontend - both live in the same Railway project; see
    `docs/ui_v2/deployment-runbook.md` for the current Railway-only deployment
    architecture) - see `docs/sprint9/deployment-checklist.md` for the full list
-   (`DATABASE_URL`, `WEBHOOK_SECRET`, `API_KEY`, `ANTHROPIC_API_KEY`,
-   `PICKMYTRADE_WEBHOOK_URL`, `FRONTEND_ORIGINS`, the four `ACCOUNT_*` variables if
-   using `RISK_ENFORCEMENT=true`) plus this sprint's additions:
+   (`DATABASE_URL`, `WEBHOOK_SECRET`, `API_KEY`, `MARKET_STATE_WEBHOOK_SECRET`,
+   `ANTHROPIC_API_KEY`, `PICKMYTRADE_WEBHOOK_URL`, `FRONTEND_ORIGINS`, the four
+   `ACCOUNT_*` variables if using `RISK_ENFORCEMENT=true`) plus this sprint's
+   additions:
    - `ALERT_WEBHOOK_URL` (optional) - a Slack/Discord-compatible incoming webhook URL.
      If unset, PMT-failure and sustained-Claude-failure alerts are silently disabled -
      decide deliberately, don't leave this unset by omission.

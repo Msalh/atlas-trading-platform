@@ -159,7 +159,7 @@ atlas/research_export/
 
 scripts/export_research_snapshots.py
 
-research/snapshots/
+live/research/snapshots/
     re1-summary.v1.json
     re2-summary.v1.json
     dataset-health.v1.json

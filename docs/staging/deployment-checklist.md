@@ -115,10 +115,12 @@ snapshot/kill-switch display with fake numbers.
 
 1. Trigger the deploy (Railway does this automatically once variables are saved, or
    use **Deploy** manually).
-2. Watch the deploy logs. Expect to see migrations apply
-   (`applying migration 0001_init.sql`, `0002_add_quantity.sql`, `0003_ai_notes.sql`,
-   `0004_ai_intelligence_fields.sql`, in order) followed by
-   `Uvicorn running on http://0.0.0.0:$PORT`.
+2. Watch the deploy logs. Expect to see every file in `live/migrations/` apply in
+   numeric order (`applying migration 0001_init.sql`, then `0002_...`, `0003_...`, and
+   so on - `live/migrations/runner.py` applies whatever `.sql` files are actually
+   present, so check that directory for the current authoritative list rather than
+   trusting a specific count named here, which will go stale as new migrations are
+   added) followed by `Uvicorn running on http://0.0.0.0:$PORT`.
 3. **If it crash-loops:** check the logs for a `RuntimeError` from
    `Settings.validate_for_startup()` first - it names exactly which variable is
    missing. This is by far the most likely failure mode for a first deploy.
