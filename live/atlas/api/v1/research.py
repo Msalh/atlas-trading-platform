@@ -30,8 +30,11 @@ import json
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
+
+from atlas.api.deps import get_snapshots_readiness
+from atlas.research_export.startup_check import SnapshotsReadiness
 
 router = APIRouter()
 
@@ -81,7 +84,25 @@ def _http_envelope(snapshot: dict, warnings: Optional[list[str]] = None) -> dict
     }
 
 
-def _snapshot_response(filename: str, body_key: str) -> JSONResponse:
+def _degraded_response(filename: str, readiness: SnapshotsReadiness) -> Optional[JSONResponse]:
+    """Production-hardening amendment 3: gate on the one-time startup check
+    before attempting to load anything, so an "invalid" snapshot (bad
+    checksum, malformed schema) 503s with a clear reason exactly like a
+    "missing" one always has, rather than being loaded blind and either
+    crashing or silently serving corrupt content. Returns None when ready
+    (the only case where the caller should proceed to _load_snapshot)."""
+    result = readiness.status_for(filename)
+    if result.status == "ready":
+        return None
+    return JSONResponse(
+        {"ok": False, "error": f"research snapshot {result.status}: {result.reason}"}, status_code=503,
+    )
+
+
+def _snapshot_response(filename: str, body_key: str, readiness: SnapshotsReadiness) -> JSONResponse:
+    degraded = _degraded_response(filename, readiness)
+    if degraded is not None:
+        return degraded
     try:
         snapshot = _load_snapshot(filename)
     except SnapshotNotFoundError as e:
@@ -91,17 +112,20 @@ def _snapshot_response(filename: str, body_key: str) -> JSONResponse:
 
 
 @router.get("/research/re1/summary")
-async def read_re1_summary():
-    return _snapshot_response("re1-summary.v1.json", "report")
+async def read_re1_summary(readiness: SnapshotsReadiness = Depends(get_snapshots_readiness)):
+    return _snapshot_response("re1-summary.v1.json", "report", readiness)
 
 
 @router.get("/research/re2/summary")
-async def read_re2_summary():
-    return _snapshot_response("re2-summary.v1.json", "report")
+async def read_re2_summary(readiness: SnapshotsReadiness = Depends(get_snapshots_readiness)):
+    return _snapshot_response("re2-summary.v1.json", "report", readiness)
 
 
 @router.get("/research/dataset-health")
-async def read_dataset_health():
+async def read_dataset_health(readiness: SnapshotsReadiness = Depends(get_snapshots_readiness)):
+    degraded = _degraded_response("dataset-health.v1.json", readiness)
+    if degraded is not None:
+        return degraded
     try:
         snapshot = _load_snapshot("dataset-health.v1.json")
     except SnapshotNotFoundError as e:

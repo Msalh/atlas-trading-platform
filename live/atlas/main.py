@@ -61,6 +61,7 @@ from atlas.market_engine.repositories.postgres import PostgresMarketStateReposit
 from atlas.monitoring import MarketStateStalenessMonitor
 from atlas.rate_limit import limiter
 from atlas.repositories.postgres import PostgresTradeRepository
+from atlas.research_export.startup_check import check_snapshots
 from atlas.status import SystemStatus
 
 configure_logging()
@@ -83,6 +84,11 @@ async def _market_state_staleness_loop(app: FastAPI, monitor: MarketStateStalene
 async def lifespan(app: FastAPI):
     settings.validate_for_startup()
     app.state.started_at = datetime.now(timezone.utc)
+    # Production-hardening amendment 3: computed once here, never per-request -
+    # does not raise on a missing/invalid snapshot (LIVE endpoints have no
+    # dependency on these files), only records the degraded state for
+    # GET /status to expose. See atlas/research_export/startup_check.py.
+    app.state.snapshots_readiness = check_snapshots(research.SNAPSHOTS_DIR)
     pool = await create_pool()
     app.state.pool = pool
     app.state.repository = PostgresTradeRepository(pool)

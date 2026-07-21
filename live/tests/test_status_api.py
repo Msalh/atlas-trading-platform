@@ -3,8 +3,11 @@ import asyncio
 from unittest.mock import patch
 
 import atlas.ai as ai_module
+from atlas.api.deps import get_snapshots_readiness
 from atlas.api.v1 import webhook
 from atlas.config import settings
+from atlas.main import app
+from atlas.research_export.startup_check import SnapshotCheckResult, SnapshotsReadiness
 from tests.conftest import entry_payload
 
 
@@ -82,3 +85,39 @@ def test_status_database_error_is_surfaced(client, repository):
     body = resp.json()
     assert body["database"]["ok"] is False
     assert "connection pool exhausted" in body["database"]["detail"]
+
+
+class TestStatusExposesResearchSnapshotsReadiness:
+    """Production-hardening amendment 3: GET /status - never
+    /research/dataset-health - is where degraded snapshot state is
+    visible operationally."""
+
+    def test_all_ready_by_default(self, client):
+        resp = client.get("/api/v1/status")
+        body = resp.json()
+        assert body["research_snapshots"]["all_ready"] is True
+        assert set(body["research_snapshots"]["files"].keys()) == {
+            "re1-summary.v1.json", "re2-summary.v1.json", "dataset-health.v1.json",
+        }
+        for detail in body["research_snapshots"]["files"].values():
+            assert detail["status"] == "ready"
+            assert detail["reason"] is None
+
+    def test_degraded_state_is_visible(self, client):
+        degraded = SnapshotsReadiness((
+            SnapshotCheckResult("re1-summary.v1.json", "ready", None),
+            SnapshotCheckResult("re2-summary.v1.json", "missing", "re2-summary.v1.json does not exist"),
+            SnapshotCheckResult("dataset-health.v1.json", "invalid", "content checksum mismatch"),
+        ))
+        app.dependency_overrides[get_snapshots_readiness] = lambda: degraded
+        try:
+            resp = client.get("/api/v1/status")
+        finally:
+            del app.dependency_overrides[get_snapshots_readiness]
+
+        body = resp.json()["research_snapshots"]
+        assert body["all_ready"] is False
+        assert body["files"]["re1-summary.v1.json"]["status"] == "ready"
+        assert body["files"]["re2-summary.v1.json"]["status"] == "missing"
+        assert body["files"]["dataset-health.v1.json"]["status"] == "invalid"
+        assert "checksum mismatch" in body["files"]["dataset-health.v1.json"]["reason"]

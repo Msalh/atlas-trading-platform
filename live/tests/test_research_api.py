@@ -11,7 +11,10 @@ import json
 
 import pytest
 
+from atlas.api.deps import get_snapshots_readiness
 from atlas.api.v1 import research as research_api
+from atlas.main import app
+from atlas.research_export.startup_check import SnapshotCheckResult, SnapshotsReadiness
 
 
 def _fake_envelope(**overrides) -> dict:
@@ -123,3 +126,51 @@ class TestDatasetHealth:
     def test_missing_file_returns_503(self, client, snapshots_dir):
         resp = client.get("/api/v1/research/dataset-health")
         assert resp.status_code == 503
+
+
+class TestDegradedReadinessGating:
+    """Production-hardening amendment 3: a FROZEN endpoint 503s off the
+    startup-computed readiness state BEFORE attempting to load anything -
+    covers "invalid" (bad checksum/schema), which the file-existence-only
+    503 path above never could, since a corrupt-but-present file would
+    otherwise be loaded and served as if it were trustworthy."""
+
+    def _override(self, result: SnapshotCheckResult):
+        readiness = SnapshotsReadiness((result,))
+        app.dependency_overrides[get_snapshots_readiness] = lambda: readiness
+
+    def teardown_method(self):
+        app.dependency_overrides.pop(get_snapshots_readiness, None)
+
+    def test_invalid_readiness_503s_re1_summary_without_touching_disk(self, client, snapshots_dir):
+        # A real, valid file is on disk, but startup marked it invalid
+        # (e.g. a checksum mismatch caught before this request) - the
+        # gate must still 503, never silently serve the file's content.
+        _write_snapshot(snapshots_dir, "re1-summary.v1.json", {"fact_profiles": {}})
+        self._override(SnapshotCheckResult("re1-summary.v1.json", "invalid", "content checksum mismatch"))
+
+        resp = client.get("/api/v1/research/re1/summary")
+        assert resp.status_code == 503
+        body = resp.json()
+        assert body["ok"] is False
+        assert "invalid" in body["error"]
+        assert "checksum mismatch" in body["error"]
+
+    def test_missing_readiness_503s_re2_summary_with_a_clear_reason(self, client, snapshots_dir):
+        self._override(SnapshotCheckResult("re2-summary.v1.json", "missing", "re2-summary.v1.json does not exist"))
+        resp = client.get("/api/v1/research/re2/summary")
+        assert resp.status_code == 503
+        assert "missing" in resp.json()["error"]
+
+    def test_invalid_readiness_503s_dataset_health(self, client, snapshots_dir):
+        self._override(SnapshotCheckResult("dataset-health.v1.json", "invalid", "malformed schema"))
+        resp = client.get("/api/v1/research/dataset-health")
+        assert resp.status_code == 503
+        assert "malformed schema" in resp.json()["error"]
+
+    def test_ready_readiness_still_serves_the_real_file(self, client, snapshots_dir):
+        _write_snapshot(snapshots_dir, "re1-summary.v1.json", {"fact_profiles": {"x": 1}})
+        self._override(SnapshotCheckResult("re1-summary.v1.json", "ready", None))
+        resp = client.get("/api/v1/research/re1/summary")
+        assert resp.status_code == 200
+        assert resp.json()["report"] == {"fact_profiles": {"x": 1}}

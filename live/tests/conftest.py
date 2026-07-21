@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from atlas.api.deps import (  # noqa: E402
-    get_event_bus, get_market_state_repository, get_repository, get_system_status,
+    get_event_bus, get_market_state_repository, get_repository, get_snapshots_readiness, get_system_status,
 )
 from atlas.api.security import require_api_key, require_api_key_for_stream  # noqa: E402
 from atlas.config import settings  # noqa: E402
@@ -18,6 +18,9 @@ from atlas.main import app  # noqa: E402
 from atlas.market_engine.repositories.memory import InMemoryMarketStateRepository  # noqa: E402
 from atlas.rate_limit import limiter  # noqa: E402
 from atlas.repositories.memory import InMemoryTradeRepository  # noqa: E402
+from atlas.research_export.startup_check import (  # noqa: E402
+    EXPECTED_SNAPSHOT_FILES, SnapshotCheckResult, SnapshotsReadiness,
+)
 from atlas.status import SystemStatus  # noqa: E402
 
 TEST_SECRET = "test-secret"
@@ -52,6 +55,20 @@ def system_status():
     return SystemStatus()
 
 
+def all_ready_snapshots_readiness() -> SnapshotsReadiness:
+    """The default the `client` fixture wires in - every test that doesn't
+    care about degraded snapshot state gets a plain "everything's fine"
+    result, without needing real files on disk. Tests for the degraded
+    states themselves (tests/test_status_api.py) override
+    get_snapshots_readiness directly with a purpose-built SnapshotsReadiness."""
+    return SnapshotsReadiness(tuple(SnapshotCheckResult(f, "ready", None) for f in EXPECTED_SNAPSHOT_FILES))
+
+
+@pytest.fixture
+def snapshots_readiness():
+    return all_ready_snapshots_readiness()
+
+
 @pytest.fixture
 def event_bus(system_status):
     """A real EventBus with the same logging + SystemStatus subscribers production
@@ -65,7 +82,7 @@ def event_bus(system_status):
 
 
 @pytest.fixture
-def client(repository, market_state_repository, event_bus, system_status, monkeypatch):
+def client(repository, market_state_repository, event_bus, system_status, snapshots_readiness, monkeypatch):
     """A TestClient wired to an in-memory repository via FastAPI's
     dependency_overrides - the standard way to test routes without a real database.
     This bypasses the Postgres-backed lifespan entirely (TestClient never triggers it
@@ -90,6 +107,7 @@ def client(repository, market_state_repository, event_bus, system_status, monkey
     app.dependency_overrides[get_market_state_repository] = lambda: market_state_repository
     app.dependency_overrides[get_event_bus] = lambda: event_bus
     app.dependency_overrides[get_system_status] = lambda: system_status
+    app.dependency_overrides[get_snapshots_readiness] = lambda: snapshots_readiness
     app.dependency_overrides[require_api_key] = lambda: None
     app.dependency_overrides[require_api_key_for_stream] = lambda: None
     try:

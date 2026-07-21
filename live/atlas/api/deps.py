@@ -10,6 +10,7 @@ from fastapi import Request
 from atlas.events.bus import EventBus
 from atlas.market_engine.ports import MarketStateRepository
 from atlas.repositories.base import TradeRepository
+from atlas.research_export.startup_check import SnapshotsReadiness
 from atlas.status import SystemStatus
 
 
@@ -27,3 +28,7 @@ def get_system_status(request: Request) -> SystemStatus:
 
 def get_market_state_repository(request: Request) -> MarketStateRepository:
     return request.app.state.market_state_repository
+
+
+def get_snapshots_readiness(request: Request) -> SnapshotsReadiness:
+    return request.app.state.snapshots_readiness
