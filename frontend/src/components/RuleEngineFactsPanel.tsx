@@ -9,7 +9,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { formatClock } from "@/lib/format";
+import { formatClockCT } from "@/lib/format";
 import { useLiveSelector } from "@/lib/liveSelector";
 import { ApiFetchError, RuleEngineLatestResponse, fetchLatestRuleEngineOutputViaProxy } from "@/lib/ruleEngineApi";
 
@@ -61,7 +61,7 @@ export function RuleEngineFactsPanel() {
       )}
       {data?.found && data.data && (
         <>
-          <div className="mb-2 text-xs text-muted">Last closed bar: {formatClock(data.data.occurred_at)}</div>
+          <div className="mb-2 text-xs text-muted">Last closed bar: {formatClockCT(data.data.occurred_at)}</div>
           <ol className="space-y-2">
             {data.data.facts.map((fact) => (
               <FactRow key={fact.name} fact={fact} />

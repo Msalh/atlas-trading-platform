@@ -5,7 +5,7 @@ import { FreshnessBadge } from "@/components/FreshnessBadge";
 import { MismatchBanner, isSymbolTimeframeMismatch } from "@/components/MismatchBanner";
 import { CertificationTable } from "@/components/DatasetHealthPanels/CertificationTable";
 import { KnownWarningsList } from "@/components/DatasetHealthPanels/KnownWarningsList";
-import { formatDateShort } from "@/lib/format";
+import { formatDateShortCT } from "@/lib/format";
 import { useLiveSelector } from "@/lib/liveSelector";
 import { ApiFetchError, fetchDatasetHealth } from "@/lib/researchApi";
 
@@ -74,14 +74,14 @@ export default function DatasetHealthPage() {
               <div className="col-span-2">
                 <dt className="text-xs text-muted">Date range</dt>
                 <dd className="text-foreground">
-                  {formatDateShort(data.dataset_identity.date_range.start)} – {formatDateShort(data.dataset_identity.date_range.end)}
+                  {formatDateShortCT(data.dataset_identity.date_range.start)} – {formatDateShortCT(data.dataset_identity.date_range.end)}
                 </dd>
               </div>
               <div className="col-span-2">
                 <dt className="text-xs text-muted">Frozen computation</dt>
                 <dd className="font-mono text-foreground">
                   {data.frozen_version.source_computation_version?.slice(0, 7) ?? "unknown"} (exported{" "}
-                  {formatDateShort(data.frozen_version.exported_at)})
+                  {formatDateShortCT(data.frozen_version.exported_at)})
                 </dd>
               </div>
             </dl>

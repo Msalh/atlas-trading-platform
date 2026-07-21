@@ -14,7 +14,7 @@
 
 "use client";
 
-import { formatClock } from "@/lib/format";
+import { formatClockCT } from "@/lib/format";
 import { LiveActivationEvent, LiveEpisodeProjection } from "@/lib/setupEngineApi";
 import { useLiveEpisodes } from "@/lib/useLiveEpisodes";
 
@@ -74,7 +74,7 @@ function SetupLane({ setupName, episodes }: { setupName: string; episodes: LiveE
 function ActivationEventRow({ event }: { event: LiveActivationEvent }) {
   return (
     <li data-testid="activation-event" className="flex items-center gap-2 text-xs text-muted">
-      <span className="font-mono text-foreground">{formatClock(event.timestamp)}</span>
+      <span className="font-mono text-foreground">{formatClockCT(event.timestamp)}</span>
       <span>{event.segment_id}</span>
       <span className="text-foreground">{event.activated_setups.join(", ")}</span>
     </li>

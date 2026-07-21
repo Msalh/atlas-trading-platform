@@ -45,4 +45,14 @@ describe("FreshnessBadge", () => {
     render(<FreshnessBadge envelope={envelope({ source_track: "frozen" })} />);
     expect(screen.queryByText(/^LIVE/)).not.toBeInTheDocument();
   });
+
+  it("shows an explicit CT label on both the live and frozen badge, never the viewer's local time unlabeled", () => {
+    render(<FreshnessBadge envelope={envelope({ source_track: "live" })} />);
+    expect(screen.getByText(/CT$/)).toBeInTheDocument();
+  });
+
+  it("shows an explicit CT label on the frozen badge's date too", () => {
+    render(<FreshnessBadge envelope={envelope({ source_track: "frozen" })} />);
+    expect(screen.getByText(/CT,/)).toBeInTheDocument();
+  });
 });

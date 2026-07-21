@@ -12,7 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { activationText } from "@/components/ActiveSetupBundle";
 import { EpisodeDurationStrip } from "@/components/EpisodeDurationStrip";
 import { MismatchBanner, isSymbolTimeframeMismatch } from "@/components/MismatchBanner";
-import { formatClock } from "@/lib/format";
+import { formatClockCT } from "@/lib/format";
 import { useLiveSelector } from "@/lib/liveSelector";
 import { ApiFetchError, ResearchSummaryResponse, fetchRe2Summary, findSetupProfileEntry } from "@/lib/researchApi";
 import { LiveEpisodeProjection } from "@/lib/setupEngineApi";
@@ -36,7 +36,7 @@ function RecentEpisodeRow({ episode }: { episode: LiveEpisodeProjection }) {
     <li className="rounded-md border border-border bg-surface px-3 py-2 text-xs">
       <div className="flex items-center justify-between">
         <span className="text-foreground">{episode.duration_bars_observed} bars</span>
-        <span className="text-muted">{formatClock(episode.end_timestamp_observed)}</span>
+        <span className="text-muted">{formatClockCT(episode.end_timestamp_observed)}</span>
       </div>
       <div className="mt-1 text-muted">{terminationText(episode)}</div>
     </li>

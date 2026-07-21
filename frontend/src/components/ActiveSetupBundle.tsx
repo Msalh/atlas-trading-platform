@@ -18,7 +18,7 @@
 
 "use client";
 
-import { formatClock } from "@/lib/format";
+import { formatClockCT } from "@/lib/format";
 import { LiveEpisodeProjection, LiveSetupSnapshot } from "@/lib/setupEngineApi";
 import { useLiveEpisodes } from "@/lib/useLiveEpisodes";
 
@@ -26,7 +26,7 @@ export function activationText(ep: LiveEpisodeProjection): string {
   switch (ep.left_boundary_reason) {
     case "observed_activation":
     case "insufficient_data":
-      return `Activated at ${formatClock(ep.activation_timestamp_observed)}`;
+      return `Activated at ${formatClockCT(ep.activation_timestamp_observed)}`;
     case "segment_start":
       return `Active for at least ${ep.duration_bars_observed} bars — activation occurred before available data begins.`;
     case "query_window_start":

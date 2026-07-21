@@ -7,14 +7,14 @@
 // research.py's `_http_envelope`), not re-derived here.
 
 import { ResponseEnvelope } from "@/lib/apiEnvelope";
-import { formatClock, formatDateShort } from "@/lib/format";
+import { formatClockCT, formatDateShortCT } from "@/lib/format";
 
 export function FreshnessBadge({ envelope }: { envelope: ResponseEnvelope }) {
   if (envelope.source_track === "live") {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full border border-open/30 bg-open/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-open">
         <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-open" />
-        LIVE · as of {formatClock(envelope.data_as_of)}
+        LIVE · as of {formatClockCT(envelope.data_as_of)}
       </span>
     );
   }
@@ -22,7 +22,7 @@ export function FreshnessBadge({ envelope }: { envelope: ResponseEnvelope }) {
   const shortSha = envelope.code_version ? envelope.code_version.slice(0, 7) : "unknown";
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-raised px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
-      FROZEN BASELINE (as of {formatDateShort(envelope.data_as_of)}, computation {shortSha})
+      FROZEN BASELINE (as of {formatDateShortCT(envelope.data_as_of)}, computation {shortSha})
     </span>
   );
 }
