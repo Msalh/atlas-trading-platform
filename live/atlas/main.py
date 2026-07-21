@@ -196,8 +196,8 @@ app.include_router(risk.router, prefix="/api/v1", tags=["v1"], dependencies=[Dep
 app.include_router(analytics.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
 app.include_router(ai.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
 app.include_router(activity.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
-# UI v2: reads only the checked-in research/snapshots/*.json files this
-# router's own docstring describes - no computation on request, same
+# UI v2: reads only the checked-in live/research/snapshots/*.json files
+# this router's own docstring describes - no computation on request, same
 # shared-key auth as every other read-only router above.
 app.include_router(research.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
 # UI v2: live Setup Engine state and episode projection - zero changes to

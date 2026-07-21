@@ -40,7 +40,7 @@ class DatasetIdentity:
 
 @dataclass(frozen=True)
 class SnapshotEnvelope:
-    """Every checked-in research/snapshots/*.json file's top-level
+    """Every checked-in live/research/snapshots/*.json file's top-level
     "envelope" key. `exported_at` is the ONLY field here expected to differ
     between two exports of the same frozen inputs - everything else is
     either a fact about the frozen computation (stable) or the export

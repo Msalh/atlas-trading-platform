@@ -1,14 +1,21 @@
 """
 UI v2. Thin CLI wrapping atlas.research_export.snapshot_builder - writes
-the three checked-in research/snapshots/*.json files. Mirrors
+the three checked-in live/research/snapshots/*.json files. Mirrors
 run_statistical_profile.py's/run_setup_profile.py's own CLI shape.
 
 No computation happens in this script - it calls the already-frozen
 RE-1/RE-2 pipelines (via snapshot_builder, unchanged) and writes their
 serialized, checksummed output to disk.
 
+Production-hardening amendment 2: the default output directory is inside
+live/ (resolved relative to this script's own location, not the caller's
+cwd) so the snapshots always land where atlas/api/v1/research.py's
+SNAPSHOTS_DIR expects them, regardless of which directory this script is
+invoked from.
+
 Usage:
-    python scripts/export_research_snapshots.py --out research/snapshots
+    python scripts/export_research_snapshots.py
+    python scripts/export_research_snapshots.py --out /some/other/dir
 """
 import argparse
 import os
@@ -22,9 +29,12 @@ from atlas.research_export import snapshot_builder  # noqa: E402
 from atlas.research_export.serialization import pretty_json  # noqa: E402
 
 
+_DEFAULT_OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "research", "snapshots")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--out", default="research/snapshots", help="Output directory for the *.v1.json snapshots")
+    parser.add_argument("--out", default=_DEFAULT_OUT, help="Output directory for the *.v1.json snapshots")
     args = parser.parse_args()
 
     exported_at = datetime.now(timezone.utc)

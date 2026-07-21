@@ -1,13 +1,26 @@
 """
 UI v2. GET /api/v1/research/re1/summary, /re2/summary, /dataset-health -
-read-only reads of the checked-in research/snapshots/*.json files
+read-only reads of the checked-in live/research/snapshots/*.json files
 produced by scripts/export_research_snapshots.py. No computation happens
 on request, and no markdown parsing - architecture doc §5/§6.
+
+Production-hardening amendment 2: snapshots live inside live/, not at the
+repo root, specifically so the path below - resolved relative to this
+module's own location, never to os.getcwd() or a repo-root-relative
+climb - keeps working regardless of which directory a deployment
+platform happens to select as its build/run root. Do not move this
+directory back to the repo root; a Railway (or similar) build that only
+includes the `live/` subtree would silently ship without these files.
 
 Snapshots are loaded lazily and cached in-process (module-level dict) on
 first request per file - the files only change when a human explicitly
 re-runs the export script and redeploys, never at runtime, so a
-process-lifetime cache is correct, not just an optimization.
+process-lifetime cache is correct, not just an optimization. Startup
+validation (atlas/research_export/startup_check.py, wired into
+atlas.main's lifespan) additionally checks existence/schema/checksum
+once at process start and exposes a ready/missing/invalid status via
+GET /status - this module's own lazy-load/503 behavior is unchanged and
+still the source of truth for what a live request actually gets.
 
 Protected by the same shared API_KEY every other read endpoint in this
 app uses (Depends(require_api_key), applied at router-registration time
@@ -22,7 +35,11 @@ from fastapi.responses import JSONResponse
 
 router = APIRouter()
 
-_SNAPSHOTS_DIR = Path(__file__).resolve().parents[4] / "research" / "snapshots"
+# live/atlas/api/v1/research.py -> parents[3] is live/ - independent of cwd
+# and of whether a deployment's build root is live/ or the repo root.
+# Public (not underscore-prefixed) since atlas/research_export/startup_check.py
+# also needs this exact path.
+SNAPSHOTS_DIR = Path(__file__).resolve().parents[3] / "research" / "snapshots"
 _SCHEMA_VERSION = "1.0"
 
 _cache: dict[str, dict] = {}
@@ -35,7 +52,7 @@ class SnapshotNotFoundError(Exception):
 def _load_snapshot(filename: str) -> dict:
     if filename in _cache:
         return _cache[filename]
-    path = _SNAPSHOTS_DIR / filename
+    path = SNAPSHOTS_DIR / filename
     if not path.exists():
         raise SnapshotNotFoundError(f"{filename} does not exist at {path} - run scripts/export_research_snapshots.py")
     with open(path, encoding="utf-8") as f:

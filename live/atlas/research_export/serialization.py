@@ -67,7 +67,7 @@ def content_checksum(payload: Any) -> str:
 
 
 def pretty_json(value: Any) -> str:
-    """The on-disk form written to research/snapshots/*.json - sorted
+    """The on-disk form written to live/research/snapshots/*.json - sorted
     keys (same canonical ordering as the checksum input) but
     human-reviewable, so a git diff of a regenerated snapshot is
     meaningful."""

@@ -1,11 +1,11 @@
 """
 UI v2. Route-level tests for GET /api/v1/research/re1/summary, /re2/summary,
 /dataset-health - against small, hand-written synthetic snapshot files
-(monkeypatched in place of the real checked-in research/snapshots/*.json),
-matching this project's established "fast synthetic fixtures" convention.
-Real-content correctness is exercised once by actually generating and
-committing the real files via scripts/export_research_snapshots.py, not by
-every test run.
+(monkeypatched in place of the real checked-in
+live/research/snapshots/*.json), matching this project's established
+"fast synthetic fixtures" convention. Real-content correctness is
+exercised once by actually generating and committing the real files via
+scripts/export_research_snapshots.py, not by every test run.
 """
 import json
 
@@ -34,7 +34,7 @@ def _fake_envelope(**overrides) -> dict:
 
 @pytest.fixture
 def snapshots_dir(tmp_path, monkeypatch):
-    monkeypatch.setattr(research_api, "_SNAPSHOTS_DIR", tmp_path)
+    monkeypatch.setattr(research_api, "SNAPSHOTS_DIR", tmp_path)
     research_api._cache.clear()
     yield tmp_path
     research_api._cache.clear()
