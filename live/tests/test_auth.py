@@ -5,22 +5,26 @@ shared-secret scheme (TradingView can't send an Authorization header) and /healt
 stays public (Railway's health-check prober sends no custom headers).
 
 Deliberately does NOT use the shared `client` fixture (tests/conftest.py), which
-overrides require_api_key/require_api_key_for_stream to a no-op so the rest of the
-suite tests what it was actually written to test - these tests need the real
-dependency wired in to verify it actually rejects/accepts requests.
+overrides require_api_key to a no-op so the rest of the suite tests what it was
+actually written to test - these tests need the real dependency wired in to verify it
+actually rejects/accepts requests.
 
-/api/v1/stream's auth is tested by calling require_api_key_for_stream directly rather
-than through a live HTTP connection (same discipline test_stream.py already uses for
-the generator itself) - once auth succeeds, the route starts an infinite SSE
-generator, and TestClient does not reliably simulate a client disconnect to stop it,
-which would hang the test session rather than exercise anything meaningful about auth.
+/api/v1/stream now uses the same require_api_key dependency as every other protected
+route (production hardening: SSE auth moved to a same-origin BFF proxy - see
+frontend/src/app/api/stream/route.ts - which attaches the Authorization header
+server-side; the browser-visible ?api_key=... query-parameter fallback has been
+removed entirely, not kept for backward compatibility). A GET to /api/v1/stream is
+still tested via a live TestClient request rather than by consuming the SSE body -
+once auth succeeds the route starts an infinite generator, and TestClient does not
+reliably simulate a client disconnect to stop it, which would hang the test session
+rather than exercise anything meaningful about auth. Only the auth check itself
+(headers in, status code out) is exercised here, never the stream body.
 """
 import pytest
-from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from atlas.api.deps import get_event_bus, get_market_state_repository, get_repository, get_system_status
-from atlas.api.security import require_api_key_for_stream
+from atlas.api.security import require_api_key
 from atlas.config import settings
 from atlas.main import app
 
@@ -131,25 +135,34 @@ def test_stream_rejects_missing_api_key(raw_client):
     assert resp.status_code == 401
 
 
-def test_stream_rejects_wrong_api_key_as_query_param(raw_client):
-    resp = raw_client.get("/api/v1/stream?api_key=wrong-key")
+def test_stream_accepts_correct_bearer_token(monkeypatch):
+    """Production hardening: /api/v1/stream now uses the same require_api_key
+    dependency as every other protected route (atlas/main.py's router registration) -
+    the same-origin frontend BFF proxy (frontend/src/app/api/stream/route.ts) is the
+    only caller expected to reach this endpoint in production, attaching the key as a
+    normal Authorization header, never a query parameter.
+
+    Checked by calling require_api_key directly (same discipline the rest of this
+    module uses for /api/v1/trades etc. via a live request instead) rather than
+    through a live GET to /api/v1/stream: once auth succeeds, that route's body is an
+    infinite SSE generator, and TestClient does not reliably simulate a client
+    disconnect to stop it - a live request would hang the test session rather than
+    exercise anything meaningful about auth, exactly as this module's own docstring
+    already documents for the stream endpoint generally."""
+    monkeypatch.setattr(settings, "api_key", REAL_API_KEY)
+    require_api_key(request=None, authorization=f"Bearer {REAL_API_KEY}")  # must not raise
+
+
+def test_stream_rejects_correct_api_key_as_query_param_only(raw_client):
+    """The browser-visible ?api_key=... fallback is removed entirely, not kept for
+    backward compatibility (production hardening: SSE auth moved to a same-origin BFF
+    proxy) - even the CORRECT key must now be rejected if it only ever arrives as a
+    query parameter, never an Authorization header."""
+    resp = raw_client.get(f"/api/v1/stream?api_key={REAL_API_KEY}")
     assert resp.status_code == 401
 
 
-def test_require_api_key_for_stream_accepts_header(monkeypatch):
-    monkeypatch.setattr(settings, "api_key", REAL_API_KEY)
-    require_api_key_for_stream(request=None, authorization=f"Bearer {REAL_API_KEY}", api_key=None)  # must not raise
-
-
-def test_require_api_key_for_stream_accepts_query_param(monkeypatch):
-    """Browsers' native EventSource can't set custom headers - /api/v1/stream must
-    also accept the key as ?api_key=... (see frontend/src/lib/live-updates.tsx)."""
-    monkeypatch.setattr(settings, "api_key", REAL_API_KEY)
-    require_api_key_for_stream(request=None, authorization=None, api_key=REAL_API_KEY)  # must not raise
-
-
-def test_require_api_key_for_stream_rejects_missing_both(monkeypatch):
-    monkeypatch.setattr(settings, "api_key", REAL_API_KEY)
-    with pytest.raises(HTTPException) as exc:
-        require_api_key_for_stream(request=None, authorization=None, api_key=None)
-    assert exc.value.status_code == 401
+def test_stream_401_response_never_contains_the_real_api_key(raw_client):
+    resp = raw_client.get("/api/v1/stream?api_key=wrong-key")
+    assert resp.status_code == 401
+    assert REAL_API_KEY not in resp.text
