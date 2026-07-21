@@ -61,7 +61,7 @@ def all_ready_snapshots_readiness() -> SnapshotsReadiness:
     result, without needing real files on disk. Tests for the degraded
     states themselves (tests/test_status_api.py) override
     get_snapshots_readiness directly with a purpose-built SnapshotsReadiness."""
-    return SnapshotsReadiness(tuple(SnapshotCheckResult(f, "ready", None) for f in EXPECTED_SNAPSHOT_FILES))
+    return SnapshotsReadiness(tuple(SnapshotCheckResult(f, "ready", None, None) for f in EXPECTED_SNAPSHOT_FILES))
 
 
 @pytest.fixture

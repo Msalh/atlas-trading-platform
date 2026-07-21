@@ -147,7 +147,7 @@ class TestDegradedReadinessGating:
         # (e.g. a checksum mismatch caught before this request) - the
         # gate must still 503, never silently serve the file's content.
         _write_snapshot(snapshots_dir, "re1-summary.v1.json", {"fact_profiles": {}})
-        self._override(SnapshotCheckResult("re1-summary.v1.json", "invalid", "content checksum mismatch"))
+        self._override(SnapshotCheckResult("re1-summary.v1.json", "invalid", "checksum_mismatch", "content checksum mismatch"))
 
         resp = client.get("/api/v1/research/re1/summary")
         assert resp.status_code == 503
@@ -155,22 +155,36 @@ class TestDegradedReadinessGating:
         assert body["ok"] is False
         assert "invalid" in body["error"]
         assert "checksum mismatch" in body["error"]
+        assert body["reason"] == "checksum_mismatch"
 
     def test_missing_readiness_503s_re2_summary_with_a_clear_reason(self, client, snapshots_dir):
-        self._override(SnapshotCheckResult("re2-summary.v1.json", "missing", "re2-summary.v1.json does not exist"))
+        self._override(SnapshotCheckResult("re2-summary.v1.json", "missing", "missing_file", "snapshot file not found"))
         resp = client.get("/api/v1/research/re2/summary")
         assert resp.status_code == 503
         assert "missing" in resp.json()["error"]
+        assert resp.json()["reason"] == "missing_file"
 
     def test_invalid_readiness_503s_dataset_health(self, client, snapshots_dir):
-        self._override(SnapshotCheckResult("dataset-health.v1.json", "invalid", "malformed schema"))
+        self._override(SnapshotCheckResult("dataset-health.v1.json", "invalid", "schema_error", "malformed schema"))
         resp = client.get("/api/v1/research/dataset-health")
         assert resp.status_code == 503
         assert "malformed schema" in resp.json()["error"]
+        assert resp.json()["reason"] == "schema_error"
+
+    def test_dataset_identity_mismatch_503s_with_the_stable_reason_code(self, client, snapshots_dir):
+        self._override(
+            SnapshotCheckResult(
+                "re1-summary.v1.json", "invalid", "dataset_identity_mismatch",
+                "dataset_identity disagrees across snapshots in: symbol",
+            ),
+        )
+        resp = client.get("/api/v1/research/re1/summary")
+        assert resp.status_code == 503
+        assert resp.json()["reason"] == "dataset_identity_mismatch"
 
     def test_ready_readiness_still_serves_the_real_file(self, client, snapshots_dir):
         _write_snapshot(snapshots_dir, "re1-summary.v1.json", {"fact_profiles": {"x": 1}})
-        self._override(SnapshotCheckResult("re1-summary.v1.json", "ready", None))
+        self._override(SnapshotCheckResult("re1-summary.v1.json", "ready", None, None))
         resp = client.get("/api/v1/research/re1/summary")
         assert resp.status_code == 200
         assert resp.json()["report"] == {"fact_profiles": {"x": 1}}

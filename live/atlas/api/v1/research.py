@@ -85,17 +85,21 @@ def _http_envelope(snapshot: dict, warnings: Optional[list[str]] = None) -> dict
 
 
 def _degraded_response(filename: str, readiness: SnapshotsReadiness) -> Optional[JSONResponse]:
-    """Production-hardening amendment 3: gate on the one-time startup check
+    """Production-hardening amendment 3 (extended by the dataset-identity
+    and structured-reason follow-ons): gate on the one-time startup check
     before attempting to load anything, so an "invalid" snapshot (bad
-    checksum, malformed schema) 503s with a clear reason exactly like a
-    "missing" one always has, rather than being loaded blind and either
-    crashing or silently serving corrupt content. Returns None when ready
-    (the only case where the caller should proceed to _load_snapshot)."""
+    checksum, malformed schema, or a dataset_identity mismatch against the
+    other two snapshots) 503s with a clear, stable machine-readable reason
+    exactly like a "missing" one always has, rather than being loaded
+    blind and either crashing or silently serving corrupt/inconsistent
+    content. Returns None when ready (the only case where the caller
+    should proceed to _load_snapshot)."""
     result = readiness.status_for(filename)
     if result.status == "ready":
         return None
     return JSONResponse(
-        {"ok": False, "error": f"research snapshot {result.status}: {result.reason}"}, status_code=503,
+        {"ok": False, "error": f"research snapshot {result.status}: {result.detail}", "reason": result.reason},
+        status_code=503,
     )
 
 
