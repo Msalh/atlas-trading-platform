@@ -18,6 +18,17 @@ from typing import Any, Optional
 
 from atlas.config import settings
 
+# Production-hardening: analyze_with_claude() previously made the Anthropic
+# request with no timeout at all, relying entirely on the SDK's own default
+# (which is generous - minutes, not seconds). Since every caller of this
+# function already runs it in a background thread, off the order-relay
+# critical path (see this module's own docstring and atlas/ai.py), a slow
+# or hung Anthropic request could never block a trade - but it could still
+# tie up a thread-pool worker for an unbounded amount of time. 30 seconds is
+# generous for a single short completion (max_tokens=400, a few hundred
+# words of prompt) while still bounding the worst case to something finite.
+CLAUDE_REQUEST_TIMEOUT_SECONDS = 30.0
+
 SETUP_TAG_MEANING = {
     "BRK": "breakout/continuation setup - needs a real trend to work",
     "RCL": "liquidity reclaim setup",
@@ -138,16 +149,22 @@ going into the next period. Be specific and grounded in the numbers above, not g
 def analyze_with_claude(prompt: str) -> tuple[Optional[str], Optional[str]]:
     """Sends one prompt, returns (text, error). Never raises - callers offload this to
     a thread (it's a blocking network call) and treat both return values as always
-    present, never an exception to catch from this function specifically."""
+    present, never an exception to catch from this function specifically.
+
+    Bounded by CLAUDE_REQUEST_TIMEOUT_SECONDS - a timeout raises inside the try/except
+    below exactly like any other Anthropic SDK error, so it degrades the same way an
+    API outage already does: (None, str(e)), never an unhandled exception, and never a
+    retry (a single attempt was already this function's contract before this change)."""
     if not settings.anthropic_api_key:
         return None, "ANTHROPIC_API_KEY not configured"
     try:
         import anthropic
-        client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        client = anthropic.Anthropic(api_key=settings.anthropic_api_key, timeout=CLAUDE_REQUEST_TIMEOUT_SECONDS)
         response = client.messages.create(
             model=settings.claude_model,
             max_tokens=400,
             messages=[{"role": "user", "content": prompt}],
+            timeout=CLAUDE_REQUEST_TIMEOUT_SECONDS,
         )
         return response.content[0].text, None
     except Exception as e:
