@@ -6,6 +6,7 @@
 // so this module never reads any API-key env var and never persists the key
 // itself; the caller (RuleEngineViewer) is the only place the key value lives.
 
+import { staleAfterMinutes } from "@/lib/freshness";
 import { ApiFetchError, proxyGet } from "@/lib/proxyClient";
 
 export { ApiFetchError };
@@ -116,21 +117,15 @@ export async function fetchLatestRuleEngineOutput(
 // Sprint 16's approved viewer heuristic - explicitly NOT the backend's
 // configured staleness value (atlas/monitoring.py's own threshold is a
 // separate, unrelated setting for a different purpose - alerting, not
-// display). stale_after = max(3 * timeframe duration, 5 minutes).
-const TIMEFRAME_DURATION_MINUTES: Record<string, number> = {
-  "1m": 1,
-  "5m": 5,
-  "15m": 15,
-  "1h": 60,
-};
-
+// display). stale_after = max(3 * timeframe duration, 5 minutes) - now
+// centralized in lib/freshness.ts (production-hardening amendment 5),
+// which UI v2's own FreshnessBadge also uses, rather than each keeping
+// its own copy of the same threshold table.
 export function isStale(occurredAtIso: string, timeframe: string): boolean {
-  const durationMinutes = TIMEFRAME_DURATION_MINUTES[timeframe] ?? 5;
-  const staleAfterMinutes = Math.max(3 * durationMinutes, 5);
   const occurredAt = new Date(occurredAtIso).getTime();
   if (Number.isNaN(occurredAt)) return false;
   const ageMinutes = (Date.now() - occurredAt) / 60_000;
-  return ageMinutes > staleAfterMinutes;
+  return ageMinutes > staleAfterMinutes(timeframe);
 }
 
 // UI v2. `/rule-engine/latest` is on the BFF proxy's allowlist (Market View
