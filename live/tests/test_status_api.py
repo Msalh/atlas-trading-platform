@@ -86,7 +86,31 @@ def test_status_database_error_is_surfaced(client, repository):
     resp = client.get("/api/v1/status")
     body = resp.json()
     assert body["database"]["ok"] is False
-    assert "connection pool exhausted" in body["database"]["detail"]
+    assert body["database"]["reason"] == "ping_failed"  # stable, machine-readable
+    assert body["database"]["detail"] == "database ping failed - see server logs for details"
+
+
+def test_status_database_error_never_exposes_connection_details(client, repository):
+    """Production-hardening: a raw Postgres exception commonly embeds the DSN itself
+    (host, port, sometimes the password) in its message - GET /status is client-facing
+    and must never repeat that text back, only a sanitized, stable message."""
+    sensitive_message = (
+        'connection failed: connection to server at "db.internal.railway.app", port 5432 failed: '
+        'FATAL: password authentication failed for user "atlas_prod" (password="hunter2")'
+    )
+
+    async def broken_ping():
+        raise RuntimeError(sensitive_message)
+    repository.ping = broken_ping
+
+    resp = client.get("/api/v1/status")
+    raw_body = resp.text
+    for leaked in ("db.internal.railway.app", "5432", "atlas_prod", "hunter2", "password"):
+        assert leaked not in raw_body
+
+    body = resp.json()
+    assert body["database"]["ok"] is False
+    assert body["database"]["reason"] == "ping_failed"
 
 
 class TestStatusExposesResearchSnapshotsReadiness:
