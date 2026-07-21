@@ -209,18 +209,77 @@ Everything through §5 can be verified against a backend with no real market dat
 
 ## 8. Rollback
 
+Four genuinely different operations live under "rollback," and they are not interchangeable. Picking the wrong one is exactly what turned a stuck deploy queue into a real outage on 2026-07-21 (§10) - know which one you actually need before touching anything:
+
+| You want to... | Use | Never use |
+|---|---|---|
+| Go back to a previously-working build | §8.1 Redeploy a known-good deployment | `railway down` |
+| Cancel a deployment stuck in `QUEUED` before it ever ran | §8.3 Stuck-queue recovery | `railway down` |
+| Discard the current deployment entirely (rare - normally superseded by redeploying something else instead) | §8.2 Removing a deployment, with its warning read first | - |
+| Push code when GitHub-triggered auto-deploy itself is the thing that's broken | §8.4 Direct source upload | a dummy commit to "kick" the queue |
+
+### 8.1 Redeploying a known-good deployment
+
 - **Backend rollback**: Railway dashboard → the backend service's Deployments tab → select the last known-good deployment → Redeploy. No git revert needed - Railway retains prior build artifacts. If the issue is a bad/missing environment variable rather than bad code, fix the variable and let Railway redeploy automatically instead of rolling back.
 - **Frontend rollback**: Railway dashboard → the frontend service's Deployments tab → select the last known-good deployment → Redeploy. Same mechanism as the backend, now that both services live on the same platform - there is no separate "Vercel promote to production" step to remember.
-- **Migration policy: forward-only.** `migrations/runner.py` has no `down` migration support, by design (see `docs/sprint1/architecture-decisions.md`) - production database migrations are **forward-only**, full stop. There is no automated "undo" for a schema change, and this runbook does not add retroactive down-migrations for any migration that already shipped. This directly shapes what "rollback" means for the backend specifically:
-  - **Application-only rollback** (Railway redeploy to a prior build, per the Backend rollback bullet above) is safe **only when the prior code version is schema-compatible with whatever migrations have already run** - i.e. the older code doesn't depend on a column/table a since-applied migration added, and doesn't break on a column/table a since-applied migration removed or renamed. Rolling the backend back to an older commit is only safe if no migration introduced in the newer commit is required by data already written under the newer version.
-  - **If the prior code is NOT schema-compatible** (the bad deploy included a migration that already ran against production data), an application-only rollback is not an option - redeploying old code against a newer schema will break in whatever way the incompatibility implies. The fix is a **corrective forward migration** (a new migration file that adjusts the schema back toward what the rolled-back code expects, or otherwise repairs the incompatibility) - i.e. **roll forward, not backward**, same discipline as any other forward-only migration system. Write and test this migration with the same care as any other manual production SQL before running it.
-  - **Operator responsibility**: before rolling the backend back to any specific prior commit, check which migrations that commit's code expects versus which migrations have actually run against the production database (`migrations/runner.py` applies every migration file in order automatically on startup, so "what's run" is exactly "every migration file present, up to the version whatever commit last deployed introduced"). Do not assume compatibility - verify it for the specific commit range in play. UI v2's own backend work (research export, live-view projection, the snapshot readiness check) introduced **no new database migrations or schema changes** - it reads existing `MarketState` data and static snapshot files only, so a UI v2-only rollback carries no database-compatibility risk. That is a property of this specific work, not a general guarantee - verify it for whatever change you're actually rolling back.
-- **Snapshot rollback as one atomic set**: the three research snapshot files (`live/research/snapshots/*.json`) must always be rolled back together, never individually - they are cross-validated as a set (production-hardening amendment: dataset-identity consistency, §3.5) specifically because an inconsistent mix (e.g. an old `re1-summary.v1.json` alongside a new `re2-summary.v1.json`) is exactly the failure mode that check exists to catch, and it will correctly mark **all three** invalid with `reason: "dataset_identity_mismatch"` if you roll back only one. Always roll back to a single prior commit's full set of three files together (`git checkout <commit> -- live/research/snapshots/`), never mix-and-match.
-- **Key rotation steps**: to rotate `API_KEY`/`ATLAS_API_KEY`:
-  1. Generate a new value.
-  2. Set it in the backend service's `API_KEY` **and** the frontend service's `ATLAS_API_KEY` (and `NEXT_PUBLIC_API_KEY`, if the legacy pages are still in use) at the same time - a window where they disagree will make every UI v2 page fail with a sanitized auth error until both sides are updated.
-  3. Redeploy both services (Railway picks up a variable change automatically for most services, but a manual redeploy is the reliable way to force a `NEXT_PUBLIC_*` value to actually rebuild into the client bundle immediately - server-only `ATLAS_API_KEY` takes effect on the frontend service's next restart).
-  4. Confirm via §3.5/§5.3 that both sides now agree before considering rotation complete.
+- CLI equivalent: `railway redeploy --service <name>` redeploys that service's **latest** deployment record (not an arbitrary past one - the CLI has no "redeploy deployment ID X" option). Add `--from-source` to pull fresh from GitHub instead of reusing the existing build artifact.
+
+### 8.2 Removing a deployment - `railway down` warning
+
+**`railway down` ("Remove the most recent deployment") must never be used to cancel a queued deployment.** "Most recent" means exactly that - the newest deployment record for the service, by creation time - **not** "the one that's stuck" and **not** "the one that isn't running yet." If the currently *serving* deployment happens to be more recent than the stuck queued one is old relative to some other record, or if there is any ambiguity at all about which deployment is actually live, `railway down` can remove the deployment that is actively serving production traffic and cause real downtime. This is exactly what happened on 2026-07-21 (§10): `railway down` was run intending to cancel a stuck `QUEUED` deployment, and instead removed the live, serving one, taking both services offline for ~24 minutes.
+
+- **Never assume "most recent deployment" means the queued item.** Check `railway deployment list --service <name> --json` first and read the `status` and `createdAt` fields for every entry before running any command that removes one.
+- A deployment stuck in `QUEUED` is **not** "the most recent deployment" in the sense `down` operates on if a newer or differently-ordered record exists - do not guess. If you are not certain exactly which deployment `down` will remove, do not run it.
+- **A queued deployment must be handled through the Railway dashboard, or by creating a carefully-scoped replacement deployment** (§8.3/§8.4) - never by `down`. The dashboard's Deployments tab lets you inspect and cancel a specific queued entry directly, without any ambiguity about which one you're acting on.
+
+### 8.3 Recovering from a stuck deployment queue
+
+Step-by-step recovery for a deployment stuck reporting `"Deployment queued due to upstream GitHub issues"` (or any other queued-and-not-progressing state), in this exact order:
+
+1. **Confirm the currently active deployment is still serving.** `curl -s -o /dev/null -w "%{http_code}" https://<service>.up.railway.app/api/v1/health` (or the frontend's root URL) - if this returns `200`, there is **no outage yet**, regardless of how long the new deployment has been queued. Do not treat a stuck queue as an incident on its own.
+2. **Check GitHub Status** (githubstatus.com) **and Railway Status** (status.railway.com) for an active incident affecting Git Operations, Webhooks, API Requests, or Railway's "GitHub - Auto-Deploys" integration specifically. Note that Railway's status page only reports "significant, widespread" impact - an isolated, project-specific stall will not appear there even when it's genuinely a Railway-side issue.
+3. **Confirm the pushed commit exists on GitHub**: `git ls-remote origin <branch>` and compare against `git rev-parse <branch>` locally - if they don't match, the push itself is the problem, not the deploy queue.
+4. **Inspect whether Initialization/Build/Deploy have started**: `railway deployment list --service <name> --json` for the `status` and `meta.queuedReason` fields, and `railway logs <deployment-id> --service <name> --build` - `"Deployment does not have an associated build"` confirms nothing has started at all, as opposed to a build that started and is merely slow.
+5. **If all remain Not started and the queue is stuck** (no progress after a reasonable wait, say 10-15 minutes, with both status pages reporting healthy):
+   - **Do not run `railway down`** (§8.2).
+   - **Do not push a dummy commit** to try to "kick" the webhook - it does not reliably help, adds noise to the commit history, and does not address a queue-side stall.
+   - **Prefer a direct `railway up` from the repository root, targeting only the affected service** (§8.4) - this bypasses GitHub-triggered auto-deploy entirely rather than waiting on or fighting whatever is stalling it.
+6. **Validate the service after recovery** using §5's validation sequence (health, status, research snapshot readiness, no crash loop in logs) before considering it resolved.
+
+### 8.4 Direct source upload (`railway up`) - monorepo upload context
+
+`railway up` uploads and deploys directly from a local directory, bypassing GitHub entirely - the correct escape hatch for §8.3 step 5, but only if the upload context matches what the service's **Root Directory** setting expects:
+
+- **Backend Railway Root Directory is `/live`.**
+- **Frontend Railway Root Directory is `/frontend`.**
+- **Any `railway up` direct upload must be run from the repository root** (`C:\Projects\Trading`) - **never from inside `live/` or `frontend/`.** The uploaded archive must **contain** those directories as subdirectories, exactly as a full `git clone` of the repo would, so Railway can apply the configured Root Directory setting to find the right subtree inside the archive. Running `railway up` from *inside* `live/` uploads that directory's own contents as the archive root - Railway then looks for a `live/` subdirectory inside an archive that already **is** `live/`'s contents, fails to find it, and the deploy fails with `ERROR creating app directory: .../snapshot-target-unpack/live does not exist`. This is exactly what caused 5 consecutive failed backend recovery attempts on 2026-07-21 (§10) before the upload context was corrected.
+- Do not use `--path-as-root` to work around this - that flag changes which path prefix becomes the archive root and is not a substitute for running from the correct directory in the first place.
+- Exact safe example (backend):
+  ```
+  cd C:\Projects\Trading
+  railway up --service atlas-trading-platform -y --detach
+  ```
+  The same pattern applies to the frontend, substituting `--service confident-spirit` (or your service's actual name) - still run from the repository root, never from inside `frontend/`.
+- Confirm before running: `pwd` (or `cd` with no args on Windows) shows the repository root, `git rev-parse --show-toplevel` matches it, and `git rev-parse HEAD` is the exact commit you intend to deploy, with a clean working tree (`git status --porcelain` empty). Target only the one affected service with `--service` - never omit it and rely on whatever service happens to be locally linked.
+
+### 8.5 Migration policy: forward-only
+
+`migrations/runner.py` has no `down` migration support, by design (see `docs/sprint1/architecture-decisions.md`) - production database migrations are **forward-only**, full stop. There is no automated "undo" for a schema change, and this runbook does not add retroactive down-migrations for any migration that already shipped. This directly shapes what "rollback" means for the backend specifically:
+- **Application-only rollback** (§8.1) is safe **only when the prior code version is schema-compatible with whatever migrations have already run** - i.e. the older code doesn't depend on a column/table a since-applied migration added, and doesn't break on a column/table a since-applied migration removed or renamed. Rolling the backend back to an older commit is only safe if no migration introduced in the newer commit is required by data already written under the newer version.
+- **If the prior code is NOT schema-compatible** (the bad deploy included a migration that already ran against production data), an application-only rollback is not an option - redeploying old code against a newer schema will break in whatever way the incompatibility implies. The fix is a **corrective forward migration** (a new migration file that adjusts the schema back toward what the rolled-back code expects, or otherwise repairs the incompatibility) - i.e. **roll forward, not backward**, same discipline as any other forward-only migration system. Write and test this migration with the same care as any other manual production SQL before running it.
+- **Operator responsibility**: before rolling the backend back to any specific prior commit, check which migrations that commit's code expects versus which migrations have actually run against the production database (`migrations/runner.py` applies every migration file in order automatically on startup, so "what's run" is exactly "every migration file present, up to the version whatever commit last deployed introduced"). Do not assume compatibility - verify it for the specific commit range in play. UI v2's own backend work (research export, live-view projection, the snapshot readiness check) introduced **no new database migrations or schema changes** - it reads existing `MarketState` data and static snapshot files only, so a UI v2-only rollback carries no database-compatibility risk. That is a property of this specific work, not a general guarantee - verify it for whatever change you're actually rolling back.
+
+### 8.6 Snapshot rollback as one atomic set
+
+The three research snapshot files (`live/research/snapshots/*.json`) must always be rolled back together, never individually - they are cross-validated as a set (production-hardening amendment: dataset-identity consistency, §3.5) specifically because an inconsistent mix (e.g. an old `re1-summary.v1.json` alongside a new `re2-summary.v1.json`) is exactly the failure mode that check exists to catch, and it will correctly mark **all three** invalid with `reason: "dataset_identity_mismatch"` if you roll back only one. Always roll back to a single prior commit's full set of three files together (`git checkout <commit> -- live/research/snapshots/`), never mix-and-match.
+
+### 8.7 Key rotation steps
+
+To rotate `API_KEY`/`ATLAS_API_KEY`:
+1. Generate a new value.
+2. Set it in the backend service's `API_KEY` **and** the frontend service's `ATLAS_API_KEY` (and `NEXT_PUBLIC_API_KEY`, if the legacy pages are still in use) at the same time - a window where they disagree will make every UI v2 page fail with a sanitized auth error until both sides are updated.
+3. Redeploy both services (Railway picks up a variable change automatically for most services, but a manual redeploy is the reliable way to force a `NEXT_PUBLIC_*` value to actually rebuild into the client bundle immediately - server-only `ATLAS_API_KEY` takes effect on the frontend service's next restart).
+4. Confirm via §3.5/§5.3 that both sides now agree before considering rotation complete.
 
 ---
 
@@ -248,3 +307,19 @@ Fill this in once a real deployment happens. Nothing below is filled in yet - th
 | Screenshots (Market View / Active Setup Bundle / Timeline / Episode Inspector / Research Overview / Dataset Health) | |
 | Screenshots (narrow viewport) | |
 | Known blockers / open items | |
+
+---
+
+## 10. Incident log
+
+### 2026-07-21 — Backend outage during SSE-hardening deploy (~24 minutes)
+
+Following the SSE-authentication-hardening merge (moving `/api/v1/stream` auth from a browser-visible `?api_key=...` query parameter to a same-origin BFF proxy), both services' GitHub-triggered auto-deploys stalled in `QUEUED` for 30+ minutes reporting `"Deployment queued due to upstream GitHub issues"`, with neither GitHub's nor Railway's public status pages showing an active incident. At that point there was **no outage** - the previously-deployed version was still serving correctly.
+
+**`railway down`** was then run intending to cancel the stuck *queued* deployment. It instead removed the *actively-serving* deployment for both services (confirmed via `railway deployment list` showing it as `REMOVED`), causing a real outage - both services began returning `404 Application not found`. See §8.2 for why "most recent deployment" does not mean "the stuck one."
+
+Recovery was attempted via direct `railway up` uploads, but the initial attempts were run with the shell's working directory inside `live/` (and `frontend/`) rather than the repository root. With the backend's `Root Directory: /live` setting unchanged, the uploaded archive (already `live/`'s own contents) had no `live/` subdirectory for Railway to find, and 5 consecutive backend deploy attempts failed with `ERROR creating app directory: .../snapshot-target-unpack/live does not exist`. The frontend recovered earlier via the same flawed pattern by comparison, for reasons not fully root-caused. See §8.4 for the corrected upload procedure.
+
+**Successful recovery**: a single `railway up` run from the repository root, targeting only `atlas-trading-platform`, no service settings or environment variables changed, same commit throughout. Backend restored; validated via §5's sequence (health, authenticated status, `research_snapshots.status: "ready"`, clean startup logs with no crash loop, frontend BFF connectivity, `/api/stream` proxy).
+
+**Total backend outage: approximately 24 minutes.** No application code, migrations, or Railway configuration changed at any point during the incident or its recovery - the same tested commit was deployed throughout. §8.2, §8.3, and §8.4 above were added directly as a result of this incident.
