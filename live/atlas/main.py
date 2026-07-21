@@ -46,7 +46,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from atlas.alerting import ClaudeFailureTracker, alert_on_forward_failure
-from atlas.api.security import require_api_key, require_api_key_for_stream
+from atlas.api.security import require_api_key
 from atlas.api.v1 import (
     activity, ai, analytics, health, market_state, research, risk, rule_engine, setup_engine, status, stats,
     stream, trades, webhook,
@@ -207,9 +207,7 @@ app.include_router(rule_engine.router, prefix="/api/v1", tags=["v1"], dependenci
 app.include_router(trades.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
 app.include_router(status.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
 app.include_router(stats.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
-app.include_router(
-    stream.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key_for_stream)],
-)
+app.include_router(stream.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
 app.include_router(risk.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
 app.include_router(analytics.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
 app.include_router(ai.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])

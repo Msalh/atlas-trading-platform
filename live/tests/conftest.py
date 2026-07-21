@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from atlas.api.deps import (  # noqa: E402
     get_event_bus, get_market_state_repository, get_repository, get_snapshots_readiness, get_system_status,
 )
-from atlas.api.security import require_api_key, require_api_key_for_stream  # noqa: E402
+from atlas.api.security import require_api_key  # noqa: E402
 from atlas.config import settings  # noqa: E402
 from atlas.events.bus import EventBus  # noqa: E402
 from atlas.events.subscribers import log_event  # noqa: E402
@@ -88,11 +88,12 @@ def client(repository, market_state_repository, event_bus, system_status, snapsh
     This bypasses the Postgres-backed lifespan entirely (TestClient never triggers it
     unless used as a context manager, and dependency_overrides win regardless).
 
-    require_api_key/require_api_key_for_stream are overridden to no-ops here so the
-    existing test suite (none of which sends an Authorization header) keeps testing
-    what it was actually written to test, rather than universally needing an auth
-    header bolted on. The auth check itself is verified for real, without this
-    override, in tests/test_auth.py.
+    require_api_key is overridden to a no-op here (this now also covers /api/v1/stream,
+    which uses the same dependency as of the BFF-proxied SSE change - see
+    atlas/api/security.py) so the existing test suite (none of which sends an
+    Authorization header) keeps testing what it was actually written to test, rather
+    than universally needing an auth header bolted on. The auth check itself is
+    verified for real, without this override, in tests/test_auth.py.
 
     market_state_webhook_secret IS set to a real value (not overridden to a
     no-op) - unlike API_KEY, /api/v1/market-state has no dependency-injected
@@ -109,7 +110,6 @@ def client(repository, market_state_repository, event_bus, system_status, snapsh
     app.dependency_overrides[get_system_status] = lambda: system_status
     app.dependency_overrides[get_snapshots_readiness] = lambda: snapshots_readiness
     app.dependency_overrides[require_api_key] = lambda: None
-    app.dependency_overrides[require_api_key_for_stream] = lambda: None
     try:
         yield TestClient(app)
     finally:
