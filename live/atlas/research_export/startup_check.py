@@ -22,6 +22,15 @@ it, and never folds into the FROZEN Dataset Health payload itself (which
 describes only the research baseline's own certification/warnings/
 segment content, never operational/deployment state).
 
+check_snapshots() itself is expected to handle every bad-file case
+without raising (that's the whole point of its two-phase validation
+below) - but atlas.main's lifespan additionally wraps the call in its
+own try/except, falling back to internal_error_readiness() (reason
+"internal_error") for the rare case of a genuine bug in this module
+raising something unanticipated. This is a second, outer safety net on
+top of the same "never block LIVE, never crash startup" contract, not a
+relaxation of it.
+
 Two-phase validation:
 1. Each of the three files is validated independently first - existence,
    valid JSON, required envelope/schema shape (including
@@ -60,6 +69,7 @@ SnapshotStatus = Literal["ready", "missing", "invalid"]
 
 FailureReason = Literal[
     "missing_file", "json_error", "schema_error", "checksum_mismatch", "dataset_identity_mismatch",
+    "internal_error",
 ]
 
 EXPECTED_SNAPSHOT_FILES = ("re1-summary.v1.json", "re2-summary.v1.json", "dataset-health.v1.json")
@@ -234,6 +244,29 @@ def _identity_mismatch_detail(identities: dict[str, dict]) -> Optional[str]:
         f"dataset_identity disagrees across snapshots in: {', '.join(differing_fields)} "
         f"(reference file: {reference})"
     )
+
+
+def internal_error_readiness() -> SnapshotsReadiness:
+    """Fallback used by atlas.main's startup lifespan when check_snapshots()
+    itself raises an exception this module did not anticipate (a bug in
+    this check, not a bad snapshot file - check_snapshots() already turns
+    every bad-file case it knows about into a normal "invalid" result
+    rather than raising). Per this module's own contract above, that must
+    never be allowed to fail application startup or take LIVE endpoints
+    down with it - so every expected file is marked invalid with the same
+    stable "internal_error" reason, meaning SnapshotsReadiness.status_for()
+    still resolves for all three filenames exactly as it would after a
+    normal check_snapshots() run. FROZEN endpoints keep returning their
+    existing structured 503 (via research.py's _degraded_response) instead
+    of a KeyError from status_for(), and GET /status keeps reporting a
+    well-formed degraded state instead of the request itself failing."""
+    return SnapshotsReadiness(tuple(
+        SnapshotCheckResult(
+            filename, "invalid", "internal_error",
+            "snapshot readiness check failed unexpectedly at startup - see server logs",
+        )
+        for filename in EXPECTED_SNAPSHOT_FILES
+    ))
 
 
 def check_snapshots(directory: Path) -> SnapshotsReadiness:
