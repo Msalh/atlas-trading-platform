@@ -44,6 +44,7 @@ import pytest
 _ATLAS_ROOT = Path(__file__).resolve().parent.parent / "atlas"
 _MARKET_CONTEXT_DIR = _ATLAS_ROOT / "market_context"
 _REPLAY_ENGINE_DIR = _ATLAS_ROOT / "replay_engine"
+_STRATEGY_ENGINE_DIR = _ATLAS_ROOT / "strategy_engine"
 
 # The real, certified allowlist per module - see this file's own docstring
 # for the two corrections versus Sprint 5's written (incomplete) version.
@@ -167,11 +168,14 @@ def test_no_module_market_context_depends_on_imports_market_context_back():
             assert not offending, f"{py_file} imports atlas.market_context (circular): {offending}"
 
 
-def test_nothing_outside_market_context_or_its_approved_downstream_consumer_imports_it():
+def test_nothing_outside_market_context_or_its_approved_downstream_consumers_imports_it():
     """Scans the whole atlas package tree, excluding market_context itself
-    and atlas.replay_engine (Phase N2's approved, one-way downstream
-    consumer - see the ADR). Nothing else may import atlas.market_context."""
-    exempt_dirs = {_MARKET_CONTEXT_DIR, _REPLAY_ENGINE_DIR}
+    and its two approved, one-way downstream consumers: atlas.replay_engine
+    (Phase N2, see ADR-0002) and atlas.strategy_engine (Phase N3 - a
+    concrete StrategyPlugin reading frame.market_context.quality directly,
+    per that package's own dependency ceiling). Nothing else may import
+    atlas.market_context."""
+    exempt_dirs = {_MARKET_CONTEXT_DIR, _REPLAY_ENGINE_DIR, _STRATEGY_ENGINE_DIR}
     for py_file in _ATLAS_ROOT.rglob("*.py"):
         if any(exempt == py_file.parent or exempt in py_file.parents for exempt in exempt_dirs):
             continue
