@@ -15,14 +15,15 @@ export function useLiveUpdatesConnected(): boolean {
   return useLiveUpdatesState() === "open";
 }
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "http://localhost:8000";
-
-// Sprint 9: /api/v1/stream requires the same shared API key as every other backend
-// endpoint (see atlas/api/security.py::require_api_key_for_stream), but browsers'
-// native EventSource can't set custom headers - so, for this one endpoint only, the
-// key travels as a query parameter instead.
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY;
+// Production hardening: EventSource now connects same-origin to this app's own
+// /api/stream route (app/api/stream/route.ts), which proxies to the backend's
+// /api/v1/stream server-side, attaching a server-only ATLAS_API_KEY as a normal
+// Authorization header. No key of any kind travels in this URL or reaches the
+// browser - previously this connected directly, cross-origin, to
+// `${NEXT_PUBLIC_API_BASE_URL}/api/v1/stream?api_key=${NEXT_PUBLIC_API_KEY}`, which
+// put the shared API key in Railway's own access logs, browser history, and any
+// request-level monitoring on every single page load.
+const STREAM_URL = "/api/stream";
 
 // Every event type from atlas/events/types.py that should cause a refetch. Kept as a
 // flat "which query-key groups does this event affect" map rather than trying to
@@ -60,10 +61,7 @@ export function LiveUpdatesProvider({ children }: { children: React.ReactNode })
   const sourceRef = useRef<EventSource | null>(null);
 
   useEffect(() => {
-    const streamUrl = API_KEY
-      ? `${API_BASE_URL}/api/v1/stream?api_key=${encodeURIComponent(API_KEY)}`
-      : `${API_BASE_URL}/api/v1/stream`;
-    const source = new EventSource(streamUrl);
+    const source = new EventSource(STREAM_URL);
     sourceRef.current = source;
 
     source.addEventListener("connected", () => setState("open"));
