@@ -11,6 +11,7 @@ why the two are kept separate). Sprint 10 adds `uptime_seconds`/`started_at` onl
 enough for a monitoring dashboard to detect an unexpected restart without needing to
 duplicate /status's connectivity checks here.
 """
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request
@@ -18,6 +19,8 @@ from fastapi.responses import JSONResponse
 
 from atlas.api.deps import get_repository
 from atlas.repositories.base import TradeRepository
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -31,15 +34,27 @@ async def health(request: Request, repository: TradeRepository = Depends(get_rep
         await repository.ping()
         return {
             "ok": True,
-            "database": "ok",
+            "database": {"ok": True, "reason": None, "detail": "ok"},
             "started_at": started_at.isoformat() if started_at else None,
             "uptime_seconds": uptime_seconds,
         }
-    except Exception as e:
+    except Exception:
+        # Same sanitization contract as GET /status (atlas/api/v1/status.py): a raw
+        # Postgres exception commonly embeds the DSN itself (host, port, sometimes the
+        # password) in its message. This endpoint is deliberately public (no API key -
+        # see atlas/api/security.py and this module's own docstring) so infrastructure
+        # probes can reach it without a credential, which makes it an even more
+        # sensitive place to leak connection details than an authenticated endpoint
+        # would be. The real exception goes to the server's own log stream only.
+        logger.exception("database ping failed in GET /health")
         return JSONResponse(
             {
                 "ok": False,
-                "database": f"error: {e}",
+                "database": {
+                    "ok": False,
+                    "reason": "ping_failed",
+                    "detail": "database ping failed - see server logs for details",
+                },
                 "started_at": started_at.isoformat() if started_at else None,
                 "uptime_seconds": uptime_seconds,
             },

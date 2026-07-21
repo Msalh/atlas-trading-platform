@@ -1,0 +1,77 @@
+Sprint 31 Task 3 - Historical vs Live Equivalence Certification
+================================================================
+
+Timestamp: 2026-07-20T07:50:00Z
+----------------------------------------------------------------
+  [FAIL] Open                     historical=28888.0              live=28906.0
+  [FAIL] High                     historical=28899.0              live=28918.0
+  [FAIL] Low                      historical=28879.25             live=28882.0
+  [FAIL] Close                    historical=28892.0              live=28888.0
+  [FAIL] VWAP                     historical=28849.48291659026    live=28849.3104756607
+  [FAIL] ATR                      historical=31.430685807157204   live=32.3292001
+  [FAIL] Volume                   historical=2791.0               live=3967.0
+  [FAIL] Volume Ratio             historical=0.6598264734390884   live=0.928159474
+  [FAIL] Distance From VWAP       historical=42.517083409740735   live=38.6895243393
+  [PASS] Nearest Liquidity Level  historical=28964.0              live=28964.0
+  [PASS] Nearest Liquidity Type   historical='overnight_high'     live='overnight_high'
+  [PASS] Trend 1m                 historical='up'                 live='up'
+  [PASS] Trend 5m                 historical='up'                 live='up'
+  [PASS] Trend 15m                historical='up'                 live='up'
+  [PASS] Trend 1h                 historical='down'               live='down'
+  [PASS] Liquidity Sweep          historical=False                live=False  (trivially-constant field, see report notes)
+  [PASS] Reclaim                  historical=False                live=False  (trivially-constant field, see report notes)
+  [PASS] Rejection                historical=False                live=False  (trivially-constant field, see report notes)
+  [PASS] Displacement             historical=False                live=False  (trivially-constant field, see report notes)
+  [PASS] Volume Spike             historical=False                live=False  (trivially-constant field, see report notes)
+
+Timestamp: 2026-07-20T08:00:00Z
+----------------------------------------------------------------
+  [FAIL] Open                     historical=28909.0              live=28892.25
+  [FAIL] High                     historical=28934.5              live=28922.5
+  [FAIL] Low                      historical=28904.5              live=28890.5
+  [FAIL] Close                    historical=28921.5              live=28909.25
+  [FAIL] VWAP                     historical=28850.497943943166   live=28849.8463519981
+  [FAIL] ATR                      historical=31.366254599028405   live=31.4713511066
+  [FAIL] Volume                   historical=6211.0               live=4166.0
+  [FAIL] Volume Ratio             historical=1.4376815619828016   live=0.9883514033
+  [FAIL] Distance From VWAP       historical=71.00205605683368    live=59.4036480019
+  [PASS] Nearest Liquidity Level  historical=28964.0              live=28964.0
+  [PASS] Nearest Liquidity Type   historical='overnight_high'     live='overnight_high'
+  [PASS] Trend 1m                 historical='up'                 live='up'
+  [PASS] Trend 5m                 historical='up'                 live='up'
+  [PASS] Trend 15m                historical='up'                 live='up'
+  [PASS] Trend 1h                 historical='down'               live='down'
+  [PASS] Liquidity Sweep          historical=False                live=False  (trivially-constant field, see report notes)
+  [PASS] Reclaim                  historical=False                live=False  (trivially-constant field, see report notes)
+  [PASS] Rejection                historical=False                live=False  (trivially-constant field, see report notes)
+  [PASS] Displacement             historical=False                live=False  (trivially-constant field, see report notes)
+  [PASS] Volume Spike             historical=False                live=False  (trivially-constant field, see report notes)
+
+Timestamp: 2026-07-20T08:10:00Z
+----------------------------------------------------------------
+  [FAIL] Open                     historical=28900.5              live=28921.0
+  [FAIL] High                     historical=28903.5              live=28928.25
+  [FAIL] Low                      historical=28894.0              live=28889.75
+  [FAIL] Close                    historical=28896.25             live=28900.25
+  [FAIL] VWAP                     historical=28850.841427525134   live=28850.8262076868
+  [FAIL] ATR                      historical=30.27753585324388    live=31.875807842
+  [FAIL] Volume                   historical=218.0                live=3982.0
+  [FAIL] Volume Ratio             historical=0.0517145263257778   live=0.9146138386
+  [FAIL] Distance From VWAP       historical=45.40857247486565    live=49.4237923132
+  [PASS] Nearest Liquidity Level  historical=28964.0              live=28964.0
+  [PASS] Nearest Liquidity Type   historical='overnight_high'     live='overnight_high'
+  [PASS] Trend 1m                 historical='up'                 live='up'
+  [PASS] Trend 5m                 historical='up'                 live='up'
+  [PASS] Trend 15m                historical='up'                 live='up'
+  [PASS] Trend 1h                 historical='down'               live='down'
+  [PASS] Liquidity Sweep          historical=False                live=False  (trivially-constant field, see report notes)
+  [PASS] Reclaim                  historical=False                live=False  (trivially-constant field, see report notes)
+  [PASS] Rejection                historical=False                live=False  (trivially-constant field, see report notes)
+  [PASS] Displacement             historical=False                live=False  (trivially-constant field, see report notes)
+  [PASS] Volume Spike             historical=False                live=False  (trivially-constant field, see report notes)
+
+================================================================
+Task 3 - Historical <-> Live Equivalence: FAIL
+(at least one field mismatched at least one timestamp - see above)
+
+Note: Liquidity Sweep / Reclaim / Rejection / Displacement / Volume Spike are hardcoded false on both the live and historical Pine paths by design (Sprint 5) - a PASS on these five confirms that convention still holds identically on both sides, it does not independently confirm translation accuracy for them.

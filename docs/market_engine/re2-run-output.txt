@@ -1,0 +1,19 @@
+../data/CME_03_03_25_16_06_25.csv: 20376 rows loaded, 20376 new after dedup against prior files
+../data/CME_16_06_25_30_09_25.csv: 21062 rows loaded, 21062 new after dedup against prior files
+../data/CME_01_10_31_12.csv: 17743 rows loaded, 17673 new after dedup against prior files
+../data/CME_01_01_05_04.csv: 18193 rows loaded, 18028 new after dedup against prior files
+../data/CME_06_04_20_07.csv: 20719 rows loaded, 20719 new after dedup against prior files
+Merge stats: raw_row_count=98093 unique_row_count=97858 identical_duplicates_removed=235 conflict_count=0
+Building episode-aware Setup Engine dataset (Rule Engine + Setup Engine evaluation)...
+  displacement_with_volume_confirmation: 5270 episodes
+  liquidity_sweep_with_volume_confirmation: 2970 episodes
+  sustained_displacement_streak: 1708 episodes
+  vwap_extension_with_volume_confirmation: 6331 episodes
+Wrote ../research\RE2_Setup_Profile.md (4649 chars)
+Wrote ../research\RE2_Time_Distribution.md (15528 chars)
+Wrote ../research\RE2_Clustering.md (4649 chars)
+Wrote ../research\RE2_Setup_Overlap.md (7869 chars)
+Wrote ../research\RE2_Context_Profile.md (10924 chars)
+Wrote ../research\RE2_Setup_Transitions.md (7577 chars)
+
+Run complete: 97858 bars, MNQ1!/5m, 2025-03-02T23:05:00+00:00 -> 2026-07-20T11:35:00+00:00

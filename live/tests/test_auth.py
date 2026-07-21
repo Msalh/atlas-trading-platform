@@ -60,6 +60,13 @@ def raw_client(monkeypatch, repository, market_state_repository, event_bus, syst
     # router-registration time (rule_engine.router has one route, one auth
     # scheme - see atlas/main.py's registration comment).
     "/api/v1/rule-engine/latest?symbol=MNQU6&timeframe=5m",
+    # UI v2 (research.py) - same shared API key, applied at
+    # router-registration time.
+    "/api/v1/research/re1/summary", "/api/v1/research/re2/summary", "/api/v1/research/dataset-health",
+    # UI v2 (setup_engine.py) - same shared API key, applied at
+    # router-registration time.
+    "/api/v1/setup-engine/latest?symbol=MNQU6&timeframe=5m",
+    "/api/v1/setup-engine/episodes/live?symbol=MNQU6&timeframe=5m",
 ])
 def test_protected_endpoints_reject_missing_api_key(raw_client, path):
     resp = raw_client.get(path)

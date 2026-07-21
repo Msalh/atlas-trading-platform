@@ -4,6 +4,7 @@ import Link from "next/link";
 import "./globals.css";
 import { QueryProvider } from "@/lib/query-provider";
 import { LiveUpdatesProvider } from "@/lib/live-updates";
+import { LiveSelectorProvider } from "@/lib/liveSelector";
 import { HeaderStatusDot } from "@/components/HeaderStatusDot";
 import { HeaderKillSwitchDot } from "@/components/HeaderKillSwitchDot";
 
@@ -35,32 +36,41 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-background text-foreground">
         <QueryProvider>
           <LiveUpdatesProvider>
-            <header className="border-b border-border bg-surface">
-              <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-                <div className="flex items-baseline gap-6">
-                  <Link href="/" className="flex items-baseline gap-2">
-                    <span className="text-lg font-semibold tracking-tight">Atlas</span>
-                    <span className="text-sm text-muted">MNQU6 · ICT_Funded_v1</span>
-                  </Link>
-                  <nav className="flex items-baseline gap-4 text-sm text-muted">
-                    <Link href="/" className="hover:text-foreground">Dashboard</Link>
-                    <Link href="/account" className="hover:text-foreground">Account</Link>
-                    <Link href="/analytics" className="hover:text-foreground">Analytics</Link>
-                    <Link href="/ai" className="hover:text-foreground">AI</Link>
-                    <Link href="/activity" className="hover:text-foreground">Activity</Link>
-                    <Link href="/rule-engine" className="hover:text-foreground">Rule Engine</Link>
-                  </nav>
+            <LiveSelectorProvider>
+              <header className="border-b border-border bg-surface">
+                <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+                  <div className="flex items-baseline gap-6">
+                    <Link href="/" className="flex items-baseline gap-2">
+                      <span className="text-lg font-semibold tracking-tight">Atlas</span>
+                      <span className="text-sm text-muted">MNQU6 · ICT_Funded_v1</span>
+                    </Link>
+                    <nav className="flex flex-wrap items-baseline gap-4 text-sm text-muted">
+                      <Link href="/" className="hover:text-foreground">Dashboard</Link>
+                      <Link href="/account" className="hover:text-foreground">Account</Link>
+                      <Link href="/analytics" className="hover:text-foreground">Analytics</Link>
+                      <Link href="/ai" className="hover:text-foreground">AI</Link>
+                      <Link href="/activity" className="hover:text-foreground">Activity</Link>
+                      <Link href="/rule-engine" className="hover:text-foreground">Rule Engine</Link>
+                      <span className="text-border">|</span>
+                      <Link href="/market-view" className="hover:text-foreground">Market View</Link>
+                      <Link href="/active-setups" className="hover:text-foreground">Active Setups</Link>
+                      <Link href="/timeline" className="hover:text-foreground">Timeline</Link>
+                      <Link href="/episodes" className="hover:text-foreground">Episode Inspector</Link>
+                      <Link href="/research" className="hover:text-foreground">Research Overview</Link>
+                      <Link href="/dataset-health" className="hover:text-foreground">Dataset Health</Link>
+                    </nav>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <HeaderKillSwitchDot />
+                    <HeaderStatusDot />
+                  </div>
                 </div>
-                <div className="flex items-center gap-4">
-                  <HeaderKillSwitchDot />
-                  <HeaderStatusDot />
-                </div>
-              </div>
-            </header>
-            <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">{children}</main>
-            <footer className="border-t border-border px-6 py-4 text-center text-xs text-muted">
-              Atlas AI Trading Platform — Sprint 7
-            </footer>
+              </header>
+              <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">{children}</main>
+              <footer className="border-t border-border px-6 py-4 text-center text-xs text-muted">
+                Atlas AI Trading Platform — Sprint 7
+              </footer>
+            </LiveSelectorProvider>
           </LiveUpdatesProvider>
         </QueryProvider>
       </body>

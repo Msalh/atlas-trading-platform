@@ -59,3 +59,51 @@ export function formatClock(iso: string | null | undefined): string {
     second: "2-digit",
   });
 }
+
+// UI v2, production-hardening amendment 4. Every market timestamp in UI v2
+// (Market View, Active Setup Bundle, Timeline, Episode Inspector,
+// FreshnessBadge, Research Overview, Dataset Health) renders in
+// America/Chicago explicitly, via these two formatters - never the
+// viewer's own browser locale/timezone, which is what formatClock/
+// formatDateShort above still use and continue to be used by pre-UI-v2
+// pages (deliberately untouched - see those pages' own disclosed
+// inconsistency notes).
+//
+// The IANA zone name "America/Chicago" - not a fixed UTC offset - is
+// what makes daylight-saving handling automatic: the JS runtime's own
+// bundled ICU timezone database applies the correct CST (UTC-6) or CDT
+// (UTC-5) offset for the given instant, with no manual DST arithmetic
+// and no new dependency. Both formatters append an explicit "CT" label
+// themselves so no call site can render a CT timestamp without it.
+//
+// Locale is pinned to "en-US" here (unlike formatClock/formatDateShort's
+// `undefined`, which defers to the viewer's own OS locale) - a shared
+// operational timestamp meant to be unambiguous across every operator's
+// screen shouldn't also vary in month/day ordering by each viewer's OS
+// locale settings, and a fixed locale is what makes this formatter's
+// output deterministic and testable in the first place.
+export const CT_TIME_ZONE = "America/Chicago";
+const CT_LOCALE = "en-US";
+
+export function formatClockCT(iso: string | null | undefined): string {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const formatted = d.toLocaleString(CT_LOCALE, {
+    timeZone: CT_TIME_ZONE,
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  return `${formatted} CT`;
+}
+
+export function formatDateShortCT(iso: string | null | undefined): string {
+  if (!iso) return "-";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const formatted = d.toLocaleDateString(CT_LOCALE, { timeZone: CT_TIME_ZONE, month: "short", day: "numeric" });
+  return `${formatted} CT`;
+}

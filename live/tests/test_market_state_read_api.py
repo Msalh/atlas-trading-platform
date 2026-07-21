@@ -30,6 +30,20 @@ class TestGetLatest:
         assert body["data"]["event_id"] == "e-read-1"
         assert body["data"]["close"] == 20125.75
 
+    def test_vwap_round_trips_at_full_precision(self, client):
+        # Sprint 31 Task 2 - proves the vwap fix (Sprint 26) holds through the
+        # real HTTP ingest -> read round trip, not just at the translator/
+        # service unit level: a genuinely high-precision analytical vwap must
+        # come back byte-identical, never tick-rounded, never truncated by
+        # JSON serialization.
+        client.post("/api/v1/market-state", json=market_state_payload(
+            event_id="e-vwap-precision", vwap=28849.3104756607,
+        ))
+        resp = client.get(
+            "/api/v1/market-state/latest", params={"symbol": "MNQU6", "timeframe": "5m"}
+        )
+        assert resp.json()["data"]["vwap"] == 28849.3104756607
+
     def test_returns_the_actual_latest_of_several(self, client):
         client.post("/api/v1/market-state", json=market_state_payload(
             event_id="e-early", timestamp="2026-07-18T13:35:00Z",
@@ -220,6 +234,39 @@ class TestGetExport:
         ))
         resp = client.get("/api/v1/market-state/export", params=self._params())
         assert resp.json()["gap_count"] == 1
+
+    def test_start_equals_end_retrieves_exactly_one_event_by_timestamp(self, client):
+        # Sprint 31 Task 3 - this is the certification-evidence lookup: since
+        # get_range's [start, end] window is inclusive on both ends
+        # (atlas.market_engine.ports.MarketStateRepository.get_range's own
+        # docstring), start == end is already a valid, exact single-timestamp
+        # lookup - no new endpoint is needed to retrieve one specific event by
+        # (symbol, timeframe, timestamp) instead of by "latest". Also proves
+        # every persisted analytical field, including full-precision vwap,
+        # survives this path unchanged - the same property Task 2 proved for
+        # /latest, now proved for an exact, non-moving target.
+        client.post("/api/v1/market-state", json=market_state_payload(
+            event_id="e-exact-lookup", timestamp="2026-07-18T13:35:00Z",
+            vwap=28849.3104756607,
+        ))
+        client.post("/api/v1/market-state", json=market_state_payload(
+            event_id="e-neighbor-before", timestamp="2026-07-18T13:30:00Z",
+        ))
+        client.post("/api/v1/market-state", json=market_state_payload(
+            event_id="e-neighbor-after", timestamp="2026-07-18T13:40:00Z",
+        ))
+        resp = client.get("/api/v1/market-state/export", params=self._params(
+            start="2026-07-18T13:35:00Z", end="2026-07-18T13:35:00Z",
+        ))
+        body = resp.json()
+        assert body["count"] == 1
+        event = body["data"][0]
+        assert event["event_id"] == "e-exact-lookup"
+        assert event["timestamp"] == "2026-07-18T13:35:00+00:00"
+        assert event["symbol"] == "MNQU6"
+        assert event["timeframe"] == "5m"
+        assert event["close"] == 20125.75
+        assert event["vwap"] == 28849.3104756607
 
     def test_data_outside_range_excluded(self, client):
         client.post("/api/v1/market-state", json=market_state_payload(

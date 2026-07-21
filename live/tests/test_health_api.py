@@ -11,7 +11,7 @@ def test_health_ok_when_database_reachable(client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["ok"] is True
-    assert body["database"] == "ok"
+    assert body["database"] == {"ok": True, "reason": None, "detail": "ok"}
 
 
 def test_health_reports_none_uptime_when_started_at_not_set(client):
@@ -49,7 +49,35 @@ def test_health_returns_503_when_database_unreachable(client, repository):
     assert resp.status_code == 503
     body = resp.json()
     assert body["ok"] is False
-    assert "connection refused" in body["database"]
+    assert body["database"] == {
+        "ok": False, "reason": "ping_failed", "detail": "database ping failed - see server logs for details",
+    }
+
+
+def test_health_database_error_never_exposes_connection_details(client, repository):
+    """Production-hardening (MEDIUM finding, closed after /status): GET /health is
+    deliberately public - no API key required, since infrastructure probes need to
+    reach it without a credential - which makes it an even more sensitive place to
+    leak a raw Postgres exception's connection details than an authenticated endpoint
+    would be. Same sanitization contract as GET /status."""
+    sensitive_message = (
+        'connection failed: connection to server at "db.internal.railway.app", port 5432 failed: '
+        'FATAL: password authentication failed for user "atlas_prod" (password="hunter2")'
+    )
+
+    async def broken_ping():
+        raise RuntimeError(sensitive_message)
+    repository.ping = broken_ping
+
+    resp = client.get("/api/v1/health")
+    raw_body = resp.text
+    for leaked in ("db.internal.railway.app", "5432", "atlas_prod", "hunter2", "password"):
+        assert leaked not in raw_body
+
+    body = resp.json()
+    assert body["ok"] is False
+    assert body["database"]["ok"] is False
+    assert body["database"]["reason"] == "ping_failed"
 
 
 def test_health_includes_uptime_fields_even_on_failure(client, repository):

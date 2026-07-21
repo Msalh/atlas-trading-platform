@@ -13,11 +13,14 @@ an incident.
    integration suite against a real Postgres service container, plus a coverage gate
    at 80%) and `frontend-checks` (`tsc`, `lint`, `build`) must pass. Do not deploy off
    a red CI run, and do not deploy a commit CI hasn't run against at all.
-2. **Required environment variables are set** on both Railway (backend) and Vercel
-   (frontend) - see `docs/sprint9/deployment-checklist.md` for the full list
-   (`DATABASE_URL`, `WEBHOOK_SECRET`, `API_KEY`, `ANTHROPIC_API_KEY`,
-   `PICKMYTRADE_WEBHOOK_URL`, `FRONTEND_ORIGINS`, the four `ACCOUNT_*` variables if
-   using `RISK_ENFORCEMENT=true`) plus this sprint's additions:
+2. **Required environment variables are set** on both Railway services (backend and
+   frontend - both live in the same Railway project; see
+   `docs/ui_v2/deployment-runbook.md` for the current Railway-only deployment
+   architecture) - see `docs/sprint9/deployment-checklist.md` for the full list
+   (`DATABASE_URL`, `WEBHOOK_SECRET`, `API_KEY`, `MARKET_STATE_WEBHOOK_SECRET`,
+   `ANTHROPIC_API_KEY`, `PICKMYTRADE_WEBHOOK_URL`, `FRONTEND_ORIGINS`, the four
+   `ACCOUNT_*` variables if using `RISK_ENFORCEMENT=true`) plus this sprint's
+   additions:
    - `ALERT_WEBHOOK_URL` (optional) - a Slack/Discord-compatible incoming webhook URL.
      If unset, PMT-failure and sustained-Claude-failure alerts are silently disabled -
      decide deliberately, don't leave this unset by omission.
@@ -48,14 +51,17 @@ an incident.
    readiness signal correctly, Railway won't route traffic to the new instance until
    this passes.
 
-### Frontend (Vercel)
+### Frontend (Railway)
 
-1. Push to the branch Vercel is configured to auto-deploy from, or trigger manually.
-2. `npm run build` runs as part of Vercel's build step - this will fail the deploy
-   outright if `tsc`/lint/the production build itself has an error (matching what CI
-   already checked, as a second independent gate).
-3. Vercel deploys are atomic and instantly reversible (see Rollback below) - there's
-   no equivalent "crash-loop" risk here the way there is for the backend.
+1. Push to the branch the frontend service is configured to auto-deploy from, or
+   trigger manually from the Railway dashboard - a second, separate service in the
+   same Railway project as the backend, with Root Directory `frontend`.
+2. `npm run build` runs as part of the frontend service's Nixpacks build step - this
+   will fail the deploy outright if `tsc`/lint/the production build itself has an
+   error (matching what CI already checked, as a second independent gate).
+3. Railway keeps prior build artifacts for the frontend service, so its rollback (see
+   Rollback below) is just as instant and atomic as the backend's - there's no
+   equivalent "crash-loop" risk here the way there is for the backend.
 
 ## After every deploy
 
@@ -88,10 +94,12 @@ that needs undoing, that requires a manually-written rollback SQL script, not an
 automated one - write and test it before running it against production, the same
 discipline as any other manual production SQL.
 
-### Frontend (Vercel)
-Vercel's dashboard → **Deployments** → pick the previous deployment → **Promote to
-Production**. Instant, no build step re-run needed - this is the fastest rollback path
-in the whole system, use it liberally if a frontend deploy looks wrong.
+### Frontend (Railway)
+Railway dashboard → the frontend service's **Deployments** tab → pick the previous
+deployment → **Redeploy**. Same mechanism as the backend rollback above, since both
+services now live on the same platform. Instant, no build step re-run needed - this is
+the fastest rollback path in the whole system, use it liberally if a frontend deploy
+looks wrong.
 
 ## Incident response
 

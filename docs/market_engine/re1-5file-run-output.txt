@@ -1,0 +1,13 @@
+../data/CME_03_03_25_16_06_25.csv: 20376 rows loaded, 20376 new after dedup against prior files
+../data/CME_16_06_25_30_09_25.csv: 21062 rows loaded, 21062 new after dedup against prior files
+../data/CME_01_10_31_12.csv: 17743 rows loaded, 17673 new after dedup against prior files
+../data/CME_01_01_05_04.csv: 18193 rows loaded, 18028 new after dedup against prior files
+../data/CME_06_04_20_07.csv: 20719 rows loaded, 20719 new after dedup against prior files
+Merge stats: raw_row_count=98093 unique_row_count=97858 identical_duplicates_removed=235 conflict_count=0
+Wrote ../research\RE1_Fact_Profile.md (4878 chars)
+Wrote ../research\RE1_RuleRelationships.md (4172 chars)
+Wrote ../research\RE1_ConditionalProbability.md (13917 chars)
+Wrote ../research\RE1_TimeDistribution.md (5527 chars)
+Wrote ../research\RE1_Persistence.md (18322 chars)
+
+Run complete: 97858 bars, MNQ1!/5m, 2025-03-02T23:05:00+00:00 -> 2026-07-20T11:35:00+00:00

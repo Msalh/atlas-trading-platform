@@ -5,12 +5,19 @@ is a **staging** environment - real orders must not be possible until you explic
 decide otherwise (see the Safety Gates section before you start, and again before you
 finish).
 
-**What I (the assistant) cannot do:** I have no Railway or Vercel account access, no
-deployment API, and no ability to click through their dashboards. Every step below
-that says "in Railway's dashboard" or "in Vercel's dashboard" is something you need to
-do yourself. What I've prepared is everything that makes those steps fast and
-unambiguous: the exact settings, the exact environment variables, and a full set of
-scripts to verify each one afterward (`live/scripts/smoke_test.sh`).
+**Deployment architecture: Railway-only.** Both the backend and the frontend deploy as
+two services in the same Railway project, alongside a Railway-managed Postgres plugin.
+There is no Vercel step anywhere in this checklist - see
+`docs/ui_v2/deployment-runbook.md` for the fuller UI v2-specific version of this same
+Railway-only process (env var ownership, internal-vs-public networking, the six UI v2
+routes).
+
+**What I (the assistant) cannot do:** I have no Railway account access, no deployment
+API, and no ability to click through its dashboard. Every step below that says "in
+Railway's dashboard" is something you need to do yourself. What I've prepared is
+everything that makes those steps fast and unambiguous: the exact settings, the exact
+environment variables, and a full set of scripts to verify each one afterward
+(`live/scripts/smoke_test.sh`).
 
 **What I will not do without you explicitly telling me to, separately from this
 checklist:** commit the current local changes, push to any git remote, or touch
@@ -22,7 +29,7 @@ and asks you to confirm it separately.
 
 ## Step 0 - Prerequisite: a pushed git remote
 
-Railway and Vercel both deploy by watching a GitHub repository. Right now, this
+Railway deploys both services by watching a GitHub repository. Right now, this
 project has **no remote configured** (`git remote -v` is empty) and 69 files of
 Sprint 6-10 work sitting uncommitted locally - per every sprint's standing
 instruction, none of it has been committed or pushed.
@@ -34,10 +41,10 @@ Before anything below can happen for real:
    there - I will not do this as an implicit side effect of this checklist. This is a
    separate, explicit decision from "prepare the deployment docs," which is what this
    message covers.
-3. Once pushed, Railway/Vercel can each be pointed at that same repo (as a monorepo -
-   both platforms support setting a **Root Directory** so the backend service builds
-   from `live/` and the frontend project builds from `frontend/`, independently, from
-   the one repo).
+3. Once pushed, Railway can host both services from that same repo as a monorepo -
+   each service (backend, frontend) sets its own **Root Directory** (`live/` and
+   `frontend/` respectively) within the one Railway project, building independently
+   from the one repo.
 
 Everything from Step 1 onward assumes this has happened.
 
@@ -65,7 +72,7 @@ Everything from Step 1 onward assumes this has happened.
 
 ---
 
-## Step 1 - Railway: create the project and Postgres
+## Step 1 - Railway: create the project, Postgres, and the backend service
 
 1. In Railway, **New Project** → **Deploy from GitHub repo** → select the repo from
    Step 0.
@@ -73,8 +80,8 @@ Everything from Step 1 onward assumes this has happened.
    initial auto-detected service** if it doesn't correctly target `live/` (monorepo
    root detection is unreliable); you'll add the correct one in the next step.
 3. **New** → **GitHub Repo** (same repo again) → in the new service's **Settings** →
-   **Root Directory**, set it to `live`. Railway will now build/deploy only that
-   subdirectory, picking up `live/Procfile`
+   **Root Directory**, set it to `live`. This is the **backend service**. Railway will
+   now build/deploy only that subdirectory, picking up `live/Procfile`
    (`web: uvicorn atlas.main:app --host 0.0.0.0 --port $PORT`) automatically.
 4. In the same project, **New** → **Database** → **Add PostgreSQL**. Railway
    provisions a Postgres instance and automatically injects `DATABASE_URL` into every
@@ -83,7 +90,7 @@ Everything from Step 1 onward assumes this has happened.
 5. Do **not** deploy yet - set environment variables first (Step 2), since
    `Settings.validate_for_startup()` will crash-loop the service without them.
 
-## Step 2 - Railway: environment variables
+## Step 2 - Railway: backend environment variables
 
 In the backend service's **Variables** tab, set:
 
@@ -91,11 +98,12 @@ In the backend service's **Variables** tab, set:
 |---|---|---|
 | `DATABASE_URL` | *(auto-injected by the Postgres plugin)* | Confirm it's present - don't set it manually. |
 | `WEBHOOK_SECRET` | a random value you generate, e.g. `openssl rand -hex 32` | Required - the app refuses to start without it (Sprint 9). |
-| `API_KEY` | a **different** random value, e.g. `openssl rand -hex 32` | Required, and must not equal `WEBHOOK_SECRET` - they protect different things. |
+| `API_KEY` | a **different** random value, e.g. `openssl rand -hex 32` | Required, and must not equal `WEBHOOK_SECRET` - they protect different things. Must exactly match the frontend service's `ATLAS_API_KEY` (Step 4). |
+| `MARKET_STATE_WEBHOOK_SECRET` | a **third**, different random value, e.g. `openssl rand -hex 32` | Required - protects `POST /api/v1/market-state` independently of `WEBHOOK_SECRET`. The app refuses to start in production without it, same as `WEBHOOK_SECRET`/`API_KEY`. |
 | `ENVIRONMENT` | `production` | Yes, even for staging - this is what enables the startup safety checks. There is no separate "staging" mode; staging-ness comes from `PICKMYTRADE_WEBHOOK_URL` being unset, not from a relaxed `ENVIRONMENT`. |
 | `ANTHROPIC_API_KEY` | your real key, or leave unset | Optional - if unset, AI features run in the same graceful "not configured" degraded mode they've always had; no order-execution impact either way. |
 | `PICKMYTRADE_WEBHOOK_URL` | **leave unset** | See Safety Gates above. |
-| `FRONTEND_ORIGINS` | `https://<your-vercel-project>.vercel.app` | Set once you know the Vercel URL from Step 4 - can be updated after the fact. |
+| `FRONTEND_ORIGINS` | `https://<your-frontend-service>.up.railway.app` | Set once you know the frontend service's public Railway URL from Step 4 - can be updated after the fact. This is the frontend service's own public domain, a different URL from the backend's, even though both are on Railway. |
 | `RISK_ENFORCEMENT` | *(leave unset, defaults to `false`)* | See Safety Gates above. |
 | `ALERT_WEBHOOK_URL` | optional - a Slack/Discord incoming webhook, or a throwaway endpoint like a [webhook.site](https://webhook.site) URL for testing alerting itself | Leave unset if you don't want alerting active yet. |
 | `CLAUDE_FAILURE_ALERT_THRESHOLD` | *(leave unset, defaults to `3`)* | |
@@ -107,32 +115,39 @@ snapshot/kill-switch display with fake numbers.
 
 1. Trigger the deploy (Railway does this automatically once variables are saved, or
    use **Deploy** manually).
-2. Watch the deploy logs. Expect to see migrations apply
-   (`applying migration 0001_init.sql`, `0002_add_quantity.sql`, `0003_ai_notes.sql`,
-   `0004_ai_intelligence_fields.sql`, in order) followed by
-   `Uvicorn running on http://0.0.0.0:$PORT`.
+2. Watch the deploy logs. Expect to see every file in `live/migrations/` apply in
+   numeric order (`applying migration 0001_init.sql`, then `0002_...`, `0003_...`, and
+   so on - `live/migrations/runner.py` applies whatever `.sql` files are actually
+   present, so check that directory for the current authoritative list rather than
+   trusting a specific count named here, which will go stale as new migrations are
+   added) followed by `Uvicorn running on http://0.0.0.0:$PORT`.
 3. **If it crash-loops:** check the logs for a `RuntimeError` from
    `Settings.validate_for_startup()` first - it names exactly which variable is
    missing. This is by far the most likely failure mode for a first deploy.
 4. Once it's up, copy the service's public URL (Railway generates one under
    **Settings** → **Networking** → **Generate Domain** if you haven't already).
 
-## Step 4 - Vercel: create the frontend project
+## Step 4 - Railway: create the frontend service
 
-1. **Add New** → **Project** → import the same GitHub repo.
-2. In the import screen (or **Settings** → **General** afterward), set **Root
-   Directory** to `frontend`. Vercel auto-detects Next.js from there - no other build
-   configuration needed.
-3. **Settings** → **Environment Variables**:
+1. In the **same Railway project** as the backend service and Postgres plugin: **New**
+   → **GitHub Repo** (same repo again) → in the new service's **Settings** → **Root
+   Directory**, set it to `frontend`. This is the **frontend service** - a second
+   service in the one project, not a separate project and not a different platform.
+   Railway auto-detects Next.js from `frontend/package.json` (`next build`/`next
+   start`) via Nixpacks - no Dockerfile needed. If you want an explicit start command
+   instead of relying on auto-detection, add `frontend/Procfile` with `web: npm start`,
+   mirroring the backend's own `Procfile`.
+2. In the frontend service's **Variables** tab, set:
 
-| Variable | Staging value |
-|---|---|
-| `NEXT_PUBLIC_API_BASE_URL` | the Railway backend URL from Step 3.4 |
-| `NEXT_PUBLIC_API_KEY` | the same `API_KEY` value you set in Railway (Step 2) |
+| Variable | Staging value | Notes |
+|---|---|---|
+| `NEXT_PUBLIC_API_BASE_URL` | the backend service's **public** Railway URL from Step 3.4 | Read both server-side (the BFF proxy) and client-side (the browser, for legacy pages and the SSE stream) - must stay the public URL, never an internal `*.railway.internal` one, since a browser can't resolve that. See `docs/ui_v2/deployment-runbook.md` §4 for the full internal-vs-public distinction. |
+| `ATLAS_API_KEY` | the same `API_KEY` value you set on the backend service (Step 2) | Server-only - deliberately not `NEXT_PUBLIC_`-prefixed, so it never reaches the browser. This is what every UI v2 page (Market View, Active Setup Bundle, Timeline, Episode Inspector, Research Overview, Dataset Health) authenticates through. |
+| `NEXT_PUBLIC_API_KEY` | the same `API_KEY` value you set on the backend service (Step 2) | Legacy - still read by the pre-UI-v2 pages (`/rule-engine`, trades/analytics/AI/activity), which fetch directly from the browser. This one does ship to the client bundle, by design of that older pattern. |
 
-4. Deploy. Once it's live, copy the Vercel URL and go back to Railway's
-   `FRONTEND_ORIGINS` variable (Step 2) to set it correctly, then redeploy the backend
-   so CORS allows the real frontend origin.
+3. Deploy. Once it's live, copy the frontend service's public Railway URL and go back
+   to the backend service's `FRONTEND_ORIGINS` variable (Step 2) to set it correctly,
+   then redeploy the backend so CORS allows the real frontend origin.
 
 ## Step 5 - Verify everything
 
@@ -140,8 +155,8 @@ Run `live/scripts/smoke_test.sh` against the deployed backend (see that script's
 header for usage) - it covers migrations, auth, webhook secret rejection, SSE, health/
 status, and the "no real orders possible" check in one pass. Then:
 
-- [ ] Open the Vercel URL in a browser. Confirm the dashboard loads, the connection
-      status dot goes live, and there are no console errors.
+- [ ] Open the frontend service's Railway URL in a browser. Confirm the dashboard
+      loads, the connection status dot goes live, and there are no console errors.
 - [ ] Confirm `GET /api/v1/status`'s `pickmytrade.configured` is `false` (see Safety
       Gates - this is the definitive check that no real order can be placed).
 - [ ] If you set `ALERT_WEBHOOK_URL` to a test endpoint (e.g. webhook.site), manually

@@ -18,6 +18,18 @@ broken and I want it back to a known-good state," not for anything touching real
 3. If you need to roll back the *code* (not just config), and the bad commit hasn't
    been redeployed over by a fix yet, use Railway's deployment history the same way -
    no git revert needed on your end, Railway keeps prior build artifacts.
+4. **Migrations are forward-only** (`migrations/runner.py` has no `down` migration
+   support, by design - see `docs/sprint1/architecture-decisions.md`), same as
+   production. An application-only rollback (step 1/3 above) is safe only when the
+   older code is schema-compatible with whatever migrations have already applied -
+   check that before assuming a code rollback fixes things. If it isn't compatible,
+   staging has a cheaper escape hatch production doesn't: wipe and restart clean (see
+   "If the Postgres data looks wrong" below), rather than writing a corrective forward
+   migration - there's no real trading history here to preserve. See
+   `docs/ui_v2/deployment-runbook.md` §8 for the fuller production-grade treatment of
+   this policy (application-only rollback vs. roll-forward, operator compatibility
+   check) - it applies unchanged to this project's backend regardless of which
+   Railway environment is running it.
 
 ## If the Postgres data looks wrong
 
@@ -41,18 +53,21 @@ This is explicitly **not** the procedure for the real funded-account database - 
 
 ## If the frontend deploy is broken
 
-**Vercel dashboard → Deployments → pick the last working deployment → Promote to
-Production.** Instant, no rebuild needed - this is Vercel's fastest and safest
-rollback path, use it freely.
+**Railway dashboard → the frontend service's Deployments tab → pick the last working
+deployment → Redeploy.** Same mechanism as the backend rollback above, since both
+services now live on the same platform - there's no separate dashboard or "promote to
+production" step to remember. Instant, no rebuild needed if Railway already has the
+prior build artifact.
 
 ## If you're not sure what's wrong
 
 1. Run `live/scripts/smoke_test.sh` against the current deployment first - it will
    tell you specifically which check is failing (auth, health, SSE, etc.) rather than
    leaving you to guess from a vague "something's broken."
-2. Check Railway's deploy logs for the backend and Vercel's build logs for the
-   frontend - both platforms keep these per-deployment, and a `RuntimeError` from
-   `Settings.validate_for_startup()` (missing `WEBHOOK_SECRET`/`API_KEY`) is by far the
+2. Check each service's own deploy logs in the Railway dashboard (backend and
+   frontend are separate services with separate log streams, even though they're in
+   the same project) - a `RuntimeError` from `Settings.validate_for_startup()`
+   (missing `WEBHOOK_SECRET`/`API_KEY`/`MARKET_STATE_WEBHOOK_SECRET`) is by far the
    most likely cause of a backend that looks broken immediately after a fresh deploy.
 3. If genuinely stuck, tearing the whole staging environment down and re-following
    `docs/staging/deployment-checklist.md` from Step 1 again is a completely reasonable
@@ -61,9 +76,9 @@ rollback path, use it freely.
 
 ## Full teardown (if you want to stop staging entirely)
 
-1. Railway: delete the backend service and the Postgres plugin from the project
-   (**Settings → Danger Zone** on each).
-2. Vercel: delete the project (**Settings → Advanced → Delete Project**).
-3. Nothing on the TradingView/PickMyTrade side needs to change, since staging was
+1. Railway: delete the backend service, the frontend service, and the Postgres plugin
+   from the project (**Settings → Danger Zone** on each) - or delete the whole
+   project at once if none of it needs to survive.
+2. Nothing on the TradingView/PickMyTrade side needs to change, since staging was
    never connected to either (per the Safety Gates) - this teardown has zero impact on
    your real trading setup.

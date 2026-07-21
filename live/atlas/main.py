@@ -35,6 +35,7 @@ Run locally (requires DATABASE_URL pointing at a Postgres instance):
 Deploy: see README.md and ../docs/sprint9/deployment-checklist.md.
 """
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
@@ -47,7 +48,8 @@ from slowapi.middleware import SlowAPIMiddleware
 from atlas.alerting import ClaudeFailureTracker, alert_on_forward_failure
 from atlas.api.security import require_api_key, require_api_key_for_stream
 from atlas.api.v1 import (
-    activity, ai, analytics, health, market_state, risk, rule_engine, status, stats, stream, trades, webhook,
+    activity, ai, analytics, health, market_state, research, risk, rule_engine, setup_engine, status, stats,
+    stream, trades, webhook,
 )
 from atlas.config import settings
 from atlas.db import create_pool
@@ -60,9 +62,11 @@ from atlas.market_engine.repositories.postgres import PostgresMarketStateReposit
 from atlas.monitoring import MarketStateStalenessMonitor
 from atlas.rate_limit import limiter
 from atlas.repositories.postgres import PostgresTradeRepository
+from atlas.research_export.startup_check import check_snapshots, internal_error_readiness
 from atlas.status import SystemStatus
 
 configure_logging()
+logger = logging.getLogger(__name__)
 
 
 async def _market_state_staleness_loop(app: FastAPI, monitor: MarketStateStalenessMonitor, interval_seconds: float) -> None:
@@ -82,6 +86,21 @@ async def _market_state_staleness_loop(app: FastAPI, monitor: MarketStateStalene
 async def lifespan(app: FastAPI):
     settings.validate_for_startup()
     app.state.started_at = datetime.now(timezone.utc)
+    # Production-hardening amendment 3: computed once here, never per-request -
+    # does not raise on a missing/invalid snapshot (LIVE endpoints have no
+    # dependency on these files), only records the degraded state for
+    # GET /status to expose. See atlas/research_export/startup_check.py.
+    # The try/except is a second, outer safety net around that same
+    # contract: check_snapshots() is expected to turn every bad-file case
+    # it knows about into a normal "invalid" result rather than raising,
+    # but if it ever raises something unanticipated (a genuine bug in that
+    # module, not a bad snapshot file), that must still never prevent LIVE
+    # endpoints (rule-engine/setup-engine) from starting.
+    try:
+        app.state.snapshots_readiness = check_snapshots(research.SNAPSHOTS_DIR)
+    except Exception:
+        logger.exception("snapshot readiness check failed unexpectedly at startup")
+        app.state.snapshots_readiness = internal_error_readiness()
     pool = await create_pool()
     app.state.pool = pool
     app.state.repository = PostgresTradeRepository(pool)
@@ -195,6 +214,13 @@ app.include_router(risk.router, prefix="/api/v1", tags=["v1"], dependencies=[Dep
 app.include_router(analytics.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
 app.include_router(ai.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
 app.include_router(activity.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
+# UI v2: reads only the checked-in live/research/snapshots/*.json files
+# this router's own docstring describes - no computation on request, same
+# shared-key auth as every other read-only router above.
+app.include_router(research.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
+# UI v2: live Setup Engine state and episode projection - zero changes to
+# atlas/setup_engine/ or atlas/rule_engine/, same shared-key auth.
+app.include_router(setup_engine.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
 
 # Legacy, unversioned surface - preserved so the existing TradingView alert keeps
 # working without any change on TradingView's side. The legacy HTML dashboard
