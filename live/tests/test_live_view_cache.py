@@ -102,6 +102,29 @@ class TestLRUEviction:
         assert len(cache) == 1
         assert cache.get(key) is _DUMMY_RESULT_B
 
+    def test_a_hit_promotes_the_entry_so_it_survives_an_eviction_round_fifo_would_have_dropped_it_for(self):
+        """Production-hardening amendment 6. This is the one case that
+        distinguishes true LRU from FIFO-by-insertion: key_1 is the oldest
+        *inserted* entry, but it is read (a hit) right before key_3 is
+        added - under plain FIFO that read has no effect and key_1 would
+        still be evicted next; under real LRU, that read makes key_2 the
+        least-recently-used one instead, so key_2 is evicted and key_1
+        survives."""
+        cache = LiveWindowCache(max_entries=2)
+        key_1 = build_cache_key("MNQ1!", "5m", 500, "2026-07-20T14:00:00+00:00")
+        key_2 = build_cache_key("MNQ1!", "5m", 500, "2026-07-20T14:05:00+00:00")
+        key_3 = build_cache_key("MNQ1!", "5m", 500, "2026-07-20T14:10:00+00:00")
+
+        cache.put(key_1, _DUMMY_RESULT_A)
+        cache.put(key_2, _DUMMY_RESULT_B)
+        assert cache.get(key_1) is _DUMMY_RESULT_A  # promotes key_1 to most-recently-used
+        cache.put(key_3, _DUMMY_RESULT_A)  # over capacity - evicts the least-recently-used, key_2
+
+        assert len(cache) == 2
+        assert cache.get(key_1) is _DUMMY_RESULT_A  # survived - it was used, not just old
+        assert cache.get(key_2) is None  # evicted - never touched after being inserted
+        assert cache.get(key_3) is _DUMMY_RESULT_A
+
 
 class TestInvalidateAll:
     def test_clears_every_entry(self):

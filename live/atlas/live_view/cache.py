@@ -77,7 +77,7 @@ class LiveWindowCache:
         self._max_entries = max_entries
         self._ttl_seconds = ttl_seconds
         self._entries: dict[CacheKey, tuple[float, LiveWindowResult]] = {}
-        self._order: list[CacheKey] = []  # least-recently-inserted first
+        self._order: list[CacheKey] = []  # least-recently-USED first (a hit promotes to the end - see get())
 
     def get(self, key: CacheKey) -> Optional[LiveWindowResult]:
         entry = self._entries.get(key)
@@ -87,6 +87,13 @@ class LiveWindowCache:
         if time.monotonic() - inserted_at > self._ttl_seconds:
             self._evict(key)
             return None
+        # Production-hardening amendment 6: promote on hit - this is what
+        # actually makes it LRU rather than FIFO-by-insertion. Before this,
+        # a key accessed on every request could still be evicted first
+        # simply for being the oldest *inserted* entry, contradicting this
+        # class's own docstring, which already claimed "Bounded LRU."
+        self._order.remove(key)
+        self._order.append(key)
         return result
 
     def put(self, key: CacheKey, result: LiveWindowResult) -> None:
