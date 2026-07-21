@@ -41,18 +41,21 @@ This is explicitly **not** the procedure for the real funded-account database - 
 
 ## If the frontend deploy is broken
 
-**Vercel dashboard → Deployments → pick the last working deployment → Promote to
-Production.** Instant, no rebuild needed - this is Vercel's fastest and safest
-rollback path, use it freely.
+**Railway dashboard → the frontend service's Deployments tab → pick the last working
+deployment → Redeploy.** Same mechanism as the backend rollback above, since both
+services now live on the same platform - there's no separate dashboard or "promote to
+production" step to remember. Instant, no rebuild needed if Railway already has the
+prior build artifact.
 
 ## If you're not sure what's wrong
 
 1. Run `live/scripts/smoke_test.sh` against the current deployment first - it will
    tell you specifically which check is failing (auth, health, SSE, etc.) rather than
    leaving you to guess from a vague "something's broken."
-2. Check Railway's deploy logs for the backend and Vercel's build logs for the
-   frontend - both platforms keep these per-deployment, and a `RuntimeError` from
-   `Settings.validate_for_startup()` (missing `WEBHOOK_SECRET`/`API_KEY`) is by far the
+2. Check each service's own deploy logs in the Railway dashboard (backend and
+   frontend are separate services with separate log streams, even though they're in
+   the same project) - a `RuntimeError` from `Settings.validate_for_startup()`
+   (missing `WEBHOOK_SECRET`/`API_KEY`/`MARKET_STATE_WEBHOOK_SECRET`) is by far the
    most likely cause of a backend that looks broken immediately after a fresh deploy.
 3. If genuinely stuck, tearing the whole staging environment down and re-following
    `docs/staging/deployment-checklist.md` from Step 1 again is a completely reasonable
@@ -61,9 +64,9 @@ rollback path, use it freely.
 
 ## Full teardown (if you want to stop staging entirely)
 
-1. Railway: delete the backend service and the Postgres plugin from the project
-   (**Settings → Danger Zone** on each).
-2. Vercel: delete the project (**Settings → Advanced → Delete Project**).
-3. Nothing on the TradingView/PickMyTrade side needs to change, since staging was
+1. Railway: delete the backend service, the frontend service, and the Postgres plugin
+   from the project (**Settings → Danger Zone** on each) - or delete the whole
+   project at once if none of it needs to survive.
+2. Nothing on the TradingView/PickMyTrade side needs to change, since staging was
    never connected to either (per the Safety Gates) - this teardown has zero impact on
    your real trading setup.
