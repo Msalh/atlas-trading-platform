@@ -77,8 +77,27 @@ dynamically generated/executed code). This sprint is the first real
 computation of Feature.fingerprint (Sprint 1 left it required-but-
 unpopulated).
 
-Every later Sprint 5-14 package the roadmap describes
-(atlas.research.discovery, .formalization, .experiment_builder,
-.backtesting, .statistics, .validation, .ranking, .memory,
-.knowledge_graph, .assistant, .promotion) does not exist yet.
+Phase N4 Sprint 5 (Experiment Builder, Stage A + Statistics) adds two
+independent packages, each with its own __init__.py docstring detailing
+its full boundary: atlas.research.experiment_builder (Hypothesis +
+already-resolved MarketState data -> a fingerprinted, decision-free
+Experiment, append-only recorded via the Ledger's ExperimentStore
+Protocol; the first real computation of semantic_fingerprint/
+execution_fingerprint, and the first real use of Feature's own
+feature_id/version/fingerprint as execution_fingerprint inputs) and
+atlas.research.statistics (pure computation only - given an already-built
+Experiment plus its raw per-bar Feature series, computes Evidence: sample
+size, mean, sample standard deviation, a 95% confidence interval, and a
+threshold-relative effect size). Neither package depends on the other.
+Two additive enum values were needed on Sprint 1's own models.py -
+TargetKind.FEATURE, CriterionKind.MEAN_ABOVE_THRESHOLD - fulfilling
+exactly what that module's own docstring deferred ("extending
+TargetKind/CriterionKind to reference Feature... not built yet") now that
+Sprint 4 exists; FACT/SETUP/MIN_FIRING_RATE/MIN_COMPUTABLE_COUNT are
+unchanged.
+
+Every later Sprint 6-14 package the roadmap describes
+(atlas.research.validation, .ranking, .discovery, .formalization,
+.backtesting, .memory, .knowledge_graph, .assistant, .promotion) does not
+exist yet.
 """
