@@ -88,27 +88,36 @@ from typing import Optional, Union
 
 
 class TargetKind(str, Enum):
-    """Which of ProfilingReport's two metric namespaces an
-    AcceptanceCriterion's `target` name refers to - fact names and setup
-    names never collide in practice, but making the lookup explicit rather
-    than "try fact_metrics, then setup_metrics" avoids relying on that
-    never-colliding property implicitly."""
+    """Which namespace an AcceptanceCriterion's `target` name refers to -
+    FACT/SETUP resolve against ProfilingReport's two metric namespaces;
+    FEATURE (Phase N4 Sprint 5) resolves against a feature_id in
+    atlas.research.features.registry.REGISTRY - fact/setup/feature names
+    never collide in practice, but making the lookup explicit rather than
+    "try each namespace in turn" avoids relying on that never-colliding
+    property implicitly. FEATURE was deliberately deferred through Sprint
+    1 ("extending TargetKind to reference Feature, not built yet, would
+    be speculative") and added only now that atlas.research.features
+    (Sprint 4) actually exists - additive only, FACT/SETUP unchanged."""
 
     FACT = "fact"
     SETUP = "setup"
+    FEATURE = "feature"
 
 
 class CriterionKind(str, Enum):
     """Closed, deliberately - the same discipline every other closed enum in
     this project already follows (SetupFamily, BarStatus, IngestOutcome).
-    Exactly the two kinds Sprint 28's profiler-only scope can actually
-    check; a hypothesis needing anything else (forward-return criteria, a
+    MIN_FIRING_RATE/MIN_COMPUTABLE_COUNT are exactly the two kinds Sprint
+    28's profiler-only scope could check. MEAN_ABOVE_THRESHOLD (Phase N4
+    Sprint 5) is the first kind targeting TargetKind.FEATURE - a
+    hypothesis needing anything else (a below-threshold claim, a
     correlation criterion) cannot be expressed yet, honestly, rather than
-    approximated with the wrong kind. Deliberately untouched by Phase N4
-    Sprint 1 - see this module's own docstring."""
+    approximated with the wrong kind; additive only when a real need
+    exists, per this enum's own established discipline."""
 
     MIN_FIRING_RATE = "min_firing_rate"
     MIN_COMPUTABLE_COUNT = "min_computable_count"
+    MEAN_ABOVE_THRESHOLD = "mean_above_threshold"
 
 
 class HypothesisStatus(str, Enum):
