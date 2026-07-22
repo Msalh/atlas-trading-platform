@@ -170,14 +170,23 @@ def test_no_module_market_context_depends_on_imports_market_context_back():
 
 def test_nothing_outside_market_context_or_its_approved_downstream_consumers_imports_it():
     """Scans the whole atlas package tree, excluding market_context itself
-    and its two approved, one-way downstream consumers: atlas.replay_engine
-    (Phase N2, see ADR-0002) and atlas.strategy_engine (Phase N3 - a
-    concrete StrategyPlugin reading frame.market_context.quality directly,
-    per that package's own dependency ceiling). Nothing else may import
+    and its approved, one-way downstream consumers: atlas.replay_engine
+    (Phase N2, see ADR-0002), atlas.strategy_engine (Phase N3 - a concrete
+    StrategyPlugin reading frame.market_context.quality directly, per that
+    package's own dependency ceiling), and atlas.research.replay_bridge
+    (Phase N4 Sprint 3 - it needs SessionCalendarDefinition/
+    RegimeClassifierDefinition purely to type its own calendar/classifier
+    passthrough parameters, the same types atlas.replay_engine.service
+    already imports for the identical reason). The last is exempted by
+    exact file, not by directory - every other file under atlas.research
+    must still fail this check. Nothing else may import
     atlas.market_context."""
     exempt_dirs = {_MARKET_CONTEXT_DIR, _REPLAY_ENGINE_DIR, _STRATEGY_ENGINE_DIR}
+    exempt_files = {_ATLAS_ROOT / "research" / "replay_bridge.py"}
     for py_file in _ATLAS_ROOT.rglob("*.py"):
         if any(exempt == py_file.parent or exempt in py_file.parents for exempt in exempt_dirs):
+            continue
+        if py_file in exempt_files:
             continue
         offending = {name for name in _atlas_imports(py_file) if name.startswith("atlas.market_context")}
         assert not offending, f"{py_file} imports atlas.market_context unexpectedly: {offending}"

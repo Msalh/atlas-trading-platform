@@ -95,12 +95,26 @@ def test_no_module_imports_any_explicitly_forbidden_package(filename):
 
 def test_nothing_outside_replay_engine_or_its_approved_downstream_consumer_imports_it():
     """atlas.strategy_engine (Phase N3, Sprint 1 - StrategyPlugin.evaluate()
-    takes a ReplayFrame) is the one pre-existing, already-approved
-    dependent, unrelated to this sprint - not something Sprint 5
-    introduced. Nothing else may import atlas.replay_engine."""
+    takes a ReplayFrame) is one pre-existing, already-approved dependent,
+    unrelated to this sprint - not something Sprint 5 introduced.
+
+    atlas.research.replay_bridge (Phase N4 Sprint 3 - the one, narrow
+    Research Engine gateway to Replay Engine; see that module's own
+    docstring) is the second, added when this module first gained a real
+    outbound dependency worth pinning down exactly, the same reason this
+    whole test file exists. It is exempted by exact file, not by
+    directory - every other file under atlas.research must still fail this
+    check. atlas.research.replay_bridge's own dependency audit
+    (test_research_replay_bridge.py) independently proves the same "only
+    one gateway" invariant from the other side.
+
+    Nothing else may import atlas.replay_engine."""
     exempt_dirs = {_REPLAY_ENGINE_DIR, _ATLAS_ROOT / "strategy_engine"}
+    exempt_files = {_ATLAS_ROOT / "research" / "replay_bridge.py"}
     for py_file in _ATLAS_ROOT.rglob("*.py"):
         if any(exempt == py_file.parent or exempt in py_file.parents for exempt in exempt_dirs):
+            continue
+        if py_file in exempt_files:
             continue
         offending = {name for name in _atlas_imports(py_file) if name.startswith("atlas.replay_engine")}
         assert not offending, f"{py_file} imports atlas.replay_engine unexpectedly: {offending}"

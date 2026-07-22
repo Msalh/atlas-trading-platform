@@ -50,9 +50,22 @@ HypothesisRegistry/ExperimentTracker; neither of those two classes is
 modified), plus a new atlas.research.ports module (one Protocol per store,
 proven by isinstance() in the test suite, not just claimed) and
 find_similar_hypotheses() - a first, deliberately minimal, structural
-(never textual) duplicate-hypothesis check. Every later Sprint 3-14
-package the roadmap describes (atlas.research.replay_bridge, .features,
-.discovery, .formalization, .experiment_builder, .backtesting,
-.statistics, .validation, .ranking, .memory, .knowledge_graph, .assistant,
-.promotion) does not exist yet.
+(never textual) duplicate-hypothesis check.
+
+Phase N4 Sprint 3 (Replay Bridge) adds atlas.research.replay_bridge - the
+one, narrow gateway module through which the Research Engine reaches
+atlas.replay_engine (Replay Engine), the first and only Research Engine
+dependency on it. build_replay_frames_for_window()/fetch_replay_frames()
+are direct, unmodified pass-throughs to Replay Engine's own
+build_replay_output_window()/replay() - no computation, no new data model
+(ReplayFrame flows through unchanged). See that module's own docstring for
+the architectural resolution on how Experiment identity
+(semantic_fingerprint/execution_fingerprint) must be applied once
+Replay-sourced data feeds a future Experiment Builder (Sprint 5) - a
+forward-looking policy note only, not code built here.
+
+Every later Sprint 4-14 package the roadmap describes
+(atlas.research.features, .discovery, .formalization, .experiment_builder,
+.backtesting, .statistics, .validation, .ranking, .memory,
+.knowledge_graph, .assistant, .promotion) does not exist yet.
 """
