@@ -25,4 +25,22 @@ Public entry points: atlas.research.service.run_experiment (pure) and
 .build_research_report; atlas.research.stores.HypothesisRegistry /
 .ExperimentTracker (file-backed persistence). Domain types:
 atlas.research.models. Serialization: atlas.research.serialization.
+
+--- Phase N4 (the Research Engine proper) ---
+
+Sprint 28's own scope note above ("Extending this into a full promotion
+lifecycle is future work, not built speculatively now") is exactly what
+Phase N4 is. See docs/phase-n4-research-engine-blueprint.md,
+docs/research-engine-design-principles.md, and
+docs/phase-n4-implementation-roadmap.md for the full architecture, its
+governing principles, and the sprint sequence - all three frozen before any
+Phase N4 code was written. Phase N4 Sprint 1 (Core Entities) generalizes
+Hypothesis/Experiment in place and adds Feature, Finding, Realization,
+Evidence, ValidationResult, LeaderboardEntry/LeaderboardSnapshot, and
+PromotionRecord to models.py, plus a new, self-contained
+atlas.research.fingerprint module - data only, no new service function, no
+storage, no new dependency. Every later Sprint 1-14 package the roadmap
+describes (atlas.research.discovery, .formalization, .experiment_builder,
+.replay_bridge, .backtesting, .statistics, .validation, .ranking, .memory,
+.knowledge_graph, .assistant, .promotion) does not exist yet.
 """
