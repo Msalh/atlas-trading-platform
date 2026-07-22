@@ -64,8 +64,21 @@ the architectural resolution on how Experiment identity
 Replay-sourced data feeds a future Experiment Builder (Sprint 5) - a
 forward-looking policy note only, not code built here.
 
-Every later Sprint 4-14 package the roadmap describes
-(atlas.research.features, .discovery, .formalization, .experiment_builder,
+Phase N4 Sprint 4 (Feature Registry) adds atlas.research.features: a
+deterministic-computation-only layer turning a MarketState window into a
+named, versioned scalar, nothing more - see that package's own __init__.py
+docstring for its full boundary (never creates Findings/Hypotheses,
+compares Experiments, accesses the Ledger, or performs similarity search,
+ranking, validation, AI reasoning, or statistical judgment). Two tiers:
+Registered (registry.py, code-defined, mirroring atlas.rule_engine's own
+FactRegistration/REGISTRY pattern without importing it) and Candidate
+(candidate.py, a closed declarative spec + one fixed evaluator - never
+dynamically generated/executed code). This sprint is the first real
+computation of Feature.fingerprint (Sprint 1 left it required-but-
+unpopulated).
+
+Every later Sprint 5-14 package the roadmap describes
+(atlas.research.discovery, .formalization, .experiment_builder,
 .backtesting, .statistics, .validation, .ranking, .memory,
 .knowledge_graph, .assistant, .promotion) does not exist yet.
 """
