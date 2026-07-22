@@ -96,8 +96,27 @@ TargetKind/CriterionKind to reference Feature... not built yet") now that
 Sprint 4 exists; FACT/SETUP/MIN_FIRING_RATE/MIN_COMPUTABLE_COUNT are
 unchanged.
 
-Every later Sprint 6-14 package the roadmap describes
-(atlas.research.validation, .ranking, .discovery, .formalization,
-.backtesting, .memory, .knowledge_graph, .assistant, .promotion) does not
-exist yet.
+Phase N4 Sprint 6 (Validation) adds atlas.research.validate() - the
+platform's scientific gatekeeper, the first sprint permitted to make a
+scientific judgment about a result. Given one or more already-computed
+in-sample and out-of-sample Evidence records (Sprint 5's own, separate
+output) plus a WalkForwardSpec/MonteCarloSpec (both new, package-local
+types - Sprint 1's models.py is untouched by this sprint), produces a
+ValidationResult via a one-sided p-value computed exactly (math.erf, no
+approximation), Bonferroni-corrected whenever more than one hypothesis
+shares a dataset (structurally mandatory, not optional - a required
+parameter, not merely documented), and a seeded parametric Monte Carlo
+robustness check. Out-of-sample evidence is a required, non-empty
+parameter - validate() cannot be called at all without it, making
+Principle IV.3 (no hypothesis validated on in-sample evidence alone)
+structurally impossible to violate, not merely discouraged.
+Experiment.passed (Sprint 5's own mechanical threshold check) remains
+categorically distinct from ValidationResult.verdict (this sprint's own
+proper significance test) - see that package's own __init__.py for the
+full boundary and why true nonparametric resampling is out of scope
+(Evidence retains only aggregate statistics, never raw per-bar values).
+
+Every later Sprint 7-14 package the roadmap describes
+(atlas.research.ranking, .discovery, .formalization, .backtesting,
+.memory, .knowledge_graph, .assistant, .promotion) does not exist yet.
 """
