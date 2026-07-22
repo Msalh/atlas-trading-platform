@@ -116,7 +116,30 @@ proper significance test) - see that package's own __init__.py for the
 full boundary and why true nonparametric resampling is out of scope
 (Evidence retains only aggregate statistics, never raw per-bar values).
 
-Every later Sprint 7-14 package the roadmap describes
-(atlas.research.ranking, .discovery, .formalization, .backtesting,
-.memory, .knowledge_graph, .assistant, .promotion) does not exist yet.
+Phase N4 Sprint 7 (Ranking) adds atlas.research.ranking - an
+organizational layer, deliberately not a scientific scoring layer (see
+that package's own __init__.py for the full reasoning: every currently-
+available quantitative signal is confounded by the hypothesis author's
+own threshold choice, so no honest quality score exists yet). rank()
+filters to verdict == SUPPORTED only (Validation's own, already-decided
+judgment - never recomputed or reinterpreted) and orders eligible entries
+by validated_at descending, hypothesis_id ascending as tie-break - a
+purely organizational, deterministic, non-evaluative basis.
+LeaderboardEntry.score is a required float on the frozen Sprint 1 type;
+Ranking sets it to the constant 1.0 for every eligible entry (never a
+rank-derived transform, which would falsely imply meaningful gaps between
+adjacent entries) with score_description disclosing this explicitly as a
+compatibility placeholder. snapshot_leaderboard() is the one function
+touching the Ledger, via the existing Sprint 2 LeaderboardSnapshotStore -
+no second persistence abstraction. Three additive fields were needed on
+Sprint 1's own models.py: LeaderboardEntry.validation_id (traces a rank to
+the exact ValidationResult that grounded it) and
+LeaderboardSnapshot.ranking_policy_id/.ranking_policy_version/
+.excluded_validation_ids (policy versioning and audit preservation for
+non-SUPPORTED or superseded results) - all Optional/defaulted, backward
+compatible with every pre-Sprint-7 call site.
+
+Every later Sprint 8-14 package the roadmap describes
+(atlas.research.discovery, .formalization, .backtesting, .memory,
+.knowledge_graph, .assistant, .promotion) does not exist yet.
 """
