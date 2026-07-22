@@ -39,8 +39,20 @@ Hypothesis/Experiment in place and adds Feature, Finding, Realization,
 Evidence, ValidationResult, LeaderboardEntry/LeaderboardSnapshot, and
 PromotionRecord to models.py, plus a new, self-contained
 atlas.research.fingerprint module - data only, no new service function, no
-storage, no new dependency. Every later Sprint 1-14 package the roadmap
-describes (atlas.research.discovery, .formalization, .experiment_builder,
-.replay_bridge, .backtesting, .statistics, .validation, .ranking, .memory,
-.knowledge_graph, .assistant, .promotion) does not exist yet.
+storage, no new dependency.
+
+Phase N4 Sprint 2 (Ledger) extends serialization.py (round-trip dict
+conversion for every Sprint 1 entity, including - for backward
+compatibility - the Sprint 1 fields Hypothesis/Experiment already had but
+never serialized) and stores.py (one file-backed, append-only registry/
+tracker per entity, same JSONL pattern as Sprint 28's own
+HypothesisRegistry/ExperimentTracker; neither of those two classes is
+modified), plus a new atlas.research.ports module (one Protocol per store,
+proven by isinstance() in the test suite, not just claimed) and
+find_similar_hypotheses() - a first, deliberately minimal, structural
+(never textual) duplicate-hypothesis check. Every later Sprint 3-14
+package the roadmap describes (atlas.research.replay_bridge, .features,
+.discovery, .formalization, .experiment_builder, .backtesting,
+.statistics, .validation, .ranking, .memory, .knowledge_graph, .assistant,
+.promotion) does not exist yet.
 """

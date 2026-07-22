@@ -68,7 +68,7 @@ Every sprint below follows the identical certification discipline already proven
 
 **Why before the next sprint:** Nothing can be registered, queried, or referenced by ID until a store exists. This is also the first genuinely *useful* milestone — a human can register and browse hypotheses manually, before any automated pipeline exists.
 
-**Deliverables:** extended `stores.py` (registries/trackers for all ten entities, same file-backed JSONL pattern as Sprint 28's existing `HypothesisRegistry`/`ExperimentTracker`); a Protocol boundary for each store (the same shape as `MarketStateRepository`) so a future Postgres swap never touches calling code; a first, minimal similarity check ("does a hypothesis with a structurally similar statement already exist") over the Hypothesis store only.
+**Deliverables:** extended `stores.py` (registries/trackers for all nine Sprint 1 entities — *corrected from this section's original "ten" once Sprint 1 concretized the model at nine independently-identified, lifecycle-bearing entities: `Hypothesis`, `Experiment`, `Feature`, `Finding`, `Realization`, `Evidence`, `ValidationResult`, `LeaderboardSnapshot`, `PromotionRecord`; `LeaderboardEntry` is embedded within `LeaderboardSnapshot`, never separately stored*, same file-backed JSONL pattern as Sprint 28's existing `HypothesisRegistry`/`ExperimentTracker`); a Protocol boundary for each store (the same shape as `MarketStateRepository`) so a future Postgres swap never touches calling code; a first, minimal similarity check ("does a hypothesis with a structurally similar statement already exist") over the Hypothesis store only.
 
 **New packages/modules:** extensions to `atlas.research.stores`; no new top-level package.
 
