@@ -54,6 +54,7 @@ from atlas.research.models import (
     Realization,
     RealizationKind,
     RealizationStatus,
+    RealizationTemplateKind,
     ResearchReport,
     TargetKind,
     ValidationResult,
@@ -268,6 +269,7 @@ def realization_to_dict(realization: Realization) -> dict[str, Any]:
         "provenance": realization.provenance.value,
         "created_at": realization.created_at,
         "fingerprint": realization.fingerprint,
+        "template_kind": realization.template_kind.value if realization.template_kind is not None else None,
     }
 
 
@@ -277,6 +279,9 @@ def realization_from_dict(data: dict[str, Any]) -> Realization:
         kind=RealizationKind(data["kind"]), version=data["version"], parameters=data["parameters"],
         status=RealizationStatus(data["status"]), provenance=ProvenanceKind(data["provenance"]),
         created_at=data["created_at"], fingerprint=data["fingerprint"],
+        template_kind=(
+            RealizationTemplateKind(data["template_kind"]) if data.get("template_kind") is not None else None
+        ),
     )
 
 

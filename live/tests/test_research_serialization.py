@@ -35,6 +35,7 @@ from atlas.research.models import (
     Realization,
     RealizationKind,
     RealizationStatus,
+    RealizationTemplateKind,
     TargetKind,
     ValidationResult,
     ValidationVerdict,
@@ -217,6 +218,22 @@ def test_finding_round_trips():
 def test_realization_round_trips():
     r = _realization()
     assert realization_from_dict(realization_to_dict(r)) == r
+
+
+def test_realization_round_trips_with_template_kind_set():
+    r = _realization(
+        kind=RealizationKind.TEMPLATED_STRATEGY, template_kind=RealizationTemplateKind.THRESHOLD_CROSS,
+    )
+    assert realization_from_dict(realization_to_dict(r)) == r
+
+
+def test_realization_from_dict_backward_compatible_when_template_kind_key_absent():
+    """A pre-Sprint-8 JSONL line has no template_kind key at all - must
+    still deserialize, with the field defaulting to None."""
+    r = _realization()
+    data = realization_to_dict(r)
+    del data["template_kind"]
+    assert realization_from_dict(data).template_kind is None
 
 
 def test_evidence_round_trips():

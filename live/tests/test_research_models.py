@@ -45,6 +45,7 @@ from atlas.research.models import (
     Realization,
     RealizationKind,
     RealizationStatus,
+    RealizationTemplateKind,
     TargetKind,
     ValidationResult,
     ValidationVerdict,
@@ -350,8 +351,10 @@ def test_realization_all_five_kinds_are_representable():
         RealizationKind.CONTEXT_FILTER, RealizationKind.RISK_INPUT,
     }
     assert len(kinds) == 5
+    requires_template = {RealizationKind.TEMPLATED_STRATEGY, RealizationKind.STRATEGY_VARIANT}
     for kind in kinds:
-        r = _realization(kind=kind)
+        template_kind = RealizationTemplateKind.THRESHOLD_CROSS if kind in requires_template else None
+        r = _realization(kind=kind, template_kind=template_kind)
         assert r.kind == kind
 
 
@@ -359,6 +362,34 @@ def test_realization_is_frozen():
     r = _realization()
     with pytest.raises(FrozenInstanceError):
         r.status = RealizationStatus.RETAINED
+
+
+def test_realization_template_kind_defaults_to_none():
+    r = _realization()
+    assert r.template_kind is None
+
+
+def test_realization_templated_strategy_requires_template_kind():
+    with pytest.raises(ValueError, match="requires template_kind"):
+        _realization(kind=RealizationKind.TEMPLATED_STRATEGY, template_kind=None)
+
+
+def test_realization_strategy_variant_requires_template_kind():
+    with pytest.raises(ValueError, match="requires template_kind"):
+        _realization(kind=RealizationKind.STRATEGY_VARIANT, template_kind=None)
+
+
+def test_realization_templated_strategy_accepts_template_kind():
+    r = _realization(kind=RealizationKind.TEMPLATED_STRATEGY, template_kind=RealizationTemplateKind.THRESHOLD_CROSS)
+    assert r.template_kind == RealizationTemplateKind.THRESHOLD_CROSS
+
+
+@pytest.mark.parametrize("kind", [
+    RealizationKind.STATISTICAL_TEST, RealizationKind.CONTEXT_FILTER, RealizationKind.RISK_INPUT,
+])
+def test_realization_non_executable_kinds_forbid_template_kind(kind):
+    with pytest.raises(ValueError, match="must not set template_kind"):
+        _realization(kind=kind, template_kind=RealizationTemplateKind.THRESHOLD_CROSS)
 
 
 # ---- Evidence ----

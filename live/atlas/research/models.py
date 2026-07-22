@@ -231,6 +231,24 @@ class RealizationStatus(str, Enum):
     PROMOTED = "promoted"
 
 
+class RealizationTemplateKind(str, Enum):
+    """Phase N4 Sprint 8. Closed set of execution-mechanic categories a
+    TEMPLATED_STRATEGY or STRATEGY_VARIANT Realization references via
+    Realization.template_kind - see that field's own docstring. Deliberately
+    named for rule shape (entry/hold/exit mechanics), never for a market
+    concept or a code revision: a category's identity must stay stable even
+    as research applies it to new ideas. Revision is carried separately by
+    Realization.version, reused (not duplicated) as this template's own
+    version axis - atlas.research.backtesting's ResearchStrategyFactory
+    dispatches on the pair (template_kind, version) and owns the one closed,
+    code-reviewed mapping from that pair to a concrete ResearchStrategyPlugin
+    implementation; this module defines only the closed category set, never
+    a concrete implementation, and is never imported by
+    atlas.research.backtesting the other way around."""
+
+    THRESHOLD_CROSS = "threshold_cross"
+
+
 class EvaluationMode(str, Enum):
     """Blueprint §1 (Experiment): single-run, walk-forward, or Monte Carlo.
     Only SINGLE is ever produced by anything built through Sprint 5;
@@ -567,9 +585,23 @@ class Realization:
     provenance: ProvenanceKind
     created_at: str
     fingerprint: str
+    template_kind: Optional[RealizationTemplateKind] = None
+    """Phase N4 Sprint 8. Required for TEMPLATED_STRATEGY/STRATEGY_VARIANT
+    (the two executable kinds Sprint 8 supports), forbidden for every other
+    RealizationKind - enforced below, not merely documented. Optional/
+    defaulted so every pre-Sprint-8 Realization(...) call site continues to
+    construct instances unmodified. Part of this record's own semantic
+    fingerprint (see the curated projection this module's docstring already
+    established) - changing which template a Realization targets changes
+    its executable meaning, so it must change the fingerprint too."""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "parameters", MappingProxyType(dict(self.parameters)))
+        requires_template = self.kind in (RealizationKind.TEMPLATED_STRATEGY, RealizationKind.STRATEGY_VARIANT)
+        if requires_template and self.template_kind is None:
+            raise ValueError(f"{self.realization_id}: kind={self.kind.value} requires template_kind to be set")
+        if not requires_template and self.template_kind is not None:
+            raise ValueError(f"{self.realization_id}: kind={self.kind.value} must not set template_kind")
 
 
 @dataclass(frozen=True)
