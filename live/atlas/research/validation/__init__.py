@@ -1,18 +1,29 @@
 """
-Phase N4 Sprint 6 (Validation) - the platform's scientific gatekeeper.
-Given already-computed Evidence (Sprint 5's own, separate job) for one or
-more in-sample and out-of-sample folds, decides whether a hypothesis's
-acceptance criterion is scientifically supported - never computes a new
-number from raw data, never builds an Experiment, never touches the
-Ledger.
+Phase N4 Sprint 6 (Validation), corrected Sprint 6.1 - the platform's
+scientific gatekeeper. Given already-computed Evidence (Sprint 5's own,
+separate job) for one or more in-sample and out-of-sample folds, decides
+whether a hypothesis's acceptance criterion is scientifically supported -
+never computes a new number from raw data, never builds an Experiment,
+never touches the Ledger.
 
 validate() is the one public interface. It is structurally impossible to
 call without at least one out-of-sample Evidence record (Design Principle
 IV.3 - in_sample_evidence and out_of_sample_evidence are both required,
-non-empty parameters, not optional ones), and whenever batch_size > 1,
+non-empty parameters, not optional ones), whenever batch_size > 1,
 multiple_testing_correction becomes a required, non-None parameter too
 (Principle IV.4 - mandatory, structurally enforced by the API, never
-merely documented).
+merely documented), and (Sprint 6.1) it rejects any evidence_id or
+experiment_id shared between the in-sample and out-of-sample groups - a
+hypothesis may never confirm itself against its own in-sample data. See
+service.py's own module docstring for the full list of Sprint 6.1
+corrections: effective-sample-size-based standard error (the primary,
+highest-severity fix - the original std_dev/sqrt(raw_n) formula silently
+assumed independent observations from a strongly autocorrelated,
+overlapping-rolling-window Feature series, systematically understating
+significance thresholds), Monte Carlo simulating the sampling
+distribution of the mean rather than individual observations, and
+insufficient-data folds forcing INCONCLUSIVE rather than NOT_SUPPORTED or
+SUPPORTED.
 
 --- Why this package never does true (nonparametric) resampling ---
 
