@@ -163,7 +163,10 @@ def _validation_result(**overrides) -> ValidationResult:
 
 
 def _leaderboard_entry(**overrides) -> LeaderboardEntry:
-    fields = dict(hypothesis_id="h1", realization_id="r1", rank=1, score=0.9, score_description="stub")
+    fields = dict(
+        hypothesis_id="h1", realization_id="r1", rank=1, score=0.9, score_description="stub",
+        validation_id="v1",
+    )
     fields.update(overrides)
     return LeaderboardEntry(**fields)
 
@@ -172,6 +175,8 @@ def _leaderboard_snapshot(**overrides) -> LeaderboardSnapshot:
     fields = dict(
         snapshot_id="s1", created_at=_OCCURRED_AT, entries=(_leaderboard_entry(),),
         fingerprint="0123456789abcdef", benchmark_description="buy-and-hold",
+        ranking_policy_id="recency_organizational", ranking_policy_version="1.0",
+        excluded_validation_ids=("v2", "v3"),
     )
     fields.update(overrides)
     return LeaderboardSnapshot(**fields)
@@ -227,6 +232,24 @@ def test_validation_result_round_trips():
 def test_leaderboard_snapshot_round_trips():
     s = _leaderboard_snapshot()
     assert leaderboard_snapshot_from_dict(leaderboard_snapshot_to_dict(s)) == s
+
+
+def test_leaderboard_snapshot_from_dict_loads_a_pre_sprint7_record_missing_every_new_key():
+    """Exactly what a pre-Sprint-7 LeaderboardSnapshotTracker line looked
+    like - no ranking_policy_id/ranking_policy_version/
+    excluded_validation_ids, and no per-entry validation_id."""
+    old_record = {
+        "snapshot_id": "s1", "created_at": _OCCURRED_AT,
+        "entries": [
+            {"hypothesis_id": "h1", "realization_id": "r1", "rank": 1, "score": 0.9, "score_description": "stub"},
+        ],
+        "fingerprint": "0123456789abcdef", "benchmark_description": "buy-and-hold",
+    }
+    snapshot = leaderboard_snapshot_from_dict(old_record)
+    assert snapshot.ranking_policy_id is None
+    assert snapshot.ranking_policy_version is None
+    assert snapshot.excluded_validation_ids == ()
+    assert snapshot.entries[0].validation_id is None
 
 
 def test_promotion_record_round_trips():

@@ -639,26 +639,61 @@ class LeaderboardEntry:
     is None for a purely descriptive, decision-free hypothesis ranked
     without ever having a Realization - Ranking must be able to rank these
     (Research Engine Design Principles I.1/I.4; roadmap Sprint 7's own
-    explicit ordering rationale), not only Realization-bearing entries."""
+    explicit ordering rationale), not only Realization-bearing entries.
+
+    `validation_id` (Phase N4 Sprint 7) traces this entry back to the
+    exact ValidationResult that grounded it - without it, a rank could
+    not be distinguished from any other ValidationResult a hypothesis may
+    have accumulated over its life (the blueprint's own explicit note
+    that a hypothesis can have multiple ValidationResults, as a permanent
+    history, not a one-shot event). Optional only for the same
+    backward-compatibility reason every other Sprint 1/2 additive field
+    is: no pre-Sprint-7 call site sets it, and none is required to -
+    atlas.research.ranking.rank() always populates it for real."""
 
     hypothesis_id: str
     realization_id: Optional[str]
     rank: int
     score: float
     score_description: str
+    validation_id: Optional[str] = None
 
 
 @dataclass(frozen=True)
 class LeaderboardSnapshot:
     """Blueprint §1. A versioned, timestamped, permanent record of one
     ranking pass - past snapshots are never overwritten (Principle II.3),
-    only ever superseded by a newer snapshot with its own id."""
+    only ever superseded by a newer snapshot with its own id.
+
+    `ranking_policy_id`/`ranking_policy_version` (Phase N4 Sprint 7)
+    record exactly which formula produced this snapshot - Design
+    Principle VII.4's "every output is versioned against the exact code...
+    that produced it," applied to ranking. `excluded_validation_ids`
+    records which ValidationResults were considered as input but did not
+    receive a competitive rank (NOT_SUPPORTED/INCONCLUSIVE verdicts, or a
+    hypothesis's own older ValidationResult superseded by a more recent
+    one) - preserved for auditability, per the recommended eligibility
+    invariant: only SUPPORTED results are ranked, but nothing is silently
+    dropped from the record.
+
+    All three are Optional/defaulted for the same backward-compatibility
+    reason as `benchmark_description` (Python's own dataclass field-
+    ordering rules require this, since they follow an already-defaulted
+    field) - no pre-Sprint-7 call site sets them, and none is required
+    to. Deliberately NOT enforced non-blank in __post_init__ (unlike, say,
+    PromotionRecord.rationale) for the identical reason: doing so would
+    break already-existing Sprint 2 test fixtures that predate this
+    sprint. atlas.research.ranking.snapshot_leaderboard() is the one
+    correct construction path that always populates them for real."""
 
     snapshot_id: str
     created_at: str
     entries: tuple[LeaderboardEntry, ...]
     fingerprint: str
     benchmark_description: Optional[str] = None
+    ranking_policy_id: Optional[str] = None
+    ranking_policy_version: Optional[str] = None
+    excluded_validation_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         ranks = [entry.rank for entry in self.entries]

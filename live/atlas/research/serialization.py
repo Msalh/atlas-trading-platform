@@ -333,6 +333,7 @@ def leaderboard_entry_to_dict(entry: LeaderboardEntry) -> dict[str, Any]:
         "rank": entry.rank,
         "score": entry.score,
         "score_description": entry.score_description,
+        "validation_id": entry.validation_id,
     }
 
 
@@ -340,6 +341,7 @@ def leaderboard_entry_from_dict(data: dict[str, Any]) -> LeaderboardEntry:
     return LeaderboardEntry(
         hypothesis_id=data["hypothesis_id"], realization_id=data["realization_id"],
         rank=data["rank"], score=data["score"], score_description=data["score_description"],
+        validation_id=data.get("validation_id"),
     )
 
 
@@ -350,6 +352,9 @@ def leaderboard_snapshot_to_dict(snapshot: LeaderboardSnapshot) -> dict[str, Any
         "entries": [leaderboard_entry_to_dict(e) for e in snapshot.entries],
         "fingerprint": snapshot.fingerprint,
         "benchmark_description": snapshot.benchmark_description,
+        "ranking_policy_id": snapshot.ranking_policy_id,
+        "ranking_policy_version": snapshot.ranking_policy_version,
+        "excluded_validation_ids": list(snapshot.excluded_validation_ids),
     }
 
 
@@ -358,6 +363,9 @@ def leaderboard_snapshot_from_dict(data: dict[str, Any]) -> LeaderboardSnapshot:
         snapshot_id=data["snapshot_id"], created_at=data["created_at"],
         entries=tuple(leaderboard_entry_from_dict(e) for e in data["entries"]),
         fingerprint=data["fingerprint"], benchmark_description=data.get("benchmark_description"),
+        ranking_policy_id=data.get("ranking_policy_id"),
+        ranking_policy_version=data.get("ranking_policy_version"),
+        excluded_validation_ids=tuple(data.get("excluded_validation_ids", ())),
     )
 
 
