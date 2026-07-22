@@ -1,11 +1,14 @@
 """
-Phase N4 Sprint 5 (Statistics). Pure, stateless statistical computation
-over already-completed execution results - nothing else. Given an
-already-built Experiment (atlas.research.experiment_builder's own job) and
-the raw per-bar Feature series that produced its criteria_results,
-computes Evidence: sample size, mean, sample standard deviation, a 95%
-confidence interval, and a threshold-relative effect size, per
-FEATURE-targeted criterion.
+Phase N4 Sprint 5 (Statistics), corrected Sprint 6.1. Pure, stateless
+statistical computation over already-completed execution results -
+nothing else. Given an already-built Experiment
+(atlas.research.experiment_builder's own job) and the raw per-bar Feature
+series that produced its criteria_results, computes Evidence: raw sample
+size, an autocorrelation-corrected effective_sample_size (Sprint 6.1 -
+see service.py's own module docstring for the exact formula and its
+justification), mean, sample standard deviation, a 95% confidence
+interval, and a threshold-relative effect size, per FEATURE-targeted
+criterion.
 
 Never touches the Ledger (no import of atlas.research.stores), never
 re-evaluates a Feature or re-fetches data (no import of
