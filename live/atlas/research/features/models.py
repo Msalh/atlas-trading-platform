@@ -23,10 +23,30 @@ anything, and CandidateOperation/CandidateSourceField being closed enums
 means an invalid operation or field cannot even be represented, let alone
 evaluated - `CandidateOperation("eval")` raises ValueError before
 candidate.py's evaluator is ever reached.
+
+compute_feature_semantic_fingerprint() is the ONE place a Feature's
+semantic fingerprint is computed - registry.py (Registered-tier
+registration) and candidate.py (Candidate -> Registered promotion) both
+call it, rather than each independently re-deriving the same curated
+projection. {name, version, definition} only - deliberately excludes
+tier, and every other id/lifecycle/audit field (feature_id, status,
+provenance, created_at, description, its own fingerprint field): tier
+and status both describe review/trust state (blueprint SS2.2's Feature
+lifecycle - PROMOTED is a status transition, Registered/Candidate is a
+tier distinction of the same kind), never what is computed. A Candidate
+and its later-Promoted Registered counterpart correctly share this
+fingerprint when name/version/definition are unchanged - computation
+identity and lifecycle identity are two different axes, never conflated.
+`name` stays in deliberately: two different computations (e.g. a mean vs.
+a max) could share identical `definition` params, so `name` is the only
+field distinguishing which evaluator logic a fingerprint actually
+identifies.
 """
 from dataclasses import dataclass
 from enum import Enum
-from typing import Union
+from typing import Mapping, Union
+
+from atlas.research.fingerprint import compute_fingerprint
 
 
 class CandidateOperation(str, Enum):
@@ -90,3 +110,12 @@ class FeatureInsufficientData:
 
 
 FeatureOutcome = Union[FeatureComputed, FeatureInsufficientData]
+
+
+def compute_feature_semantic_fingerprint(
+    name: str, version: str, definition: Mapping[str, Union[int, float, str, bool]]
+) -> str:
+    """The curated projection every Feature's fingerprint is computed
+    from, regardless of tier or lifecycle stage - see this module's own
+    docstring for exactly which fields participate and why."""
+    return compute_fingerprint({"name": name, "version": version, "definition": dict(definition)})

@@ -18,6 +18,7 @@ from atlas.research.features.models import (
     CandidateSourceField,
     FeatureComputed,
     FeatureInsufficientData,
+    compute_feature_semantic_fingerprint,
 )
 from atlas.research.models import Feature, FeatureStatus, FeatureTier, ProvenanceKind
 
@@ -127,11 +128,14 @@ def test_candidate_feature_spec_has_no_free_form_expression_field():
 # ---- promote_candidate_to_registered() ----
 
 def _candidate_feature(**overrides) -> Feature:
+    name = overrides.get("name", "mean_volume")
+    version = overrides.get("version", "0.1")
+    definition = overrides.get("definition", {"window": 3})
     fields = dict(
-        feature_id="c1", name="mean_volume", tier=FeatureTier.CANDIDATE, version="0.1",
-        description="candidate", definition={"window": 3}, status=FeatureStatus.EVALUATED,
+        feature_id="c1", name=name, tier=FeatureTier.CANDIDATE, version=version,
+        description="candidate", definition=definition, status=FeatureStatus.EVALUATED,
         provenance=ProvenanceKind.DISCOVERY_ENGINE, created_at="2026-07-22T00:00:00+00:00",
-        fingerprint="0123456789abcdef",
+        fingerprint=compute_feature_semantic_fingerprint(name, version, definition),
     )
     fields.update(overrides)
     return Feature(**fields)
@@ -147,7 +151,32 @@ def test_promotion_produces_a_new_registered_feature():
     assert promoted.version == candidate.version
     assert dict(promoted.definition) == dict(candidate.definition)
     assert promoted.provenance == candidate.provenance
-    assert promoted.fingerprint != candidate.fingerprint  # tier changed - a different fingerprint is correct
+
+
+def test_promotion_preserves_the_semantic_fingerprint():
+    """The core proof this correction exists for: promotion changes
+    review/trust status (tier CANDIDATE -> REGISTERED, status EVALUATED ->
+    PROMOTED, a new feature_id), but the underlying computation
+    (name/version/definition) is unchanged, so the semantic fingerprint
+    must be IDENTICAL before and after - computation identity and
+    lifecycle identity are independent axes."""
+    candidate = _candidate_feature()
+    promoted = promote_candidate_to_registered(candidate, new_feature_id="mean_volume", promoted_at="2026-07-22T01:00:00+00:00")
+    assert promoted.fingerprint == candidate.fingerprint
+    # And explicitly independent of tier/status/feature_id, which DID change:
+    assert promoted.tier != candidate.tier
+    assert promoted.status != candidate.status
+    assert promoted.feature_id != candidate.feature_id
+
+
+def test_two_features_with_identical_computation_but_different_tier_share_a_fingerprint():
+    """Directly against compute_feature_semantic_fingerprint(), independent
+    of the promotion function - tier is not even a parameter, so there is
+    nothing for it to influence."""
+    fp = compute_feature_semantic_fingerprint("mean_volume", "0.1", {"window": 3})
+    candidate = _candidate_feature(fingerprint=fp)
+    registered = _candidate_feature(feature_id="r1", tier=FeatureTier.REGISTERED, status=FeatureStatus.PROMOTED, fingerprint=fp)
+    assert candidate.fingerprint == registered.fingerprint == fp
 
 
 def test_promotion_does_not_mutate_or_touch_the_original_candidate():

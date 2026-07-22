@@ -17,7 +17,9 @@ _FEATURES_DIR = _ATLAS_ROOT / "research" / "features"
 
 _ACTUAL_ALLOWED: dict[str, frozenset[str]] = {
     "__init__.py": frozenset(),
-    "models.py": frozenset(),
+    "models.py": frozenset({
+        "atlas.research.fingerprint",
+    }),
     "evaluators.py": frozenset({
         "atlas.market_engine.models",
         "atlas.research.features.models",
@@ -27,13 +29,11 @@ _ACTUAL_ALLOWED: dict[str, frozenset[str]] = {
         "atlas.market_engine.models",
         "atlas.research.features.evaluators",
         "atlas.research.features.models",
-        "atlas.research.fingerprint",
         "atlas.research.models",
     }),
     "candidate.py": frozenset({
         "atlas.market_engine.models",
         "atlas.research.features.models",
-        "atlas.research.fingerprint",
         "atlas.research.models",
     }),
 }

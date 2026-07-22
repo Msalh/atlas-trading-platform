@@ -43,8 +43,8 @@ from atlas.research.features.models import (
     FeatureComputed,
     FeatureInsufficientData,
     FeatureOutcome,
+    compute_feature_semantic_fingerprint,
 )
-from atlas.research.fingerprint import compute_fingerprint
 from atlas.research.models import Feature, FeatureStatus, FeatureTier
 
 
@@ -97,18 +97,18 @@ def promote_candidate_to_registered(candidate: Feature, new_feature_id: str, pro
     """Only an EVALUATED Candidate may be promoted (blueprint §2.2's own
     Feature lifecycle: PROPOSED -> EVALUATED -> PROMOTED). Returns a new,
     Registered-tier Feature sharing the candidate's own name/version/
-    definition/provenance, with a freshly-computed fingerprint (tier
-    changed, so the curated projection's own tier field changes too - a
-    genuinely different fingerprint is correct, not a bug)."""
+    definition/provenance. Its fingerprint is recomputed via the same
+    compute_feature_semantic_fingerprint() the candidate's own fingerprint
+    should already have used - since tier plays no part in that
+    projection, an unchanged name/version/definition correctly produces
+    the SAME fingerprint as the candidate had: promotion changes review/
+    trust status, never what is computed."""
     if candidate.tier != FeatureTier.CANDIDATE:
         raise ValueError(f"{candidate.feature_id}: only a CANDIDATE-tier feature may be promoted, got {candidate.tier.value}")
     if candidate.status != FeatureStatus.EVALUATED:
         raise ValueError(f"{candidate.feature_id}: only an EVALUATED candidate may be promoted, got {candidate.status.value}")
 
-    fingerprint = compute_fingerprint({
-        "name": candidate.name, "tier": FeatureTier.REGISTERED.value,
-        "version": candidate.version, "definition": dict(candidate.definition),
-    })
+    fingerprint = compute_feature_semantic_fingerprint(candidate.name, candidate.version, candidate.definition)
     return Feature(
         feature_id=new_feature_id,
         name=candidate.name,

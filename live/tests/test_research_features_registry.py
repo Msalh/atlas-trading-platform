@@ -124,24 +124,43 @@ def test_validate_registry_rejects_empty_registry():
         validate_registry(())
 
 
-def test_validate_registry_rejects_duplicate_names():
+def test_validate_registry_rejects_duplicate_feature_ids():
     reg = (
-        FeatureRegistration(feature=_valid_feature(feature_id="a", name="a"), evaluate=evaluate_mean_atr),
-        FeatureRegistration(feature=_valid_feature(feature_id="b", name="a"), evaluate=evaluate_mean_atr),
+        FeatureRegistration(feature=_valid_feature(feature_id="dup", name="a", version="1.0"), evaluate=evaluate_mean_atr),
+        FeatureRegistration(feature=_valid_feature(feature_id="dup", name="b", version="1.0"), evaluate=evaluate_mean_atr),
     )
-    with pytest.raises(ValueError, match="duplicate feature names"):
+    with pytest.raises(ValueError, match="duplicate feature_ids"):
         validate_registry(reg)
+
+
+def test_validate_registry_rejects_duplicate_name_version_pairs():
+    reg = (
+        FeatureRegistration(feature=_valid_feature(feature_id="a1", name="a", version="1.0"), evaluate=evaluate_mean_atr),
+        FeatureRegistration(feature=_valid_feature(feature_id="a2", name="a", version="1.0"), evaluate=evaluate_mean_atr),
+    )
+    with pytest.raises(ValueError, match="duplicate \\(name, version\\) revisions"):
+        validate_registry(reg)
+
+
+def test_validate_registry_allows_the_same_name_with_a_different_version():
+    """The whole point of the corrected identity model: a logic/param
+    revision is a new, additively-registered entry sharing the prior
+    entry's name (same lineage) but with its own feature_id and version -
+    this must NOT be rejected as a duplicate."""
+    reg = (
+        FeatureRegistration(feature=_valid_feature(feature_id="mean_atr_v1", name="mean_atr", version="1.0"), evaluate=evaluate_mean_atr),
+        FeatureRegistration(feature=_valid_feature(feature_id="mean_atr_v2", name="mean_atr", version="2.0"), evaluate=evaluate_mean_atr),
+    )
+    validate_registry(reg)  # must not raise
+    names = {r.feature.name for r in reg}
+    versions = {r.feature.version for r in reg}
+    assert names == {"mean_atr"}
+    assert versions == {"1.0", "2.0"}
 
 
 def test_validate_registry_rejects_a_candidate_tier_entry():
     reg = (FeatureRegistration(feature=_valid_feature(tier=FeatureTier.CANDIDATE), evaluate=evaluate_mean_atr),)
     with pytest.raises(ValueError, match="REGISTERED-tier"):
-        validate_registry(reg)
-
-
-def test_validate_registry_rejects_feature_id_name_mismatch():
-    reg = (FeatureRegistration(feature=_valid_feature(feature_id="different"), evaluate=evaluate_mean_atr),)
-    with pytest.raises(ValueError, match="does not match"):
         validate_registry(reg)
 
 

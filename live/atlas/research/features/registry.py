@@ -8,29 +8,41 @@ in-package, static code - not a dynamic/pluggable registration API, the
 same scope boundary Rule Engine's own registry.py already drew.
 
 Every entry's Feature record is constructed here, at module load, already
-fingerprinted - the first real computation of Feature.fingerprint since
-Sprint 1 left it required-but-unpopulated (nothing existed yet to
-fingerprint). The projection hashed is deliberately curated - {name, tier,
-version, definition} only, excluding feature_id/description/status/
-provenance/created_at/superseded_by/fingerprint itself - the same
-discipline atlas.research.fingerprint's own module docstring requires:
-description is documentation, not semantic identity, and must never
-change a Feature's fingerprint; status/provenance/created_at are
-lifecycle/audit metadata, not defining characteristics of what is being
-computed.
+fingerprinted via atlas.research.features.models.compute_feature_semantic_fingerprint()
+- the first real computation of Feature.fingerprint since Sprint 1 left it
+required-but-unpopulated (nothing existed yet to fingerprint). See that
+function's own docstring for exactly which fields participate (and why
+tier does not).
 
 validate_registry() runs once, at the bottom of this module (import
 time) - a failure here is a programming error, not a runtime condition,
 the same "refuse to start unsafely, fail fast and loud" posture
 atlas.rule_engine.registry's own validate_registry() already established.
+
+feature_id vs. name vs. version (corrected after the Sprint 4->5 boundary
+review found the original identity model incoherent): `name` is the
+STABLE lineage identity of a Feature family - "mean_atr" for every
+revision. `version` distinguishes revisions within that lineage - a logic
+or default-param change is a brand-new, additively-registered
+FeatureRegistration (new feature_id, new version, SAME name) - never an
+edit to an existing entry, the same append-only discipline Rule Engine's
+own REGISTRY already follows. `feature_id` is the unique PER-REVISION
+storage/reference key a future Sprint 5 resolves feature_refs against -
+it must stay per-revision-unique, never lineage-stable, because
+reproducibility (Design Principles VII.1) needs an exact pin, not a
+family reference. The original version of this module wrongly forced
+feature_id == name and treated `name` as if it, too, had to be globally
+unique - which made two coexisting versions of the same feature
+structurally impossible. Fixed below: feature_id uniqueness and
+(name, version) uniqueness are now the two real invariants; the same name
+with a different version is explicitly permitted.
 """
 from dataclasses import dataclass
 from typing import Callable, Mapping, Union
 
 from atlas.market_engine.models import MarketState
 from atlas.research.features.evaluators import evaluate_mean_atr
-from atlas.research.features.models import FeatureOutcome
-from atlas.research.fingerprint import compute_fingerprint
+from atlas.research.features.models import FeatureOutcome, compute_feature_semantic_fingerprint
 from atlas.research.models import Feature, FeatureStatus, FeatureTier, ProvenanceKind
 
 WindowedFeatureEvaluator = Callable[[list[MarketState], Feature], FeatureOutcome]
@@ -47,13 +59,6 @@ class FeatureRegistration:
     evaluate: WindowedFeatureEvaluator
 
 
-def _feature_fingerprint(name: str, tier: FeatureTier, version: str, definition: Mapping) -> str:
-    """The curated projection every Registered feature's fingerprint is
-    computed from - see this module's own docstring for exactly which
-    fields participate and why."""
-    return compute_fingerprint({"name": name, "tier": tier.value, "version": version, "definition": dict(definition)})
-
-
 _MEAN_ATR_NAME = "mean_atr"
 _MEAN_ATR_VERSION = "1.0"
 _MEAN_ATR_DEFINITION: Mapping[str, Union[int, float, str, bool]] = {"window": 14}
@@ -68,7 +73,7 @@ _MEAN_ATR_FEATURE = Feature(
     status=FeatureStatus.PROMOTED,
     provenance=ProvenanceKind.HUMAN,
     created_at="2026-07-22T00:00:00+00:00",
-    fingerprint=_feature_fingerprint(_MEAN_ATR_NAME, FeatureTier.REGISTERED, _MEAN_ATR_VERSION, _MEAN_ATR_DEFINITION),
+    fingerprint=compute_feature_semantic_fingerprint(_MEAN_ATR_NAME, _MEAN_ATR_VERSION, _MEAN_ATR_DEFINITION),
 )
 
 
@@ -78,31 +83,35 @@ REGISTRY: tuple[FeatureRegistration, ...] = (
 
 
 def validate_registry(registry: tuple[FeatureRegistration, ...]) -> None:
-    """Fail-fast validation, checked in order: non-empty; unique names;
-    every entry is REGISTERED tier (Candidate features are never part of
-    this static registry - see candidate.py); registration identity
-    (feature_id == name) matches, the same invariant
-    atlas.rule_engine.registry's own validate_registry() enforces for
-    registration.name/definition.name; and every entry declares a
-    positive int 'window' param - explicitly rejecting bool (a bool is an
-    int subclass in Python, so `type(value) is int` is used rather than
-    isinstance, the same guard rule_engine's own validator already uses)."""
+    """Fail-fast validation, checked in order: non-empty; every
+    feature_id is unique (the real referential-integrity concern - this
+    is the key a future Sprint 5 resolves feature_refs against); every
+    (name, version) pair is unique (no re-registering the same revision
+    twice) - the SAME name with a DIFFERENT version is explicitly
+    permitted, this is what makes additive feature versioning possible at
+    all; every entry is REGISTERED tier (Candidate features are never
+    part of this static registry - see candidate.py); and every entry
+    declares a positive int 'window' param - explicitly rejecting bool (a
+    bool is an int subclass in Python, so `type(value) is int` is used
+    rather than isinstance, the same guard rule_engine's own validator
+    already uses)."""
     if not registry:
         raise ValueError("REGISTRY must not be empty")
 
-    names = [r.feature.name for r in registry]
-    duplicates = sorted({name for name in names if names.count(name) > 1})
-    if duplicates:
-        raise ValueError(f"REGISTRY contains duplicate feature names: {duplicates}")
+    feature_ids = [r.feature.feature_id for r in registry]
+    duplicate_ids = sorted({fid for fid in feature_ids if feature_ids.count(fid) > 1})
+    if duplicate_ids:
+        raise ValueError(f"REGISTRY contains duplicate feature_ids: {duplicate_ids}")
+
+    lineage_versions = [(r.feature.name, r.feature.version) for r in registry]
+    duplicate_revisions = sorted({lv for lv in lineage_versions if lineage_versions.count(lv) > 1})
+    if duplicate_revisions:
+        raise ValueError(f"REGISTRY contains duplicate (name, version) revisions: {duplicate_revisions}")
 
     for r in registry:
         if r.feature.tier != FeatureTier.REGISTERED:
             raise ValueError(
                 f"{r.feature.name}: REGISTRY may only contain REGISTERED-tier features, got {r.feature.tier.value}"
-            )
-        if r.feature.feature_id != r.feature.name:
-            raise ValueError(
-                f"registration feature_id {r.feature.feature_id!r} does not match feature.name {r.feature.name!r}"
             )
         if "window" not in r.feature.definition:
             raise ValueError(f"{r.feature.name}: definition must declare a 'window' param")
