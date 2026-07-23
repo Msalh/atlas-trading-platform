@@ -156,11 +156,38 @@ on frozen models.py types: RealizationTemplateKind (a new closed enum) and
 Realization.template_kind (Optional, defaulted, required for
 TEMPLATED_STRATEGY/STRATEGY_VARIANT and forbidden otherwise).
 
-Deliberately does not extend atlas.research.validation/.ranking this
-sprint: validate() reads Evidence.metrics keyed by
-f"{criterion.target}__mean" (Feature-shaped), which
-compute_decision_sequence_evidence()'s decision-frequency metrics don't
-produce - a real, disclosed follow-up, not a gap silently papered over.
+Sprint 8 deliberately did not extend atlas.research.validation/.ranking:
+validate() reads Evidence.metrics keyed by f"{criterion.target}__mean"
+(Feature-shaped), which Sprint 8's own decision-frequency-only metrics
+didn't produce - a disclosed follow-up, not a gap silently papered over.
+
+Phase N4 Sprint 8.1 (Validation Integration) closes that gap - in
+atlas.research.statistics alone. The key finding: atlas.research.validation
+has been criterion-target-agnostic since Sprint 5 - _fold_statistics()
+reads Evidence.metrics[f"{criterion.target}__mean"]/__std_dev/
+__sample_size/__effective_sample_size purely by key name, never caring what
+computed them. compute_decision_sequence_evidence() (revised, not
+replaced) now takes an explicit `criteria: tuple[AcceptanceCriterion, ...]`
+parameter and populates that exact key family - via
+_series_statistics_metrics(), one small helper extracted verbatim (not
+altered) from compute_evidence()'s own formula block - for each requested
+decision-rate target only, never speculatively for every disposition.
+decision_rate_target() is the one authoritative
+ResearchDispositionKind -> target-name mapping (no_action_rate/
+enter_long_rate/enter_short_rate/exit_rate). TargetKind.DECISION_SEQUENCE
+is one additive closed-enum member, mirroring exactly the precedent
+TargetKind.FEATURE's own Sprint 5 addition set. build_realization_experiment()
+now skips (never rejects) DECISION_SEQUENCE criteria, deferring them to
+Statistics - the same symmetric posture compute_evidence() already applied
+to non-FEATURE criteria.
+
+atlas.research.validation and atlas.research.ranking are both completely
+unmodified by Sprint 8.1 - proven, not merely asserted, by
+tests/test_research_sprint8_1_validation_ranking_integration.py's own
+dependency audit and by a real end-to-end pipeline test (Realization ->
+Decision Sequence -> Evidence -> ValidationResult -> LeaderboardSnapshot)
+that calls validate()/rank()/snapshot_leaderboard() with zero modification,
+alongside a Feature-based hypothesis in the same snapshot.
 
 Every later Sprint 9-14 package the roadmap describes
 (atlas.research.discovery, .formalization, .memory, .knowledge_graph,
