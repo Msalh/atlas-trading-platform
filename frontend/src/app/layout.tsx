@@ -56,8 +56,15 @@ export default function RootLayout({
                       <Link href="/active-setups" className="hover:text-foreground">Active Setups</Link>
                       <Link href="/timeline" className="hover:text-foreground">Timeline</Link>
                       <Link href="/episodes" className="hover:text-foreground">Episode Inspector</Link>
-                      <Link href="/research" className="hover:text-foreground">Research Overview</Link>
+                      <Link href="/research" className="hover:text-foreground">Statistical Baseline</Link>
                       <Link href="/dataset-health" className="hover:text-foreground">Dataset Health</Link>
+                      <span className="text-border">|</span>
+                      <Link href="/research-ops" className="hover:text-foreground">Research Overview</Link>
+                      <Link href="/research-ops/leaderboard" className="hover:text-foreground">Leaderboard</Link>
+                      <Link href="/research-ops/snapshot" className="hover:text-foreground">Snapshot Explorer</Link>
+                      <Link href="/research-ops/promotion/queue" className="hover:text-foreground">Promotion Queue</Link>
+                      <Link href="/research-ops/promotion/history" className="hover:text-foreground">Promotion History</Link>
+                      <Link href="/research-ops/run-center" className="hover:text-foreground">Run Center</Link>
                     </nav>
                   </div>
                   <div className="flex items-center gap-4">

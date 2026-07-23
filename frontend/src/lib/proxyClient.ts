@@ -1,4 +1,4 @@
-// UI v2. Shared fetch helper for every UI v2 typed client (setupEngineApi.ts,
+// UI v2. Shared fetch helpers for every UI v2 typed client (setupEngineApi.ts,
 // researchApi.ts) - always calls the same-origin BFF proxy
 // (src/app/api/proxy/[...path]/route.ts), never the Atlas API directly, so
 // no API key ever needs to reach the browser for these endpoints
@@ -12,6 +12,10 @@
 // page - "consider lightweight runtime validation... without a large new
 // dependency" from the approved requirements, done here with plain
 // hand-written guards rather than a schema-validation library.
+//
+// Sprint 10 Slice A adds proxyPost<T> alongside the existing proxyGet<T> -
+// same proxy, same runtime-validation contract, the write-side counterpart
+// now that the BFF itself supports POST (src/lib/proxyAllowlist.ts).
 
 export type ApiFetchErrorKind =
   | "not_found"
@@ -35,23 +39,12 @@ function isErrorBody(value: unknown): value is { ok: false; error: string } {
   return v.ok === false && typeof v.error === "string";
 }
 
-export async function proxyGet<T>(
-  path: string,
-  params: Record<string, string>,
-  isValid: (body: unknown) => body is T,
-): Promise<T> {
-  const qs = new URLSearchParams(params);
-  const query = qs.toString();
-
-  let res: Response;
-  try {
-    res = await fetch(`/api/proxy/${path}${query ? `?${query}` : ""}`, { cache: "no-store" });
-  } catch {
-    // fetch() itself threw - offline, DNS failure, etc. Never logs the raw
-    // error object, only this generic, non-secret message.
-    throw new ApiFetchError("network_error", "Could not reach the backend.");
-  }
-
+/** Shared response handling for both proxyGet/proxyPost - parses the body,
+ * maps a non-2xx status to the right ApiFetchErrorKind, then runtime-checks
+ * the shape. Never called with a Response the fetch() call itself threw on -
+ * each caller handles its own network-error try/catch first, since only it
+ * knows which URL/method it was calling. */
+async function parseAndValidate<T>(res: Response, isValid: (body: unknown) => body is T): Promise<T> {
   let body: unknown;
   try {
     body = await res.json();
@@ -71,4 +64,44 @@ export async function proxyGet<T>(
   }
 
   return body;
+}
+
+export async function proxyGet<T>(
+  path: string,
+  params: Record<string, string>,
+  isValid: (body: unknown) => body is T,
+): Promise<T> {
+  const qs = new URLSearchParams(params);
+  const query = qs.toString();
+
+  let res: Response;
+  try {
+    res = await fetch(`/api/proxy/${path}${query ? `?${query}` : ""}`, { cache: "no-store" });
+  } catch {
+    // fetch() itself threw - offline, DNS failure, etc. Never logs the raw
+    // error object, only this generic, non-secret message.
+    throw new ApiFetchError("network_error", "Could not reach the backend.");
+  }
+
+  return parseAndValidate(res, isValid);
+}
+
+export async function proxyPost<T>(
+  path: string,
+  body: Record<string, unknown>,
+  isValid: (body: unknown) => body is T,
+): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`/api/proxy/${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+  } catch {
+    throw new ApiFetchError("network_error", "Could not reach the backend.");
+  }
+
+  return parseAndValidate(res, isValid);
 }

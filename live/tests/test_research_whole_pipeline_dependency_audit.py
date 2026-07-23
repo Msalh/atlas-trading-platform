@@ -33,6 +33,7 @@ _ATLAS_ROOT = Path(__file__).resolve().parent.parent / "atlas"
 _SANCTIONED_RESEARCH_CONSUMERS = frozenset({
     "api/v1/research_pipeline.py",  # Sprint 8.2 - smoke-test/leaderboard endpoints
     "api/v1/promotion.py",  # Sprint 9 - promotion candidates/decide/history endpoints
+    "api/v1/research_lineage.py",  # Sprint 10 Slice A - composed read-only lineage walk
     # Pre-existing (UI v2 era, predates this session's Sprint 8/8.1/8.2/9
     # work) - imports only atlas.research.service.current_code_version, a
     # pure, side-effect-free git-commit-string utility with zero coupling
