@@ -183,7 +183,7 @@ def _evaluate_fold(
 
 def _compute_validation_fingerprint(
     hypothesis_id: str, evidence_ids: tuple[str, ...], criterion: AcceptanceCriterion,
-    batch_size: int, multiple_testing_correction: Optional[str],
+    batch_size: int, multiple_testing_correction: Optional[str], realization_id: Optional[str],
 ) -> str:
     return compute_fingerprint({
         "hypothesis_id": hypothesis_id,
@@ -194,6 +194,7 @@ def _compute_validation_fingerprint(
         },
         "batch_size": batch_size,
         "multiple_testing_correction": multiple_testing_correction,
+        "realization_id": realization_id,
     })
 
 
@@ -208,8 +209,20 @@ def validate(
     validation_id: str,
     validated_at: str,
     multiple_testing_correction: Optional[str] = None,
+    realization_id: Optional[str] = None,
 ) -> ValidationResult:
     """Deterministic given its inputs (including monte_carlo_spec.seed).
+
+    realization_id (Sprint 9 realization-lineage correction): a plain,
+    trusted parameter, exactly like hypothesis_id already is - never
+    computed, inferred, or looked up here, since this function has no
+    Ledger access and Evidence itself carries only experiment_id (a bare
+    string), not a Realization reference. The caller already has the
+    correct value in hand from the same Experiment (build_realization_
+    experiment()'s own output) that produced the Evidence being passed
+    in - threading it through is the caller's job, not a lookup this
+    function performs. None for a decision-free (Stage A) call, exactly
+    as it always was.
 
     Structurally requires out-of-sample evidence (Principle IV.3):
     in_sample_evidence/out_of_sample_evidence are both required
@@ -308,7 +321,7 @@ def validate(
 
     evidence_ids = tuple(e.evidence_id for e in in_sample_evidence) + tuple(e.evidence_id for e in out_of_sample_evidence)
     fingerprint = _compute_validation_fingerprint(
-        hypothesis_id, evidence_ids, criterion, batch_size, multiple_testing_correction,
+        hypothesis_id, evidence_ids, criterion, batch_size, multiple_testing_correction, realization_id,
     )
 
     return ValidationResult(
@@ -316,4 +329,5 @@ def validate(
         verdict=verdict, criteria_results=all_results, justification=justification,
         validated_at=validated_at, out_of_sample=True,
         multiple_testing_correction=multiple_testing_correction, fingerprint=fingerprint,
+        realization_id=realization_id,
     )

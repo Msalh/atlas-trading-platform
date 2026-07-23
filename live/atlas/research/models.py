@@ -654,7 +654,19 @@ class ValidationResult:
     whether this verdict rests on out-of-sample/held-out evidence, the
     literal condition IV.3 requires before VALIDATED may ever be reached -
     that requirement is enforced by Sprint 6's own service logic; this
-    field only records the fact for audit."""
+    field only records the fact for audit.
+
+    realization_id (Sprint 9 realization-lineage correction, additive):
+    None for a decision-free (Stage A) result, exactly as it always was;
+    for a decision-bearing (Stage B/C) result, the exact Realization whose
+    Experiment/Evidence produced this verdict - threaded through by the
+    caller of validate() as a plain, trusted parameter (the same posture
+    hypothesis_id already has), never computed or looked up by validate()
+    itself, which has no Ledger access. This is what lets two different
+    parameterizations of the same Hypothesis remain distinguishable in
+    Ranking and Promotion months later - see
+    atlas.research.promotion's own __init__.py for the full audit-chain
+    reasoning."""
 
     validation_id: str
     hypothesis_id: str
@@ -666,6 +678,7 @@ class ValidationResult:
     out_of_sample: bool
     multiple_testing_correction: Optional[str]
     fingerprint: str
+    realization_id: Optional[str] = None
 
     def __post_init__(self) -> None:
         if not self.evidence_ids:

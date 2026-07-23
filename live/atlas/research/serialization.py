@@ -316,6 +316,7 @@ def validation_result_to_dict(result: ValidationResult) -> dict[str, Any]:
         "out_of_sample": result.out_of_sample,
         "multiple_testing_correction": result.multiple_testing_correction,
         "fingerprint": result.fingerprint,
+        "realization_id": result.realization_id,
     }
 
 
@@ -328,6 +329,7 @@ def validation_result_from_dict(data: dict[str, Any]) -> ValidationResult:
         out_of_sample=data["out_of_sample"],
         multiple_testing_correction=data["multiple_testing_correction"],
         fingerprint=data["fingerprint"],
+        realization_id=data.get("realization_id"),
     )
 
 

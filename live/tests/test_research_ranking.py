@@ -165,9 +165,34 @@ def test_score_description_discloses_the_placeholder_explicitly():
     assert "no independent scientific quality score" in entries[0].score_description
 
 
-def test_realization_id_is_always_none_stage_a():
+def test_realization_id_propagates_from_validation_result():
+    """Realization lineage correction: rank() reads realization_id
+    directly off the ValidationResult it is ranking, never hardcodes it -
+    a decision-bearing ValidationResult's realization_id must survive into
+    its LeaderboardEntry unchanged."""
+    entries = rank((_validation_result("v1", "h1", realization_id="r_bc"),), RANKING_POLICY_V1)
+    assert entries[0].realization_id == "r_bc"
+
+
+def test_realization_id_is_none_for_decision_free_hypotheses():
+    """A ValidationResult with no realization_id (decision-free hypothesis)
+    legitimately produces a LeaderboardEntry with realization_id=None -
+    this is not the lineage bug, it is the correct, intentional case."""
     entries = rank((_validation_result("v1", "h1"),), RANKING_POLICY_V1)
     assert entries[0].realization_id is None
+
+
+def test_two_realizations_of_the_same_hypothesis_remain_distinguishable_across_snapshots():
+    """de-duplication is one entry per hypothesis_id per snapshot (Sprint 7
+    policy, unchanged here), but across two separate rank() calls - e.g.
+    two snapshots taken after re-validating different Realizations of the
+    same Hypothesis - each entry must carry its own distinct, correct
+    realization_id, never collapsing to a shared or hardcoded value."""
+    entries_r1 = rank((_validation_result("v1", "h1", realization_id="r1"),), RANKING_POLICY_V1)
+    entries_r2 = rank((_validation_result("v2", "h1", realization_id="r2"),), RANKING_POLICY_V1)
+    assert entries_r1[0].realization_id == "r1"
+    assert entries_r2[0].realization_id == "r2"
+    assert entries_r1[0].realization_id != entries_r2[0].realization_id
 
 
 def test_ordering_never_reads_criteria_results_reason_text():

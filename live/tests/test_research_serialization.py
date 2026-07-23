@@ -269,6 +269,23 @@ def test_validation_result_round_trips():
     assert validation_result_from_dict(validation_result_to_dict(v)) == v
 
 
+def test_validation_result_round_trips_with_realization_id():
+    v = _validation_result(realization_id="r_bc")
+    round_tripped = validation_result_from_dict(validation_result_to_dict(v))
+    assert round_tripped == v
+    assert round_tripped.realization_id == "r_bc"
+
+
+def test_validation_result_from_dict_loads_a_pre_lineage_correction_record_missing_realization_id():
+    """A ValidationResult persisted before this correction has no
+    realization_id key at all - additive field, must still deserialize,
+    defaulting to None."""
+    v = _validation_result()
+    data = validation_result_to_dict(v)
+    del data["realization_id"]
+    assert validation_result_from_dict(data).realization_id is None
+
+
 def test_leaderboard_snapshot_round_trips():
     s = _leaderboard_snapshot()
     assert leaderboard_snapshot_from_dict(leaderboard_snapshot_to_dict(s)) == s

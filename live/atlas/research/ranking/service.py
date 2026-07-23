@@ -62,7 +62,7 @@ def rank(validation_results: tuple[ValidationResult, ...], policy: RankingPolicy
 
     return tuple(
         LeaderboardEntry(
-            hypothesis_id=result.hypothesis_id, realization_id=None, rank=position,
+            hypothesis_id=result.hypothesis_id, realization_id=result.realization_id, rank=position,
             score=1.0, score_description=_SCORE_DESCRIPTION, validation_id=result.validation_id,
         )
         for position, result in enumerate(ordered, start=1)

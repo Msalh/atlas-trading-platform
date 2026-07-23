@@ -338,3 +338,29 @@ def test_fingerprint_changes_when_evidence_ids_change():
     a = _validate(out_of_sample_evidence=(_evidence("ev_out_a", mean=5.0, std_dev=1.0, experiment_id="exp_out_a"),))
     b = _validate(out_of_sample_evidence=(_evidence("ev_out_b", mean=5.0, std_dev=1.0, experiment_id="exp_out_b"),))
     assert a.fingerprint != b.fingerprint
+
+
+def test_fingerprint_changes_when_realization_id_changes():
+    """Realization lineage correction: two otherwise-identical
+    ValidationResults differing only in which Realization they were
+    produced from must not fingerprint the same - realization_id is
+    identity-relevant, not incidental."""
+    a = _validate(realization_id="r1")
+    b = _validate(realization_id="r2")
+    assert a.fingerprint != b.fingerprint
+
+
+# ---- realization_id propagation ----
+
+def test_realization_id_defaults_to_none():
+    """Decision-free hypotheses legitimately never pass realization_id."""
+    assert _validate().realization_id is None
+
+
+def test_realization_id_is_threaded_through_as_a_trusted_parameter():
+    """validate() never infers or looks up realization_id - it is passed
+    straight through from the caller (who has it from the exact
+    Experiment/Realization that produced the Evidence being validated),
+    exactly like hypothesis_id."""
+    result = _validate(realization_id="r_bc")
+    assert result.realization_id == "r_bc"

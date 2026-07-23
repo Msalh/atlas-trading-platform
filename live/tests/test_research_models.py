@@ -452,6 +452,19 @@ def test_validation_result_is_frozen():
         v.verdict = ValidationVerdict.NOT_SUPPORTED
 
 
+def test_validation_result_realization_id_defaults_to_none():
+    """Additive field - existing decision-free construction sites are
+    unaffected."""
+    assert _validation_result().realization_id is None
+
+
+def test_validation_result_realization_id_round_trips_when_provided():
+    """Realization lineage correction: a decision-bearing ValidationResult
+    carries the exact Realization it was produced from."""
+    v = _validation_result(realization_id="r_bc")
+    assert v.realization_id == "r_bc"
+
+
 # ---- LeaderboardSnapshot ----
 
 def test_leaderboard_snapshot_constructs_with_unique_ranks():
