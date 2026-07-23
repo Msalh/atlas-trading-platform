@@ -92,11 +92,16 @@ Everything from Step 1 onward assumes this has happened.
    this deployment has ever needed - Postgres (Step 4) covers trades/market_state, but
    the Research Ledger's nine JSONL stores (Realization/Experiment/Evidence/
    ValidationResult/LeaderboardSnapshot/etc.) live on this Volume instead, deliberately
-   kept separate from the transactional trading database. Without this step,
-   `RESEARCH_LEDGER_DIR` (Step 2) would default to an ephemeral path wiped on every
-   redeploy - the app still starts and `POST /api/v1/research/run` still works, but
-   nothing written would survive a restart, defeating the point of Sprint 8.2's own
-   staging verification.
+   kept separate from the transactional trading database. **Without this step and
+   Step 2's `RESEARCH_LEDGER_DIR` variable, the app still starts fine and every
+   trading/webhook/status endpoint keeps working - but `RESEARCH_LEDGER_DIR` does
+   *not* fall back to a relative default in production** (a production-safety
+   correction: an implicit relative path can be writable on Railway's own ephemeral
+   filesystem, which would make startup readiness, the smoke test, and every write all
+   report success right up until the next redeploy silently erased everything).
+   Instead, `GET /status`'s `research_ledger.status` reports `"degraded"` with reason
+   `research_ledger_not_configured`, and `POST /api/v1/research/run` refuses with a
+   `503` - loudly and immediately, never a silent false-persistence success.
 6. Do **not** deploy yet - set environment variables first (Step 2), since
    `Settings.validate_for_startup()` will crash-loop the service without them.
 
@@ -117,7 +122,7 @@ In the backend service's **Variables** tab, set:
 | `RISK_ENFORCEMENT` | *(leave unset, defaults to `false`)* | See Safety Gates above. |
 | `ALERT_WEBHOOK_URL` | optional - a Slack/Discord incoming webhook, or a throwaway endpoint like a [webhook.site](https://webhook.site) URL for testing alerting itself | Leave unset if you don't want alerting active yet. |
 | `CLAUDE_FAILURE_ALERT_THRESHOLD` | *(leave unset, defaults to `3`)* | |
-| `RESEARCH_LEDGER_DIR` | `/data/research` | Sprint 8.2. Must point inside the Volume mounted in Step 1.5 above - the app starts fine without this set (it defaults to a relative, ephemeral path), but nothing the Research Ledger writes would survive a redeploy. Confirm via `GET /api/v1/status`'s `research_ledger.status` field after deploying (Step 5). |
+| `RESEARCH_LEDGER_DIR` | `/data/research` | Sprint 8.2. Must point inside the Volume mounted in Step 1.5 above. **Not defaulted in production** - if unset here, the app still starts fine (research storage degrades independently of trading, it never crash-loops), but `research_ledger.status` reports `"degraded"` (reason `research_ledger_not_configured`) and `POST /api/v1/research/run` returns `503` until this is set. Confirm via `GET /api/v1/status`'s `research_ledger.status` field after deploying (Step 5), then run the restart-persistence procedure (`docs/ui_v2/deployment-runbook.md` §3.8) at least once. |
 
 Do **not** set any `ACCOUNT_*` variable unless you're deliberately testing the risk
 snapshot/kill-switch display with fake numbers.
@@ -177,9 +182,10 @@ status, and the "no real orders possible" check in one pass. Then:
 - [ ] Confirm `GET /api/v1/status`'s `pickmytrade.configured` is `false` (see Safety
       Gates - this is the definitive check that no real order can be placed).
 - [ ] Confirm `GET /api/v1/status`'s `research_ledger.status` is `"ready"` - if it's
-      `"degraded"`, check `research_ledger.reason` (one of `configuration_valid`/
-      `ledger_directory`/`volume_mounted`/`jsonl_stores_initialized`/
-      `registries_available`) against Step 1.5's Volume setup and Step 2's
+      `"degraded"`, check `research_ledger.reason` (a stable code: most likely
+      `research_ledger_not_configured` on a fresh deploy - meaning `RESEARCH_LEDGER_DIR`
+      simply isn't set; otherwise `blank_path`/`directory_not_creatable`/`not_writable`/
+      `registries_unreadable`) against Step 1.5's Volume setup and Step 2's
       `RESEARCH_LEDGER_DIR` value. The same "Research Startup" checklist is also logged
       once in the deploy logs at process start (Step 3.2) - look for it there too.
 - [ ] `POST /api/v1/research/run` with `{"mode": "smoke"}` (requires the `API_KEY`
@@ -190,6 +196,12 @@ status, and the "no real orders possible" check in one pass. Then:
       `GET /api/v1/research/leaderboard?snapshot_id=<snapshot_id from the response>`
       and confirm it returns the same snapshot - proof the Volume round-trips data
       across two separate requests.
+- [ ] Run the full restart-persistence verification procedure
+      (`docs/ui_v2/deployment-runbook.md` §3.8): smoke test → read the leaderboard →
+      **redeploy the backend service** → read the same leaderboard snapshot again by
+      the same `snapshot_id`. This is the one check that actually proves the Volume
+      survives a redeploy, not just that it's writable right now - do this at least
+      once before considering the Research Ledger genuinely verified.
 - [ ] If you set `ALERT_WEBHOOK_URL` to a test endpoint (e.g. webhook.site), manually
       verify it by POSTing a webhook with the wrong secret a few times and confirming
       *nothing* fires (auth rejection isn't an alerting event) - then see

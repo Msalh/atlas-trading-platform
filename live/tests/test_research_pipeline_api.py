@@ -72,11 +72,11 @@ def test_run_invalid_mode_is_a_validation_error(client):
 
 def test_run_smoke_mode_fails_when_ledger_storage_is_degraded(client):
     app.dependency_overrides[get_ledger_readiness] = lambda: LedgerReadiness((
-        LedgerCheckResult("configuration_valid", True, None),
-        LedgerCheckResult("ledger_directory", False, "directory could not be created"),
-        LedgerCheckResult("volume_mounted", False, "skipped - ledger_directory failed"),
-        LedgerCheckResult("jsonl_stores_initialized", True, None),
-        LedgerCheckResult("registries_available", False, "skipped - volume_mounted failed"),
+        LedgerCheckResult("configuration_valid", True, None, None),
+        LedgerCheckResult("ledger_directory", False, "directory_not_creatable", "directory could not be created"),
+        LedgerCheckResult("volume_mounted", False, "skipped", "skipped - ledger_directory failed"),
+        LedgerCheckResult("jsonl_stores_initialized", True, None, None),
+        LedgerCheckResult("registries_available", False, "skipped", "skipped - volume_mounted failed"),
     ))
     try:
         resp = client.post("/api/v1/research/run", json={"mode": "smoke"})

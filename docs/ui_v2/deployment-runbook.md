@@ -137,6 +137,32 @@ A healthy first boot's log should show, in order: migrations applying, then the 
 
 This constraint is specific to the backend service and to the Research Ledger specifically - it does not affect the frontend service (stateless, scales freely) or Postgres itself (already a real multi-writer-safe database).
 
+### 3.8 Restart-persistence verification procedure
+
+The one check that actually proves the Volume works, not just that the app believes it's configured correctly - run this once after every first deploy, and again after any change to the Volume or `RESEARCH_LEDGER_DIR`:
+
+1. **Run the smoke test:**
+   ```
+   curl -s -X POST https://<backend-service>.up.railway.app/api/v1/research/run \
+     -H "Authorization: Bearer <API_KEY>" -H "Content-Type: application/json" \
+     -d '{"mode": "smoke"}' | python3 -m json.tool
+   ```
+   Confirm `ok: true` and every entry under `steps` is `true`. Record the `snapshot_id` from the response.
+2. **Read the leaderboard** using that `snapshot_id`:
+   ```
+   curl -s "https://<backend-service>.up.railway.app/api/v1/research/leaderboard?snapshot_id=<snapshot_id>" \
+     -H "Authorization: Bearer <API_KEY>" | python3 -m json.tool
+   ```
+   Confirm it returns `ok: true` with the same `snapshot_id` and one entry.
+3. **Restart or redeploy the backend service** - in Railway's dashboard, either **Deploy** → **Redeploy** (same image) or trigger a new deploy (e.g. an empty commit). Either wipes the ephemeral filesystem; only the Volume-mounted path survives.
+4. **Wait for the new deployment to be healthy** - `GET /health` returns `{"ok": true, ...}`, and the "Research Startup" block in the deploy logs shows `✓ Registries available` (§3.6).
+5. **Read the same leaderboard snapshot again**, using the identical `snapshot_id` from step 1:
+   ```
+   curl -s "https://<backend-service>.up.railway.app/api/v1/research/leaderboard?snapshot_id=<snapshot_id>" \
+     -H "Authorization: Bearer <API_KEY>" | python3 -m json.tool
+   ```
+6. **Confirm the same data comes back** - `ok: true`, same `snapshot_id`, same `entries` as step 2. If this instead returns a `404` ("no leaderboard snapshot with id..."), the Volume is not actually persisting across restarts - stop and re-check the Volume mount (Step 1.5 of `docs/staging/deployment-checklist.md`) and `RESEARCH_LEDGER_DIR` (§3.1) before considering this deployment verified, regardless of what step 1's `GET /status` reported (a healthy `research_ledger.status` only proves the path is writable *right now* - it cannot prove persistence across a restart by itself, which is exactly why this six-step procedure exists as a separate check).
+
 ---
 
 ## 4. Railway configuration — frontend service
@@ -340,6 +366,7 @@ Fill this in once a real deployment happens. Nothing below is filled in yet - th
 | `GET /status` → `research_ledger.status` | |
 | `POST /research/run {"mode":"smoke"}` result (`ok`, all `steps`) | |
 | `GET /research/leaderboard?snapshot_id=...` round-trip confirmed | |
+| Restart-persistence verification (§3.8) - same snapshot readable after redeploy | |
 | Backend test results (`pytest -q`) | |
 | Ruff result | |
 | Frontend test results (`npm test`) | |

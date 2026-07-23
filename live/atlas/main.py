@@ -115,10 +115,21 @@ async def lifespan(app: FastAPI):
     # atlas/research_deploy/startup_check.py's own module docstring. The
     # startup report is logged exactly once here, reflecting true
     # per-check state on both a ready and a degraded run.
+    #
+    # resolved_research_ledger_dir() - not the raw settings.research_ledger_dir -
+    # is what decides whether a missing value gets the development-only
+    # "data/research" convenience default or must surface as
+    # research_ledger_not_configured: a relative default can be writable on
+    # Railway's own ephemeral filesystem, which would make readiness, the
+    # smoke test, and every write all report success right up until the
+    # next redeploy silently erased everything. None here means
+    # check_ledger_storage() performs no filesystem operation at all - no
+    # implicit directory is ever created or written to.
+    resolved_ledger_dir = settings.resolved_research_ledger_dir()
     ledger_check_started_at = time.monotonic()
     try:
         app.state.ledger_readiness, app.state.ledger_stores = check_ledger_storage(
-            Path(settings.research_ledger_dir)
+            Path(resolved_ledger_dir) if resolved_ledger_dir is not None else None
         )
     except Exception:
         logger.exception("ledger readiness check failed unexpectedly at startup")

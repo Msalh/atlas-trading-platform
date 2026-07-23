@@ -1,17 +1,37 @@
 """
-Sprint 8.2. check_ledger_storage() - the write-side counterpart to
-atlas.research_export.startup_check.check_snapshots(), same contract:
+Sprint 8.2, corrected. check_ledger_storage() - the write-side counterpart
+to atlas.research_export.startup_check.check_snapshots(), same contract:
 computed once at process start (atlas.main's lifespan calls this and
 stores the result on app.state.ledger_readiness), never raises, never
 blocks startup, never takes down LIVE endpoints over a research-storage
 problem.
 
+--- Production-safety correction ---
+
+check_ledger_storage() takes Optional[Path], not Path. `directory=None`
+means "RESEARCH_LEDGER_DIR must be treated as unconfigured for this
+environment" - the caller (atlas.main's lifespan, via
+Settings.resolved_research_ledger_dir()) is the one place that decides
+whether a missing/blank RESEARCH_LEDGER_DIR gets a development-only
+convenience default or must surface as unconfigured. This module never
+makes that environment-dependent call itself; it only reacts to whatever
+Optional[Path] it's given. A None here short-circuits every filesystem
+check with reason="research_ledger_not_configured" and returns
+stores=None - there is no path to construct LedgerStores against, and
+critically, NO mkdir/write of any kind happens, so a missing production
+config can never silently create or use an implicit, possibly-ephemeral
+directory. This is the fix for a real false-positive risk: a relative
+default path can be writable on Railway's own ephemeral filesystem, which
+would make startup readiness, the smoke test, and every Ledger write all
+report success right up until the next redeploy silently erased
+everything.
+
 Five checks, in execution order (not necessarily the report's own display
 order - see build_startup_report()):
 
-1. configuration_valid - RESEARCH_LEDGER_DIR resolves to a non-blank path.
-   Checked first and explicitly, rather than letting a blank path silently
-   resolve against an ambiguous cwd-relative empty string.
+1. configuration_valid - directory is not None, and (if callers still pass
+   a literal blank Path directly - a distinct, defensive case from "None
+   was passed") not a blank/"." path either.
 2. ledger_directory - the directory exists (created if missing - a fresh
    Railway Volume starts empty).
 3. volume_mounted - a real write-then-delete of a sentinel file. This is
@@ -25,10 +45,9 @@ order - see build_startup_report()):
    proving the read path works too, not only the write path.
 
 Each check short-circuits the ones after it that would be meaningless
-without it (no point checking writability of a directory that doesn't
-exist) - but the run always returns a complete, well-formed LedgerReadiness
-covering every check name, never a partial result a caller has to guess
-the shape of.
+without it - but the run always returns a complete, well-formed
+LedgerReadiness covering every check name, never a partial result a caller
+has to guess the shape of.
 """
 from __future__ import annotations
 
@@ -54,6 +73,14 @@ LEDGER_CHECK_NAMES = (
     "configuration_valid", "ledger_directory", "volume_mounted",
     "jsonl_stores_initialized", "registries_available",
 )
+
+REASON_NOT_CONFIGURED = "research_ledger_not_configured"
+REASON_BLANK_PATH = "blank_path"
+REASON_DIRECTORY_NOT_CREATABLE = "directory_not_creatable"
+REASON_NOT_WRITABLE = "not_writable"
+REASON_REGISTRIES_UNREADABLE = "registries_unreadable"
+REASON_SKIPPED = "skipped"
+REASON_INTERNAL_ERROR = "internal_error"
 
 
 @dataclass(frozen=True)
@@ -98,6 +125,7 @@ def _build_stores(directory: Path) -> LedgerStores:
 class LedgerCheckResult:
     name: str
     ok: bool
+    reason: Optional[str]  # stable, machine-readable code - None only when ok
     detail: Optional[str]  # sanitized, operator-readable; never a raw path or traceback
 
 
@@ -111,11 +139,14 @@ class LedgerReadiness:
 
     @property
     def reason(self) -> Optional[str]:
-        """The name of the first failing check, in LEDGER_CHECK_NAMES
-        order - None when status == 'ready'."""
+        """The first failing check's own stable reason code, in
+        LEDGER_CHECK_NAMES order - None when status == 'ready'. Mirrors
+        atlas.research_export.startup_check.SnapshotsReadiness.reason's own
+        precedent exactly: a stable code, never a check name, never free
+        text."""
         for r in self.results:
             if not r.ok:
-                return r.name
+                return r.reason
         return None
 
     def result_for(self, name: str) -> LedgerCheckResult:
@@ -128,7 +159,7 @@ class LedgerReadiness:
         return {
             "status": self.status,
             "reason": self.reason,
-            "checks": {r.name: {"ok": r.ok, "detail": r.detail} for r in self.results},
+            "checks": {r.name: {"ok": r.ok, "reason": r.reason, "detail": r.detail} for r in self.results},
         }
 
 
@@ -139,40 +170,68 @@ def internal_error_readiness() -> LedgerReadiness:
     internal_error_readiness() provides, never a relaxation of the "no
     check here may fail startup" contract."""
     return LedgerReadiness(tuple(
-        LedgerCheckResult(name, False, "ledger readiness check failed unexpectedly at startup - see server logs")
+        LedgerCheckResult(
+            name, False, REASON_INTERNAL_ERROR,
+            "ledger readiness check failed unexpectedly at startup - see server logs",
+        )
         for name in LEDGER_CHECK_NAMES
     ))
 
 
-def check_ledger_storage(directory: Path) -> tuple[LedgerReadiness, LedgerStores]:
+def check_ledger_storage(directory: Optional[Path]) -> tuple[LedgerReadiness, Optional[LedgerStores]]:
     """Pure aside from file I/O - safe to call at startup, and directly
-    testable against a tmp_path fixture. Always returns real LedgerStores,
-    even on a degraded readiness - constructing them is side-effect-free
-    (each store class just holds a Path; nothing touches disk until a
-    caller actually reads or writes through one), so atlas.main's lifespan
-    always has something to attach to app.state rather than a None a
-    caller would need to guard against separately from the readiness
-    check. A genuinely broken directory surfaces its own real, observable
-    error at the point of actual use - never masked behind a None here."""
+    testable against a tmp_path fixture.
+
+    directory=None means "treat as unconfigured for this environment" (see
+    Settings.resolved_research_ledger_dir()) - no filesystem operation of
+    any kind is attempted, and stores=None is returned, since there is no
+    path to construct LedgerStores against. Callers (the research_pipeline
+    router) already gate on readiness before touching stores, so a None
+    here is never a surprise - see atlas.api.deps.get_ledger_stores's own
+    docstring.
+
+    For any real Path, LedgerStores is always constructed (even on a
+    degraded readiness) - store construction is side-effect-free (each
+    store class just holds a Path; nothing touches disk until a caller
+    actually reads or writes through one), so a genuinely broken directory
+    surfaces its own real, observable error at the point of actual use,
+    never masked behind a None."""
     results: list[LedgerCheckResult] = []
+
+    if directory is None:
+        results.append(LedgerCheckResult(
+            "configuration_valid", False, REASON_NOT_CONFIGURED,
+            "RESEARCH_LEDGER_DIR is not set - refusing to fall back to an implicit, possibly-ephemeral "
+            "path outside development",
+        ))
+        results.extend(
+            LedgerCheckResult(name, False, REASON_SKIPPED, "skipped - configuration_valid failed")
+            for name in LEDGER_CHECK_NAMES if name != "configuration_valid"
+        )
+        return LedgerReadiness(tuple(results)), None
 
     directory_str = str(directory).strip()
     config_valid = bool(directory_str) and directory_str != "."
     results.append(
-        LedgerCheckResult("configuration_valid", config_valid,
-                           None if config_valid else "RESEARCH_LEDGER_DIR resolves to a blank path")
+        LedgerCheckResult(
+            "configuration_valid", config_valid,
+            None if config_valid else REASON_BLANK_PATH,
+            None if config_valid else "RESEARCH_LEDGER_DIR resolves to a blank path",
+        )
     )
 
     directory_ready = False
     if config_valid:
         try:
             directory.mkdir(parents=True, exist_ok=True)
-            results.append(LedgerCheckResult("ledger_directory", True, None))
+            results.append(LedgerCheckResult("ledger_directory", True, None, None))
             directory_ready = True
         except OSError:
-            results.append(LedgerCheckResult("ledger_directory", False, "directory could not be created"))
+            results.append(
+                LedgerCheckResult("ledger_directory", False, REASON_DIRECTORY_NOT_CREATABLE, "directory could not be created")
+            )
     else:
-        results.append(LedgerCheckResult("ledger_directory", False, "skipped - configuration_valid failed"))
+        results.append(LedgerCheckResult("ledger_directory", False, REASON_SKIPPED, "skipped - configuration_valid failed"))
 
     writable = False
     if directory_ready:
@@ -180,27 +239,32 @@ def check_ledger_storage(directory: Path) -> tuple[LedgerReadiness, LedgerStores
         try:
             sentinel.write_text("ok", encoding="utf-8")
             sentinel.unlink()
-            results.append(LedgerCheckResult("volume_mounted", True, None))
+            results.append(LedgerCheckResult("volume_mounted", True, None, None))
             writable = True
         except OSError:
-            results.append(LedgerCheckResult("volume_mounted", False, "directory is not writable"))
+            results.append(LedgerCheckResult("volume_mounted", False, REASON_NOT_WRITABLE, "directory is not writable"))
     else:
-        results.append(LedgerCheckResult("volume_mounted", False, "skipped - ledger_directory failed"))
+        results.append(LedgerCheckResult("volume_mounted", False, REASON_SKIPPED, "skipped - ledger_directory failed"))
 
     stores = _build_stores(directory)
-    results.append(LedgerCheckResult("jsonl_stores_initialized", True, None))
+    results.append(LedgerCheckResult("jsonl_stores_initialized", True, None, None))
 
     if writable:
         try:
             for store in stores.all_stores():
                 store.all()
-            results.append(LedgerCheckResult("registries_available", True, None))
+            results.append(LedgerCheckResult("registries_available", True, None, None))
         except Exception:
             results.append(
-                LedgerCheckResult("registries_available", False, "one or more registries could not be read")
+                LedgerCheckResult(
+                    "registries_available", False, REASON_REGISTRIES_UNREADABLE,
+                    "one or more registries could not be read",
+                )
             )
     else:
-        results.append(LedgerCheckResult("registries_available", False, "skipped - volume_mounted failed"))
+        results.append(
+            LedgerCheckResult("registries_available", False, REASON_SKIPPED, "skipped - volume_mounted failed")
+        )
 
     return LedgerReadiness(tuple(results)), stores
 
@@ -224,7 +288,7 @@ def build_startup_report(readiness: LedgerReadiness, environment: str, elapsed_m
     ):
         result = readiness.result_for(name)
         mark = "✓" if result.ok else "✗"
-        suffix = f" ({result.detail})" if result.detail and not result.ok else ""
+        suffix = f" ({result.reason}: {result.detail})" if result.detail and not result.ok else ""
         lines.append(f"{mark} {label}{suffix}")
     lines.append("✓ API mounted")
     lines.append(f"✓ Environment: {environment}")

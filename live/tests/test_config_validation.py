@@ -99,11 +99,15 @@ def test_unrecognized_environment_value_refuses_to_start(monkeypatch):
         s.validate_for_startup()
 
 
-# ---- Sprint 8.2: RESEARCH_LEDGER_DIR (defaulted, never hard-required) ----
+# ---- Sprint 8.2: RESEARCH_LEDGER_DIR (defaulted attribute, never hard-required) ----
 
-def test_research_ledger_dir_defaults_to_a_relative_data_path(monkeypatch):
+def test_research_ledger_dir_raw_attribute_is_blank_when_unset(monkeypatch):
+    """The raw attribute is never defaulted - only
+    resolved_research_ledger_dir() applies any environment-dependent
+    fallback. Keeping the raw value undefaulted is what lets that method
+    tell "explicitly set" apart from "absent" in every environment."""
     s = _settings(monkeypatch, RESEARCH_LEDGER_DIR=None)
-    assert s.research_ledger_dir == "data/research"
+    assert s.research_ledger_dir == ""
 
 
 def test_research_ledger_dir_reads_the_environment_override(monkeypatch):
@@ -118,3 +122,33 @@ def test_missing_research_ledger_dir_does_not_block_production_startup(monkeypat
     WEBHOOK_SECRET/API_KEY correctly does."""
     s = _settings(monkeypatch, RESEARCH_LEDGER_DIR=None)
     s.validate_for_startup()  # must not raise
+
+
+# ---- Sprint 8.2, production-safety correction: resolved_research_ledger_dir() ----
+
+def test_required_1_development_falls_back_to_the_local_default(monkeypatch):
+    s = _settings(monkeypatch, ENVIRONMENT="development", RESEARCH_LEDGER_DIR=None)
+    assert s.resolved_research_ledger_dir() == "data/research"
+
+
+def test_development_with_an_explicit_value_uses_it_not_the_default(monkeypatch):
+    s = _settings(monkeypatch, ENVIRONMENT="development", RESEARCH_LEDGER_DIR="/custom/path")
+    assert s.resolved_research_ledger_dir() == "/custom/path"
+
+
+def test_production_without_research_ledger_dir_resolves_to_none_not_the_local_default(monkeypatch):
+    """The core production-safety fix: production/staging must NEVER fall
+    back to a relative path that could silently be writable (and therefore
+    falsely appear persistent) on Railway's own ephemeral filesystem."""
+    s = _settings(monkeypatch, ENVIRONMENT="production", RESEARCH_LEDGER_DIR=None)
+    assert s.resolved_research_ledger_dir() is None
+
+
+def test_production_with_blank_research_ledger_dir_also_resolves_to_none(monkeypatch):
+    s = _settings(monkeypatch, ENVIRONMENT="production", RESEARCH_LEDGER_DIR="   ")
+    assert s.resolved_research_ledger_dir() is None
+
+
+def test_production_with_an_explicit_research_ledger_dir_resolves_to_it(monkeypatch):
+    s = _settings(monkeypatch, ENVIRONMENT="production", RESEARCH_LEDGER_DIR="/data/research")
+    assert s.resolved_research_ledger_dir() == "/data/research"

@@ -220,18 +220,31 @@ class TestStatusExposesResearchLedgerReadiness:
 
     def test_degraded_state_is_visible_with_structured_detail(self, client):
         self._override(LedgerReadiness((
-            LedgerCheckResult("configuration_valid", True, None),
-            LedgerCheckResult("ledger_directory", False, "directory could not be created"),
-            LedgerCheckResult("volume_mounted", False, "skipped - ledger_directory failed"),
-            LedgerCheckResult("jsonl_stores_initialized", True, None),
-            LedgerCheckResult("registries_available", False, "skipped - volume_mounted failed"),
+            LedgerCheckResult("configuration_valid", True, None, None),
+            LedgerCheckResult("ledger_directory", False, "directory_not_creatable", "directory could not be created"),
+            LedgerCheckResult("volume_mounted", False, "skipped", "skipped - ledger_directory failed"),
+            LedgerCheckResult("jsonl_stores_initialized", True, None, None),
+            LedgerCheckResult("registries_available", False, "skipped", "skipped - volume_mounted failed"),
         )))
         resp = client.get("/api/v1/status")
         body = resp.json()["research_ledger"]
         assert body["status"] == "degraded"
-        assert body["reason"] == "ledger_directory"
+        assert body["reason"] == "directory_not_creatable"
         assert body["checks"]["ledger_directory"]["ok"] is False
+        assert body["checks"]["ledger_directory"]["reason"] == "directory_not_creatable"
         assert body["checks"]["ledger_directory"]["detail"] == "directory could not be created"
+
+    def test_research_ledger_not_configured_is_visible_with_its_own_reason_code(self, client):
+        """The production-safety correction's own required contract: a
+        missing RESEARCH_LEDGER_DIR in production must surface this exact,
+        stable reason code - never a generic 'configuration_valid'."""
+        from atlas.research_deploy.startup_check import check_ledger_storage
+        self._override(check_ledger_storage(None)[0])
+        resp = client.get("/api/v1/status")
+        body = resp.json()["research_ledger"]
+        assert body["status"] == "degraded"
+        assert body["reason"] == "research_ledger_not_configured"
+        assert body["checks"]["configuration_valid"]["reason"] == "research_ledger_not_configured"
 
     def test_internal_error_readiness_is_visible(self, client):
         self._override(internal_error_readiness())
