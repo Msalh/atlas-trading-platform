@@ -24,9 +24,24 @@ Evidence.
 
 Deliberately zero dependency on atlas.research.experiment_builder in
 either direction (both packages depend on atlas.research.features/.models/
-.fingerprint, neither depends on the other) - the same "Statistics must
-not depend on Backtesting even implicitly" posture the roadmap's own Sprint
-5 risk note names, applied here as the general principle it actually is:
-each of Sprint 5's two packages stays independently reasoned-about and
-independently testable.
+.fingerprint, neither depends on the other) - each of Sprint 5's two
+packages stays independently reasoned-about and independently testable.
+
+--- Sprint 8: compute_decision_sequence_evidence() ---
+
+Extends this package with a second, independent Evidence-computing
+function - the decision-sequence counterpart to compute_evidence() above,
+computing decision-frequency metrics from an already-executed decision
+sequence (atlas.research.backtesting's own output). This is a TYPE-only
+dependency on atlas.research.backtesting.models (ResearchDecision/
+ResearchDispositionKind), exactly the same posture already established for
+atlas.research.features.models above: reads an already-computed value,
+never imports or calls atlas.research.backtesting.service/.factory/
+.templates/.ports - Statistics still never re-executes anything, and the
+"Statistics must not depend on Backtesting" posture the roadmap's own
+Sprint 5 risk note named is honored in its intended sense (no execution
+machinery, ever) while still being able to read the data type that
+machinery produces. Still no dependency on
+atlas.research.experiment_builder, and still pure/no-I/O -
+decision_sequence_path is a plain pass-through field, never written here.
 """

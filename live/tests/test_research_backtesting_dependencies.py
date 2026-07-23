@@ -85,14 +85,17 @@ def test_backtesting_imports_nothing_explicitly_forbidden(filename):
 
 def test_nothing_outside_backtesting_and_experiment_builder_imports_it_back():
     """Sprint 1-7 (frozen) must remain completely unaware of Sprint 8.
-    atlas.research.experiment_builder is the one sanctioned exception - its
-    own Stage B/C extension (this sprint) necessarily calls
-    execute_realization()."""
+    atlas.research.experiment_builder and atlas.research.statistics are the
+    two sanctioned exceptions: Experiment Builder's own Stage B/C extension
+    necessarily calls execute_realization(); Statistics's own decision-
+    sequence Evidence extension reads the ResearchDecision TYPE only (never
+    the execution machinery) from atlas.research.backtesting.models - see
+    each package's own __init__.py."""
     research_dir = _ATLAS_ROOT / "research"
     for py_file in research_dir.rglob("*.py"):
         if _BACKTESTING_DIR == py_file.parent or _BACKTESTING_DIR in py_file.parents:
             continue
-        if py_file.parent.name == "experiment_builder":
+        if py_file.parent.name in ("experiment_builder", "statistics"):
             continue
         offending = {n for n in _atlas_imports(py_file) if n.startswith("atlas.research.backtesting")}
         assert not offending, f"{py_file} imports atlas.research.backtesting: {offending}"

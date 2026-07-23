@@ -55,8 +55,9 @@ standard-error/p-value/Monte Carlo calculations) - never for reporting
 answers honestly.
 """
 import math
-from typing import Mapping, Union
+from typing import Mapping, Optional, Union
 
+from atlas.research.backtesting.models import ResearchDecision, ResearchDispositionKind
 from atlas.research.features.models import FeatureComputed, FeatureOutcome
 from atlas.research.fingerprint import compute_fingerprint
 from atlas.research.models import Evidence, Experiment, TargetKind
@@ -157,4 +158,47 @@ def compute_evidence(
     return Evidence(
         evidence_id=evidence_id, experiment_id=experiment.experiment_id, computed_at=computed_at,
         metrics=metrics, fingerprint=fingerprint,
+    )
+
+
+def compute_decision_sequence_evidence(
+    experiment: Experiment, decisions: tuple[ResearchDecision, ...],
+    evidence_id: str, computed_at: str, decision_sequence_path: Optional[str] = None,
+) -> Evidence:
+    """Sprint 8. Statistics's own decision-sequence counterpart to
+    compute_evidence() (the Feature-series path above, Sprint 5, untouched
+    by this addition) - given an already-executed decision sequence
+    (atlas.research.backtesting's own output, never re-executed here: this
+    function reads ResearchDecision as a plain value type, exactly the
+    same "TYPE only, never the computation machinery" posture already
+    established for FeatureOutcome/FeatureComputed above), computes
+    decision-frequency metrics: how often the Realization acted, never
+    whether those actions were profitable. Realized P&L/win-rate
+    statistics require matching decisions against price data plus
+    execution-cost assumptions (commissions, slippage) that appear nowhere
+    in the frozen roadmap for this sprint - deliberately not invented
+    here, not a gap silently papered over.
+
+    decision_sequence_path is a plain pass-through, never written by this
+    function - Statistics stays pure/no-I/O (this package's own __init__.py),
+    exactly mirroring Experiment.profiling_report_path's own long-standing
+    "always None until something else deliberately writes one" precedent.
+
+    sample_size is always present, even when it is 0 (Design Principle
+    III.4 - insufficient data is its own explicit outcome, never silently
+    omitted)."""
+    n = len(decisions)
+    metrics: dict[str, _Number] = {"decision_sequence__sample_size": n}
+    computable = n > 0
+    metrics["decision_sequence__computable"] = computable
+    if computable:
+        for kind in ResearchDispositionKind:
+            count = sum(1 for d in decisions if d.disposition == kind)
+            metrics[f"decision_sequence__{kind.value}_count"] = count
+            metrics[f"decision_sequence__{kind.value}_rate"] = count / n
+
+    fingerprint = compute_fingerprint({"experiment_id": experiment.experiment_id, "metrics": metrics})
+    return Evidence(
+        evidence_id=evidence_id, experiment_id=experiment.experiment_id, computed_at=computed_at,
+        metrics=metrics, fingerprint=fingerprint, decision_sequence_path=decision_sequence_path,
     )

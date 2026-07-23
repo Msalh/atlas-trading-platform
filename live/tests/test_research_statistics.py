@@ -9,6 +9,7 @@ and Sprint 6.1's own effective_sample_size autocorrelation correction.
 import random
 
 import pytest
+from atlas.research.backtesting.models import ResearchDecision, ResearchDispositionKind
 from atlas.research.features.models import FeatureComputed, FeatureInsufficientData
 from atlas.research.models import (
     AcceptanceCriterion,
@@ -18,7 +19,12 @@ from atlas.research.models import (
     Experiment,
     TargetKind,
 )
-from atlas.research.statistics.service import _autocorrelation, _effective_sample_size, compute_evidence
+from atlas.research.statistics.service import (
+    _autocorrelation,
+    _effective_sample_size,
+    compute_decision_sequence_evidence,
+    compute_evidence,
+)
 
 _OCCURRED_AT = "2026-07-22T00:00:00+00:00"
 
@@ -252,3 +258,66 @@ def test_compute_evidence_publishes_effective_sample_size_alongside_unchanged_ra
     assert evidence.metrics["mean_atr__sample_size"] == 60  # unchanged, raw, honest count
     assert evidence.metrics["mean_atr__effective_sample_size"] < 60  # corrected, materially smaller
     assert evidence.metrics["mean_atr__effective_sample_size"] >= 1.0
+
+
+# ---- Sprint 8: compute_decision_sequence_evidence() ----
+
+def _decision(disposition: ResearchDispositionKind, occurred_at: str = _OCCURRED_AT) -> ResearchDecision:
+    return ResearchDecision(
+        occurred_at=occurred_at, realization_id="r1", disposition=disposition,
+        reason_codes=("stub",), context_fingerprint="0123456789abcdef",
+    )
+
+
+def test_compute_decision_sequence_evidence_empty_sequence_is_explicitly_not_computable():
+    experiment = _experiment((_criterion_result(),))
+    evidence = compute_decision_sequence_evidence(experiment, (), evidence_id="ev1", computed_at=_OCCURRED_AT)
+    assert evidence.metrics["decision_sequence__sample_size"] == 0
+    assert evidence.metrics["decision_sequence__computable"] is False
+    assert "decision_sequence__enter_long_count" not in evidence.metrics
+
+
+def test_compute_decision_sequence_evidence_counts_and_rates_every_disposition():
+    experiment = _experiment((_criterion_result(),))
+    decisions = (
+        _decision(ResearchDispositionKind.NO_ACTION),
+        _decision(ResearchDispositionKind.NO_ACTION),
+        _decision(ResearchDispositionKind.ENTER_LONG),
+        _decision(ResearchDispositionKind.EXIT),
+    )
+    evidence = compute_decision_sequence_evidence(experiment, decisions, evidence_id="ev1", computed_at=_OCCURRED_AT)
+
+    assert evidence.metrics["decision_sequence__sample_size"] == 4
+    assert evidence.metrics["decision_sequence__computable"] is True
+    assert evidence.metrics["decision_sequence__no_action_count"] == 2
+    assert evidence.metrics["decision_sequence__no_action_rate"] == pytest.approx(0.5)
+    assert evidence.metrics["decision_sequence__enter_long_count"] == 1
+    assert evidence.metrics["decision_sequence__enter_long_rate"] == pytest.approx(0.25)
+    assert evidence.metrics["decision_sequence__enter_short_count"] == 0
+    assert evidence.metrics["decision_sequence__exit_count"] == 1
+
+
+def test_compute_decision_sequence_evidence_decision_sequence_path_is_a_plain_pass_through():
+    experiment = _experiment((_criterion_result(),))
+    evidence = compute_decision_sequence_evidence(
+        experiment, (_decision(ResearchDispositionKind.NO_ACTION),),
+        evidence_id="ev1", computed_at=_OCCURRED_AT, decision_sequence_path="/tmp/seq.json",
+    )
+    assert evidence.decision_sequence_path == "/tmp/seq.json"
+
+
+def test_compute_decision_sequence_evidence_defaults_decision_sequence_path_to_none():
+    experiment = _experiment((_criterion_result(),))
+    evidence = compute_decision_sequence_evidence(
+        experiment, (_decision(ResearchDispositionKind.NO_ACTION),), evidence_id="ev1", computed_at=_OCCURRED_AT,
+    )
+    assert evidence.decision_sequence_path is None
+
+
+def test_compute_decision_sequence_evidence_is_deterministic():
+    experiment = _experiment((_criterion_result(),))
+    decisions = (_decision(ResearchDispositionKind.ENTER_LONG), _decision(ResearchDispositionKind.EXIT))
+    first = compute_decision_sequence_evidence(experiment, decisions, evidence_id="ev1", computed_at=_OCCURRED_AT)
+    second = compute_decision_sequence_evidence(experiment, decisions, evidence_id="ev1", computed_at=_OCCURRED_AT)
+    assert first.fingerprint == second.fingerprint
+    assert first.metrics == second.metrics

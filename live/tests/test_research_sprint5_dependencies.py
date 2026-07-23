@@ -45,6 +45,7 @@ _EXPERIMENT_BUILDER_ALLOWED: dict[str, frozenset[str]] = {
 _STATISTICS_ALLOWED: dict[str, frozenset[str]] = {
     "__init__.py": frozenset(),
     "service.py": frozenset({
+        "atlas.research.backtesting.models",
         "atlas.research.features.models",
         "atlas.research.fingerprint",
         "atlas.research.models",
