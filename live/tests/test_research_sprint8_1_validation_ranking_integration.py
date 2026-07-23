@@ -87,16 +87,21 @@ def _mc_spec() -> MonteCarloSpec:
     return MonteCarloSpec(n_draws=2000, seed=42)
 
 
-def _decision_sequence_evidence(tmp_path: Path, evidence_id: str, closes: list[float], threshold: float = 2.0):
+def _decision_sequence_evidence(
+    tmp_path: Path, evidence_id: str, closes: list[float], threshold: float = 2.0, realization_id: str | None = None,
+):
     """Real pipeline: Hypothesis -> Realization -> real Replay Bridge
     frames -> execute_realization() -> decision sequence ->
-    compute_decision_sequence_evidence() - returns (experiment, evidence)."""
+    compute_decision_sequence_evidence() - returns (experiment, evidence,
+    realization). realization_id lets a caller construct two distinct
+    Realizations of the same Hypothesis (required for lineage
+    distinguishability tests) - defaults to a per-evidence-id value."""
     hypothesis = _hypothesis(f"h_{evidence_id}", (_DECISION_SEQUENCE_CRITERION,))
     realization_tracker = RealizationRegistry(tmp_path / f"realizations_{evidence_id}.jsonl")
     realization = construct_realization(
         hypothesis, RealizationKind.TEMPLATED_STRATEGY, "v1", {"threshold": threshold},
-        RealizationTemplateKind.THRESHOLD_CROSS, ProvenanceKind.HUMAN, f"r_{evidence_id}", _BASE.isoformat(),
-        realization_tracker,
+        RealizationTemplateKind.THRESHOLD_CROSS, ProvenanceKind.HUMAN, realization_id or f"r_{evidence_id}",
+        _BASE.isoformat(), realization_tracker,
     )
     states = _states([3.0] * len(closes), closes)
     frames = build_replay_frames_for_window(states)
@@ -109,7 +114,7 @@ def _decision_sequence_evidence(tmp_path: Path, evidence_id: str, closes: list[f
         outcome.experiment, outcome.decision_sequence, tuple(frames), (_DECISION_SEQUENCE_CRITERION,),
         evidence_id=evidence_id, computed_at=_BASE.isoformat(),
     )
-    return outcome.experiment, evidence
+    return outcome.experiment, evidence, realization
 
 
 # ---- predetermined verdicts (test 9): not a smoke test ----
@@ -119,8 +124,8 @@ def test_decision_sequence_evidence_produces_a_deterministic_supported_verdict(t
     clearly clears 0.1 in-sample and out-of-sample."""
     closes_in = ([1.0, 3.0] * 10)  # crosses up/down repeatedly -> multiple ENTER_LONG events
     closes_out = ([1.0, 3.0] * 10)
-    _, ev_in = _decision_sequence_evidence(tmp_path, "ev_in", closes_in)
-    _, ev_out = _decision_sequence_evidence(tmp_path, "ev_out", closes_out)
+    _, ev_in, realization = _decision_sequence_evidence(tmp_path, "ev_in", closes_in)
+    _, ev_out, _ = _decision_sequence_evidence(tmp_path, "ev_out", closes_out)
 
     assert ev_in.metrics["enter_long_rate__mean"] > 0.1
     assert ev_out.metrics["enter_long_rate__mean"] > 0.1
@@ -129,8 +134,10 @@ def test_decision_sequence_evidence_produces_a_deterministic_supported_verdict(t
         hypothesis_id="h_decision_sequence", in_sample_evidence=(ev_in,), out_of_sample_evidence=(ev_out,),
         criterion=_DECISION_SEQUENCE_CRITERION, walk_forward_spec=_wf_spec(), monte_carlo_spec=_mc_spec(),
         batch_size=1, validation_id="v1", validated_at=_BASE.isoformat(),
+        realization_id=realization.realization_id,
     )
     assert result.verdict == ValidationVerdict.SUPPORTED
+    assert result.realization_id == realization.realization_id
 
 
 def test_decision_sequence_evidence_produces_a_deterministic_not_supported_verdict(tmp_path: Path):
@@ -138,8 +145,8 @@ def test_decision_sequence_evidence_produces_a_deterministic_not_supported_verdi
     exactly 0.0, clearly below 0.1."""
     closes_in = ([1.0, 3.0] * 10)
     closes_out = [1.0] * 20  # flat - never crosses, enter_long_rate = 0.0
-    _, ev_in = _decision_sequence_evidence(tmp_path, "ev_in", closes_in)
-    _, ev_out = _decision_sequence_evidence(tmp_path, "ev_out", closes_out)
+    _, ev_in, realization = _decision_sequence_evidence(tmp_path, "ev_in", closes_in)
+    _, ev_out, _ = _decision_sequence_evidence(tmp_path, "ev_out", closes_out)
 
     assert ev_out.metrics["enter_long_rate__mean"] == 0.0
 
@@ -147,6 +154,7 @@ def test_decision_sequence_evidence_produces_a_deterministic_not_supported_verdi
         hypothesis_id="h_decision_sequence", in_sample_evidence=(ev_in,), out_of_sample_evidence=(ev_out,),
         criterion=_DECISION_SEQUENCE_CRITERION, walk_forward_spec=_wf_spec(), monte_carlo_spec=_mc_spec(),
         batch_size=1, validation_id="v1", validated_at=_BASE.isoformat(),
+        realization_id=realization.realization_id,
     )
     assert result.verdict == ValidationVerdict.NOT_SUPPORTED
 
@@ -159,8 +167,8 @@ def test_insufficient_decision_sequence_data_is_inconclusive_not_not_supported(t
     never NOT_SUPPORTED, for data it could not measure at all."""
     closes_in = ([1.0, 3.0] * 10)
     closes_out = [1.0]  # n=1, insufficient for the inferential family
-    _, ev_in = _decision_sequence_evidence(tmp_path, "ev_in", closes_in)
-    _, ev_out = _decision_sequence_evidence(tmp_path, "ev_out", closes_out)
+    _, ev_in, realization = _decision_sequence_evidence(tmp_path, "ev_in", closes_in)
+    _, ev_out, _ = _decision_sequence_evidence(tmp_path, "ev_out", closes_out)
 
     assert ev_out.metrics["enter_long_rate__computable"] is False
 
@@ -168,6 +176,7 @@ def test_insufficient_decision_sequence_data_is_inconclusive_not_not_supported(t
         hypothesis_id="h_decision_sequence", in_sample_evidence=(ev_in,), out_of_sample_evidence=(ev_out,),
         criterion=_DECISION_SEQUENCE_CRITERION, walk_forward_spec=_wf_spec(), monte_carlo_spec=_mc_spec(),
         batch_size=1, validation_id="v1", validated_at=_BASE.isoformat(),
+        realization_id=realization.realization_id,
     )
     assert result.verdict == ValidationVerdict.INCONCLUSIVE
     assert result.verdict != ValidationVerdict.NOT_SUPPORTED
@@ -180,14 +189,16 @@ def test_full_pipeline_decision_sequence_and_feature_based_hypotheses_share_one_
     # ---- decision-sequence-based ValidationResult, real pipeline throughout ----
     closes_in = ([1.0, 3.0] * 10)
     closes_out = ([1.0, 3.0] * 10)
-    _, ev_in_bc = _decision_sequence_evidence(tmp_path, "ev_in_bc", closes_in)
-    _, ev_out_bc = _decision_sequence_evidence(tmp_path, "ev_out_bc", closes_out)
+    _, ev_in_bc, realization_bc = _decision_sequence_evidence(tmp_path, "ev_in_bc", closes_in)
+    _, ev_out_bc, _ = _decision_sequence_evidence(tmp_path, "ev_out_bc", closes_out)
     result_bc = validate(
         hypothesis_id="h_stage_bc", in_sample_evidence=(ev_in_bc,), out_of_sample_evidence=(ev_out_bc,),
         criterion=_DECISION_SEQUENCE_CRITERION, walk_forward_spec=_wf_spec(), monte_carlo_spec=_mc_spec(),
         batch_size=1, validation_id="v_stage_bc", validated_at=_BASE.isoformat(),
+        realization_id=realization_bc.realization_id,
     )
     assert result_bc.verdict == ValidationVerdict.SUPPORTED
+    assert result_bc.realization_id == realization_bc.realization_id
 
     # ---- Feature-based (Stage A) ValidationResult, real pipeline throughout ----
     stage_a_hypothesis = _hypothesis("h_stage_a", (_FEATURE_CRITERION,))
@@ -230,6 +241,12 @@ def test_full_pipeline_decision_sequence_and_feature_based_hypotheses_share_one_
     ranked_hypothesis_ids = {e.hypothesis_id for e in snapshot.entries}
     assert ranked_hypothesis_ids == {"h_stage_bc", "h_stage_a"}
     assert len(snapshot.excluded_validation_ids) == 0
+
+    # ---- realization lineage: decision-bearing entry keeps its exact
+    #      Realization id; decision-free (Stage A) entry legitimately has none ----
+    entry_by_hypothesis = {e.hypothesis_id: e for e in snapshot.entries}
+    assert entry_by_hypothesis["h_stage_bc"].realization_id == realization_bc.realization_id
+    assert entry_by_hypothesis["h_stage_a"].realization_id is None
 
 
 # ---- dependency audit (test 13): Validation/Ranking gained nothing new ----

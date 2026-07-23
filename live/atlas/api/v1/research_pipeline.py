@@ -174,6 +174,13 @@ def _run_smoke_test(stores: LedgerStores) -> JSONResponse:
         criterion=criterion, walk_forward_spec=WalkForwardSpec(1, 1, "smoke test single fold"),
         monte_carlo_spec=MonteCarloSpec(n_draws=2000, seed=42), batch_size=1,
         validation_id=f"smoke_v_{token}", validated_at=now_iso,
+        # Realization lineage correction: this is a decision-bearing
+        # (DECISION_SEQUENCE-target) hypothesis, tested against exactly
+        # one Realization, constructed above and threaded through both
+        # Experiments that produced the Evidence being validated here -
+        # the identifier comes straight from that same lineage, never
+        # inferred or looked up separately.
+        realization_id=realization.realization_id,
     )
     # Validation is pure/no-I/O by design (frozen since Sprint 6) - same
     # orchestration-level responsibility as Evidence above, via the

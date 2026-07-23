@@ -32,7 +32,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from atlas.api.deps import get_ledger_readiness, get_ledger_stores
-from atlas.research.models import PromotionDecision
+from atlas.research.models import PromotionDecision, TargetKind
 from atlas.research.promotion.service import list_promotion_candidates, record_decision
 from atlas.research.serialization import promotion_record_to_dict
 from atlas.research_deploy.startup_check import LedgerReadiness, LedgerStores
@@ -41,8 +41,14 @@ router = APIRouter()
 
 
 class PromotionDecisionRequest(BaseModel):
+    """realization_id is deliberately NOT a field here - a reviewer must
+    never be able to supply it manually (that would let a human assert
+    lineage rather than the Ledger proving it). decide_promotion() below
+    resolves the exact realization_id itself, straight from the same
+    Experiment/Evidence/Validation lineage that produced the candidate's
+    LeaderboardEntry - see _resolve_realization_id()."""
+
     hypothesis_id: str
-    realization_id: Optional[str] = None
     decision: Literal["approved", "declined", "deferred"]
     reviewer: str
     rationale: str
@@ -56,6 +62,70 @@ def _degraded_response(readiness: LedgerReadiness) -> Optional[JSONResponse]:
         {"ok": False, "error": f"research ledger storage is degraded: {readiness.reason}", "reason": readiness.reason},
         status_code=503,
     )
+
+
+def _resolve_realization_id(hypothesis_id: str, ledger_stores: LedgerStores) -> tuple[Optional[str], Optional[JSONResponse]]:
+    """The one place a promotion decision's realization_id comes from -
+    never the reviewer, never inferred, never a 'latest Realization for
+    this Hypothesis' lookup. Reads the exact realization_id straight off
+    the hypothesis's own entry in the latest LeaderboardSnapshot (the same
+    snapshot list_promotion_candidates() itself scopes to) - that entry's
+    realization_id is itself only ever set by rank() reading it directly
+    off the ValidationResult that produced it (see
+    atlas.research.ranking.service.rank()), so this is the exact lineage,
+    not a separate lookup. Deliberately does NOT consult
+    ledger_stores.hypotheses - the current pipeline (see
+    atlas.api.v1.research_pipeline._run_smoke_test) never persists
+    Hypothesis objects into the Ledger, so that registry cannot be relied
+    on as a signal here.
+
+    When the entry's own realization_id is None, whether that is the
+    correct decision-free answer or a lost-lineage problem is
+    disambiguated using the exact ValidationResult that produced the
+    entry (entry.validation_id -> its criteria_results' own
+    AcceptanceCriterion.target_kind) - never the Hypothesis, never a
+    separate hypothesis_id-only lookup.
+
+    Returns (realization_id, None) on success - realization_id may
+    legitimately be None for a decision-free hypothesis, or when there is
+    no current candidate entry to resolve against at all (pre-existing,
+    unchanged behavior for ad hoc/manual decisions the promotion API has
+    always allowed). Returns (None, error_response) if the entry is
+    decision-bearing (its ValidationResult used a DECISION_SEQUENCE
+    criterion) but no realization_id could be resolved - refusing to
+    record rather than guessing."""
+    snapshots = ledger_stores.leaderboard_snapshots.all()
+    if not snapshots:
+        return None, None
+
+    latest = max(snapshots, key=lambda s: s.created_at)
+    matching_entry = next((e for e in latest.entries if e.hypothesis_id == hypothesis_id), None)
+    if matching_entry is None:
+        return None, None
+    if matching_entry.realization_id is not None:
+        return matching_entry.realization_id, None
+
+    validation_result = ledger_stores.validation_results.get(matching_entry.validation_id)
+    if validation_result is None:
+        return None, None
+
+    is_decision_bearing = any(
+        cr.criterion.target_kind == TargetKind.DECISION_SEQUENCE for cr in validation_result.criteria_results
+    )
+    if is_decision_bearing:
+        return None, JSONResponse(
+            {
+                "ok": False,
+                "error": (
+                    f"hypothesis {hypothesis_id!r}'s current candidate entry is decision-bearing "
+                    "(validated against a DECISION_SEQUENCE criterion) but carries no realization_id "
+                    "- refusing to record a promotion decision without exact Realization lineage"
+                ),
+                "reason": "realization_id_unresolved",
+            },
+            status_code=422,
+        )
+    return None, None
 
 
 def _candidate_to_dict(candidate) -> dict:
@@ -114,11 +184,15 @@ async def decide_promotion(
             status_code=503,
         )
 
+    resolved_realization_id, resolution_error = _resolve_realization_id(body.hypothesis_id, ledger_stores)
+    if resolution_error is not None:
+        return resolution_error
+
     promotion_id = f"promotion_{uuid.uuid4().hex[:12]}"
     decided_at = datetime.now(timezone.utc).isoformat()
     try:
         record = record_decision(
-            hypothesis_id=body.hypothesis_id, realization_id=body.realization_id,
+            hypothesis_id=body.hypothesis_id, realization_id=resolved_realization_id,
             decision=PromotionDecision(body.decision), reviewer=body.reviewer, rationale=body.rationale,
             evidence_snapshot_ref=body.evidence_snapshot_ref, promotion_id=promotion_id, decided_at=decided_at,
             tracker=ledger_stores.promotions,
