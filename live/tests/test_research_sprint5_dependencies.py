@@ -2,10 +2,20 @@
 Phase N4 Sprint 5. Dependency boundary audit for atlas.research.experiment_builder
 and atlas.research.statistics - the same AST-based, permanent-test approach
 every prior sprint's own boundary has used. Proves: Statistics never depends
-on Experiment Builder (or vice versa); neither imports atlas.replay_engine,
-atlas.research.replay_bridge, or atlas.research.stores from Statistics;
-neither modifies or is imported back by atlas.research.features or Sprint
-1-3 modules.
+on Experiment Builder (or vice versa); neither imports atlas.replay_engine
+directly; atlas.research.stores is never imported by either; neither
+modifies or is imported back by atlas.research.features or Sprint 1-3
+modules.
+
+Sprint 8 update: Experiment Builder's own allowlist gains
+atlas.research.backtesting and atlas.research.replay_bridge (Stage B/C's
+own sanctioned new dependencies - see experiment_builder/__init__.py).
+Statistics's own allowlist gains atlas.research.backtesting.models (the
+ResearchDecision type only, for its own decision-sequence Evidence
+extension). Neither package is permitted to import atlas.replay_engine
+directly even now - atlas.research.replay_bridge remains the only Research
+Engine module allowed to do that, per its own frozen Sprint 3 boundary
+test.
 """
 import ast
 from pathlib import Path
@@ -20,11 +30,14 @@ _EXPERIMENT_BUILDER_ALLOWED: dict[str, frozenset[str]] = {
     "__init__.py": frozenset(),
     "service.py": frozenset({
         "atlas.market_engine.models",
+        "atlas.research.backtesting.models",
+        "atlas.research.backtesting.service",
         "atlas.research.features.models",
         "atlas.research.features.registry",
         "atlas.research.fingerprint",
         "atlas.research.models",
         "atlas.research.ports",
+        "atlas.research.replay_bridge",
         "atlas.research.service",
     }),
 }

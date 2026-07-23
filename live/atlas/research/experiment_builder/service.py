@@ -5,9 +5,11 @@ for the full boundary and cache-hit semantics.
 """
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Mapping, Optional
+from typing import Mapping, Optional, Union
 
 from atlas.market_engine.models import MarketState
+from atlas.research.backtesting.models import ResearchDecision
+from atlas.research.backtesting.service import execute_realization
 from atlas.research.features.models import FeatureComputed, FeatureOutcome
 from atlas.research.features.registry import REGISTRY, FeatureRegistration
 from atlas.research.fingerprint import compute_fingerprint
@@ -19,9 +21,15 @@ from atlas.research.models import (
     EvaluationMode,
     Experiment,
     Hypothesis,
+    ProvenanceKind,
+    Realization,
+    RealizationKind,
+    RealizationStatus,
+    RealizationTemplateKind,
     TargetKind,
 )
-from atlas.research.ports import ExperimentStore
+from atlas.research.ports import ExperimentStore, RealizationStore
+from atlas.research.replay_bridge import ReplayFrame
 from atlas.research.service import build_dataset_manifest, current_code_version
 
 
@@ -62,17 +70,21 @@ def resolve_feature_pins(
     return tuple(sorted(pins, key=lambda p: p["feature_id"]))
 
 
-def compute_semantic_fingerprint(hypothesis: Hypothesis, dataset_manifest: DatasetManifest) -> str:
+def compute_semantic_fingerprint(
+    hypothesis: Hypothesis, dataset_manifest: DatasetManifest, realization_id: Optional[str] = None,
+) -> str:
     """{hypothesis_id, realization_id, dataset REQUEST fields,
     evaluation_mode} only - see models.py's own Experiment docstring for
-    the full reasoning. realization_id is always None this sprint (Stage
-    A); evaluation_mode is always SINGLE (no Monte Carlo/walk-forward
-    until Sprint 6). feature_refs is not separately hashed here: it lives
-    on the (immutable, append-only) Hypothesis itself, already captured
+    the full reasoning. realization_id defaults to None (Stage A, every
+    call site through Sprint 7); Sprint 8's build_realization_experiment()
+    is the first caller to pass a real one, for a Stage B/C Experiment.
+    evaluation_mode is always SINGLE (no Monte Carlo/walk-forward until
+    Sprint 6). feature_refs is not separately hashed here: it lives on
+    the (immutable, append-only) Hypothesis itself, already captured
     transitively via hypothesis_id."""
     return compute_fingerprint({
         "hypothesis_id": hypothesis.hypothesis_id,
-        "realization_id": None,
+        "realization_id": realization_id,
         "dataset_request": {
             "symbol": dataset_manifest.symbol, "timeframe": dataset_manifest.timeframe,
             "requested_start": dataset_manifest.requested_start, "requested_end": dataset_manifest.requested_end,
@@ -84,11 +96,16 @@ def compute_semantic_fingerprint(hypothesis: Hypothesis, dataset_manifest: Datas
 def compute_execution_fingerprint(
     semantic_fingerprint: str, code_version: Optional[str],
     dataset_manifest: DatasetManifest, feature_pins: tuple[dict, ...],
+    realization_fingerprint: Optional[str] = None,
 ) -> str:
     """{semantic_fingerprint, code_version, seed, dataset RESOLVED fields,
-    feature_pins} - every axis that could change the computed result,
-    nested rather than duplicated. seed is always None this sprint
-    (SINGLE evaluation_mode has no stochastic component)."""
+    feature_pins, realization_fingerprint} - every axis that could change
+    the computed result, nested rather than duplicated. seed is always
+    None this sprint (SINGLE evaluation_mode has no stochastic component).
+    realization_fingerprint defaults to None (Stage A); Sprint 8 pins the
+    full Realization.fingerprint here, not just its id, so a Realization's
+    own fingerprint changing (e.g. a different template_kind) changes
+    every downstream execution_fingerprint that references it too."""
     return compute_fingerprint({
         "semantic_fingerprint": semantic_fingerprint,
         "code_version": code_version,
@@ -100,7 +117,44 @@ def compute_execution_fingerprint(
             "source_description": dataset_manifest.source_description,
         },
         "feature_pins": list(feature_pins),
+        "realization_fingerprint": realization_fingerprint,
     })
+
+
+def construct_realization(
+    hypothesis: Hypothesis, kind: RealizationKind, version: str,
+    parameters: Mapping[str, Union[int, float, str, bool]], template_kind: Optional[RealizationTemplateKind],
+    provenance: ProvenanceKind, realization_id: str, created_at: str, tracker: RealizationStore,
+) -> Realization:
+    """Sprint 8. Constructs and records (via the Sprint 2 RealizationStore,
+    unused by any production code path until now) a Realization for
+    `hypothesis`. fingerprint is a curated projection of {hypothesis_id,
+    kind, version, parameters, template_kind} - excludes realization_id
+    (storage key), status/provenance/created_at (lifecycle/audit, never
+    identity), matching Feature's own corrected fingerprint discipline.
+    template_kind participates because it changes executable meaning: two
+    Realizations differing only in template_kind must fingerprint
+    differently - see Realization.template_kind's own docstring.
+
+    A Realization's own lifecycle is independent of any one Experiment -
+    the same Realization may back many Experiments across different
+    datasets (see build_realization_experiment()) - so this is a
+    standalone construction step, never folded into experiment building
+    itself."""
+    fingerprint = compute_fingerprint({
+        "hypothesis_id": hypothesis.hypothesis_id,
+        "kind": kind.value,
+        "version": version,
+        "parameters": dict(parameters),
+        "template_kind": template_kind.value if template_kind is not None else None,
+    })
+    realization = Realization(
+        realization_id=realization_id, hypothesis_id=hypothesis.hypothesis_id, kind=kind, version=version,
+        parameters=parameters, status=RealizationStatus.CONSTRUCTED, provenance=provenance,
+        created_at=created_at, fingerprint=fingerprint, template_kind=template_kind,
+    )
+    tracker.register(realization)
+    return realization
 
 
 def _evaluate_feature_criterion(criterion: AcceptanceCriterion, feature_series: tuple[FeatureOutcome, ...]) -> CriterionResult:
@@ -133,11 +187,20 @@ class ExperimentBuildOutcome:
     the blueprint's entities, just a way to hand back the Experiment
     together with whether it was newly executed and the raw per-bar
     Feature series statistics will need. feature_series maps feature_id
-    -> that feature's own per-bar outcomes across the dataset."""
+    -> that feature's own per-bar outcomes across the dataset.
+
+    decision_sequence (Sprint 8) is populated only by
+    build_realization_experiment() (Stage B/C) - None for every Stage A
+    Experiment (build_experiment()) and also None on a Stage B/C cache
+    hit, where execute_realization() is never re-run. Returned raw here,
+    exactly like feature_series, for atlas.research.statistics's own
+    extension to separately turn into Evidence - this package never
+    computes Evidence itself, decision-bearing or not."""
 
     experiment: Experiment
     is_new_execution: bool
     feature_series: Mapping[str, tuple[FeatureOutcome, ...]]
+    decision_sequence: Optional[tuple[ResearchDecision, ...]] = None
 
 
 def build_experiment(
@@ -208,3 +271,104 @@ def build_experiment(
     )
     tracker.record(experiment)
     return ExperimentBuildOutcome(experiment=experiment, is_new_execution=True, feature_series=feature_series)
+
+
+def build_realization_experiment(
+    hypothesis: Hypothesis, realization: Realization, frames: list[ReplayFrame],
+    requested_start: str, requested_end: str, source_description: str,
+    generated_at: datetime, experiment_id: str, tracker: ExperimentStore,
+) -> ExperimentBuildOutcome:
+    """Sprint 8, Stage B/C. Mirrors build_experiment()'s own construction
+    logic exactly - same symbol/timeframe validation, same TargetKind.FEATURE-
+    only criteria check (a Realization tests the same underlying Hypothesis,
+    whose acceptance_criteria shape is unchanged), same cache-hit-vs-new-
+    execution decision - extended to (a) thread realization.realization_id
+    into semantic_fingerprint and realization.fingerprint into
+    execution_fingerprint (see both functions' own docstrings), and (b)
+    additionally execute the Realization (atlas.research.backtesting.
+    execute_realization()) to produce a decision sequence, returned raw via
+    ExperimentBuildOutcome.decision_sequence for Statistics's own extension
+    to separately turn into Evidence - this function never computes
+    Evidence itself.
+
+    execute_realization() is deliberately called AFTER the cache-hit check,
+    not before: unlike feature_series (which execution_fingerprint's own
+    RESOLVED dataset facts structurally require), the decision sequence
+    itself is never a fingerprint input - only realization.fingerprint, an
+    already-known value, is - so a cache hit skips the backtesting compute
+    cost entirely, not just the Ledger write.
+
+    Takes frames (not states) as its one dataset parameter - states are
+    derived internally (frame.market_state) for reuse of
+    build_dataset_manifest()/evaluate_feature_series(), and frames are
+    passed to execute_realization() unchanged. A single parameter, never
+    two independently-supplied sequences that could silently disagree."""
+    states = [frame.market_state for frame in frames]
+    if states:
+        actual_symbol = states[0].symbol.ticker
+        actual_timeframe = states[0].timeframe.value
+        if actual_symbol != hypothesis.dataset_symbol or actual_timeframe != hypothesis.dataset_timeframe:
+            raise ValueError(
+                f"frames are for {actual_symbol}/{actual_timeframe}, but hypothesis "
+                f"{hypothesis.hypothesis_id!r} specifies {hypothesis.dataset_symbol}/{hypothesis.dataset_timeframe}"
+            )
+    if realization.hypothesis_id != hypothesis.hypothesis_id:
+        raise ValueError(
+            f"realization {realization.realization_id!r} targets hypothesis_id "
+            f"{realization.hypothesis_id!r}, not {hypothesis.hypothesis_id!r}"
+        )
+
+    for criterion in hypothesis.acceptance_criteria:
+        if criterion.target_kind != TargetKind.FEATURE:
+            raise ValueError(
+                f"{hypothesis.hypothesis_id}: build_realization_experiment only supports TargetKind.FEATURE "
+                f"criteria this sprint, got {criterion.target_kind.value!r} for {criterion.target!r}"
+            )
+        if criterion.target not in hypothesis.feature_refs:
+            raise ValueError(
+                f"{hypothesis.hypothesis_id}: criterion targets feature_id {criterion.target!r}, "
+                f"which is not listed in the hypothesis's own feature_refs {hypothesis.feature_refs}"
+            )
+
+    manifest = build_dataset_manifest(states, requested_start, requested_end, source_description, generated_at)
+    semantic_fingerprint = compute_semantic_fingerprint(hypothesis, manifest, realization_id=realization.realization_id)
+
+    feature_ids = sorted({c.target for c in hypothesis.acceptance_criteria})
+    feature_pins = resolve_feature_pins(feature_ids)
+    registrations_by_id = {r.feature.feature_id: r for r in REGISTRY}
+    feature_series = {
+        feature_id: evaluate_feature_series(states, registrations_by_id[feature_id]) for feature_id in feature_ids
+    }
+
+    code_version = current_code_version()
+    execution_fingerprint = compute_execution_fingerprint(
+        semantic_fingerprint, code_version, manifest, feature_pins, realization_fingerprint=realization.fingerprint,
+    )
+
+    exact_match = next(
+        (e for e in tracker.for_hypothesis(hypothesis.hypothesis_id) if e.execution_fingerprint == execution_fingerprint),
+        None,
+    )
+    if exact_match is not None:
+        return ExperimentBuildOutcome(
+            experiment=exact_match, is_new_execution=False, feature_series=feature_series, decision_sequence=None,
+        )
+
+    criteria_results = tuple(
+        _evaluate_feature_criterion(c, feature_series[c.target]) for c in hypothesis.acceptance_criteria
+    )
+    passed = all(r.passed for r in criteria_results)
+    decision_sequence = execute_realization(realization, frames)
+
+    experiment = Experiment(
+        experiment_id=experiment_id, hypothesis_id=hypothesis.hypothesis_id,
+        executed_at=generated_at.astimezone(timezone.utc).isoformat(), code_version=code_version,
+        dataset_manifest=manifest, criteria_results=criteria_results, passed=passed,
+        profiling_report_path=None, realization_id=realization.realization_id,
+        semantic_fingerprint=semantic_fingerprint, execution_fingerprint=execution_fingerprint,
+    )
+    tracker.record(experiment)
+    return ExperimentBuildOutcome(
+        experiment=experiment, is_new_execution=True, feature_series=feature_series,
+        decision_sequence=decision_sequence,
+    )

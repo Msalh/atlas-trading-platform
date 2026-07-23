@@ -10,12 +10,15 @@ from pathlib import Path
 
 import pytest
 from atlas.core.events import Event
-from atlas.core.primitives import Symbol, Timeframe
+from atlas.core.primitives import Price, Symbol, Timeframe
 from atlas.market_engine.models import BarStatus, MarketState
+from atlas.research.backtesting.models import ResearchDispositionKind
 from atlas.research.experiment_builder.service import (
     build_experiment,
+    build_realization_experiment,
     compute_execution_fingerprint,
     compute_semantic_fingerprint,
+    construct_realization,
     evaluate_feature_series,
     resolve_feature_pins,
 )
@@ -25,10 +28,14 @@ from atlas.research.models import (
     CriterionKind,
     DatasetManifest,
     Hypothesis,
+    ProvenanceKind,
+    RealizationKind,
+    RealizationStatus,
+    RealizationTemplateKind,
     TargetKind,
 )
 from atlas.research.replay_bridge import build_replay_frames_for_window
-from atlas.research.stores import ExperimentTracker
+from atlas.research.stores import ExperimentTracker, RealizationRegistry
 
 _BASE = datetime(2026, 7, 20, 13, 0, tzinfo=timezone.utc)
 _MEAN_ATR = REGISTRY[0]  # the one Sprint 4 Registered feature: mean_atr, window=14
@@ -290,3 +297,200 @@ def test_build_experiment_over_real_replay_bridge_output(tmp_path: Path):
     assert outcome.experiment.criteria_results[0].actual_value == pytest.approx(expected)
     assert "mean_atr" in outcome.feature_series
     assert len(outcome.feature_series["mean_atr"]) == 20
+
+
+# ---- Sprint 8: construct_realization() ----
+
+def _series_with_close(atrs: list[float], closes: list[float], base: datetime = _BASE) -> list[MarketState]:
+    step = timedelta(minutes=5)
+    return [
+        MarketState(
+            envelope=Event(event_type="bar_closed", source="test", occurred_at=base + step * i, event_id=f"e{i}"),
+            schema_version="1.0", symbol=Symbol("MNQU6"), timeframe=Timeframe.M5, bar_status=BarStatus.CLOSED,
+            atr=atr, close=Price(value=close, tick_size=0.25),
+        )
+        for i, (atr, close) in enumerate(zip(atrs, closes))
+    ]
+
+
+def _realization_registry(tmp_path: Path) -> RealizationRegistry:
+    return RealizationRegistry(tmp_path / "realizations.jsonl")
+
+
+def test_construct_realization_records_via_realization_store(tmp_path: Path):
+    h = _hypothesis()
+    tracker = _realization_registry(tmp_path)
+    realization = construct_realization(
+        h, RealizationKind.TEMPLATED_STRATEGY, "v1", {"threshold": 100.0},
+        RealizationTemplateKind.THRESHOLD_CROSS, ProvenanceKind.HUMAN, "r1", _BASE.isoformat(), tracker,
+    )
+    assert realization.status == RealizationStatus.CONSTRUCTED
+    assert tracker.get("r1") == realization
+
+
+def test_construct_realization_fingerprint_changes_with_kind_and_template_kind_together(tmp_path: Path):
+    """RealizationTemplateKind has exactly one member this sprint
+    (THRESHOLD_CROSS - see that enum's own docstring on why a second is
+    real future work, not built speculatively now), so template_kind
+    cannot be varied in isolation while holding `kind` fixed: every
+    RealizationKind that permits a template_kind requires it non-None,
+    and every one that forbids it requires None (Realization's own
+    invariant). This proves the two axes changing together (a
+    STATISTICAL_TEST with no template vs. a TEMPLATED_STRATEGY with one)
+    still fingerprints differently, and documents why an isolated
+    template_kind-only comparison isn't constructible yet - see
+    test_construct_realization_fingerprint_changes_with_parameters for the
+    axis that IS independently testable today."""
+    h = _hypothesis()
+    tracker = _realization_registry(tmp_path)
+    statistical = construct_realization(
+        h, RealizationKind.STATISTICAL_TEST, "v1", {}, None,
+        ProvenanceKind.HUMAN, "r1", _BASE.isoformat(), tracker,
+    )
+    templated = construct_realization(
+        h, RealizationKind.TEMPLATED_STRATEGY, "v1", {}, RealizationTemplateKind.THRESHOLD_CROSS,
+        ProvenanceKind.HUMAN, "r2", _BASE.isoformat(), tracker,
+    )
+    assert statistical.fingerprint != templated.fingerprint
+
+
+def test_construct_realization_fingerprint_changes_with_parameters(tmp_path: Path):
+    h = _hypothesis()
+    tracker = _realization_registry(tmp_path)
+    a = construct_realization(
+        h, RealizationKind.TEMPLATED_STRATEGY, "v1", {"threshold": 100.0}, RealizationTemplateKind.THRESHOLD_CROSS,
+        ProvenanceKind.HUMAN, "r1", _BASE.isoformat(), tracker,
+    )
+    b = construct_realization(
+        h, RealizationKind.TEMPLATED_STRATEGY, "v1", {"threshold": 200.0}, RealizationTemplateKind.THRESHOLD_CROSS,
+        ProvenanceKind.HUMAN, "r2", _BASE.isoformat(), tracker,
+    )
+    assert a.fingerprint != b.fingerprint
+
+
+def test_construct_realization_fingerprint_deterministic(tmp_path: Path):
+    h = _hypothesis()
+    tracker_a = RealizationRegistry(tmp_path / "a.jsonl")
+    tracker_b = RealizationRegistry(tmp_path / "b.jsonl")
+    a = construct_realization(
+        h, RealizationKind.TEMPLATED_STRATEGY, "v1", {"threshold": 100.0}, RealizationTemplateKind.THRESHOLD_CROSS,
+        ProvenanceKind.HUMAN, "r1", _BASE.isoformat(), tracker_a,
+    )
+    b = construct_realization(
+        h, RealizationKind.TEMPLATED_STRATEGY, "v1", {"threshold": 100.0}, RealizationTemplateKind.THRESHOLD_CROSS,
+        ProvenanceKind.HUMAN, "r1", _BASE.isoformat(), tracker_b,
+    )
+    assert a.fingerprint == b.fingerprint
+
+
+# ---- Sprint 8: build_realization_experiment() ----
+
+def _realization(tmp_path: Path, **overrides):
+    h = overrides.pop("hypothesis", None) or _hypothesis()
+    tracker = _realization_registry(tmp_path)
+    fields = dict(
+        kind=RealizationKind.TEMPLATED_STRATEGY, version="v1", parameters={"threshold": 2.0},
+        template_kind=RealizationTemplateKind.THRESHOLD_CROSS, provenance=ProvenanceKind.HUMAN,
+        realization_id="r1", created_at=_BASE.isoformat(),
+    )
+    fields.update(overrides)
+    return construct_realization(h, tracker=tracker, **fields)
+
+
+def test_build_realization_experiment_rejects_symbol_timeframe_mismatch(tmp_path: Path):
+    tracker = ExperimentTracker(tmp_path / "experiments.jsonl")
+    h = _hypothesis(dataset_symbol="ESU6")
+    realization = _realization(tmp_path, hypothesis=h)
+    states = _series_with_close([3.0] * 20, [1.0] * 20)
+    frames = build_replay_frames_for_window(states)
+    with pytest.raises(ValueError, match="specifies"):
+        build_realization_experiment(
+            h, realization, frames, _BASE.isoformat(), _BASE.isoformat(), "test", _BASE, "e1", tracker,
+        )
+
+
+def test_build_realization_experiment_rejects_realization_for_a_different_hypothesis(tmp_path: Path):
+    tracker = ExperimentTracker(tmp_path / "experiments.jsonl")
+    h = _hypothesis()
+    other_hypothesis = _hypothesis(hypothesis_id="h2")
+    realization = _realization(tmp_path, hypothesis=other_hypothesis)
+    states = _series_with_close([3.0] * 20, [1.0] * 20)
+    frames = build_replay_frames_for_window(states)
+    with pytest.raises(ValueError, match="targets hypothesis_id"):
+        build_realization_experiment(
+            h, realization, frames, _BASE.isoformat(), _BASE.isoformat(), "test", _BASE, "e1", tracker,
+        )
+
+
+def test_build_realization_experiment_first_call_is_a_new_execution_with_a_decision_sequence(tmp_path: Path):
+    tracker = ExperimentTracker(tmp_path / "experiments.jsonl")
+    h = _hypothesis()
+    realization = _realization(tmp_path, hypothesis=h)
+    states = _series_with_close([3.0] * 20, [1.0] * 20)
+    frames = build_replay_frames_for_window(states)
+
+    outcome = build_realization_experiment(
+        h, realization, frames, _BASE.isoformat(), _BASE.isoformat(), "test", _BASE, "e1", tracker,
+    )
+    assert outcome.is_new_execution is True
+    assert outcome.experiment.realization_id == "r1"
+    assert outcome.decision_sequence is not None
+    assert len(outcome.decision_sequence) == 20
+    assert outcome.experiment.semantic_fingerprint is not None
+    assert outcome.experiment.execution_fingerprint is not None
+
+
+def test_build_realization_experiment_identical_rerun_is_an_exact_cache_hit_with_no_decision_sequence(tmp_path: Path):
+    tracker = ExperimentTracker(tmp_path / "experiments.jsonl")
+    h = _hypothesis()
+    realization = _realization(tmp_path, hypothesis=h)
+    states = _series_with_close([3.0] * 20, [1.0] * 20)
+    frames = build_replay_frames_for_window(states)
+
+    first = build_realization_experiment(
+        h, realization, frames, _BASE.isoformat(), _BASE.isoformat(), "test", _BASE, "e1", tracker,
+    )
+    second = build_realization_experiment(
+        h, realization, frames, _BASE.isoformat(), _BASE.isoformat(), "test", _BASE, "e2", tracker,
+    )
+    assert second.is_new_execution is False
+    assert second.experiment == first.experiment
+    assert second.decision_sequence is None  # never re-executed on a cache hit
+    assert len(tracker.all()) == 1
+
+
+def test_build_realization_experiment_semantic_fingerprint_differs_from_stage_a_for_the_same_hypothesis_and_dataset(tmp_path: Path):
+    """The load-bearing proof that realization_id actually participates:
+    a Stage A Experiment and a Stage B/C Experiment for the very same
+    hypothesis/dataset must be recognized as different semantic questions."""
+    experiment_tracker = ExperimentTracker(tmp_path / "experiments.jsonl")
+    h = _hypothesis()
+    realization = _realization(tmp_path, hypothesis=h)
+    states = _series_with_close([3.0] * 20, [1.0] * 20)
+    frames = build_replay_frames_for_window(states)
+
+    stage_a = build_experiment(h, states, _BASE.isoformat(), _BASE.isoformat(), "test", _BASE, "e_a", experiment_tracker)
+    stage_bc = build_realization_experiment(
+        h, realization, frames, _BASE.isoformat(), _BASE.isoformat(), "test", _BASE, "e_bc", experiment_tracker,
+    )
+    assert stage_a.experiment.semantic_fingerprint != stage_bc.experiment.semantic_fingerprint
+    assert stage_a.experiment.execution_fingerprint != stage_bc.experiment.execution_fingerprint
+
+
+def test_build_realization_experiment_produces_a_real_enter_long_over_real_replay_bridge_output(tmp_path: Path):
+    """Integration: real Replay Bridge frames, a close series that
+    genuinely crosses the Realization's own threshold, proving
+    ThresholdCrossPlugin actually fires end-to-end through
+    build_realization_experiment() rather than only in isolation."""
+    tracker = ExperimentTracker(tmp_path / "experiments.jsonl")
+    h = _hypothesis()
+    realization = _realization(tmp_path, hypothesis=h, parameters={"threshold": 2.0})
+    closes = [1.0] * 5 + [3.0] * 15  # crosses above 2.0 at bar index 5
+    states = _series_with_close([3.0] * 20, closes)
+    frames = build_replay_frames_for_window(states)
+
+    outcome = build_realization_experiment(
+        h, realization, frames, _BASE.isoformat(), _BASE.isoformat(), "test", _BASE, "e1", tracker,
+    )
+    dispositions = [d.disposition for d in outcome.decision_sequence]
+    assert ResearchDispositionKind.ENTER_LONG in dispositions

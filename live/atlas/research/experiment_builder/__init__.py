@@ -22,12 +22,26 @@ that list and does not add itself to it.
 Depends on atlas.research.features (Sprint 4, read-only - REGISTRY lookups
 and evaluate() calls only, never modified) and reuses two existing,
 unmodified Sprint 28 functions (atlas.research.service.build_dataset_manifest,
-.current_code_version) rather than re-deriving either. Does not import
-atlas.replay_engine or atlas.research.replay_bridge at all:
-build_experiment() takes an already-resolved list[MarketState] as a plain
-parameter, the same shape atlas.research.service.run_experiment() already
-established - only the test suite calls Replay Bridge, to produce real
-fixture data.
+.current_code_version) rather than re-deriving either. build_experiment()
+(Stage A) takes an already-resolved list[MarketState] as a plain parameter,
+the same shape atlas.research.service.run_experiment() already established,
+and does not import atlas.replay_engine or atlas.research.replay_bridge at
+all.
+
+--- Sprint 8 (Stage B/C) ---
+
+construct_realization()/build_realization_experiment() extend this package
+to construct Realization-bound Experiments - see each function's own
+docstring. This is the one sanctioned new dependency on
+atlas.research.backtesting (Sprint 8's own pure execution core) and on
+atlas.research.replay_bridge (for build_realization_experiment()'s own
+list[ReplayFrame] parameter - Stage B/C needs the actual ReplayFrame
+sequence to execute a Realization against, not just the MarketState window
+Stage A needed). Still never imports atlas.replay_engine directly -
+ReplayFrame is sourced through replay_bridge's own re-export, the same
+Sprint 3 boundary every other Research Engine module respects.
+build_experiment() itself is untouched; Stage A's own behavior and
+fingerprint values are unchanged.
 
 --- Cache-hit semantics, resolved precisely ---
 
