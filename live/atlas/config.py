@@ -92,6 +92,20 @@ class Settings:
         # same architecture-decisions.md note).
         self.account_point_value = float(os.environ.get("ACCOUNT_POINT_VALUE", "2.0"))
 
+        # Sprint 8.2 (Railway Staging Deployment): where the Research Ledger's
+        # nine JSONL stores (atlas/research/stores.py) live on disk. Defaulted,
+        # never added to validate_for_startup()'s hard-blocking checks below -
+        # deliberately consistent with this deployment's own established
+        # posture for research-only concerns (see
+        # atlas/research_export/startup_check.py's "never block LIVE, never
+        # crash startup" contract): an unset or non-persistent value degrades
+        # research readiness (GET /status's research_ledger field,
+        # atlas/research_deploy/startup_check.py), it never takes down
+        # webhook/trades/risk endpoints. In a real Railway deployment this
+        # must be set to the mounted Volume's path - see
+        # docs/staging/deployment-checklist.md.
+        self.research_ledger_dir = os.environ.get("RESEARCH_LEDGER_DIR", "data/research")
+
     def validate_for_startup(self) -> None:
         """Called once from atlas/main.py's lifespan, before the app accepts any
         traffic - the same "refuse to start rather than run unsafely" discipline

@@ -97,3 +97,24 @@ def test_unrecognized_environment_value_refuses_to_start(monkeypatch):
     s = _settings(monkeypatch, ENVIRONMENT="staging")
     with pytest.raises(RuntimeError, match="ENVIRONMENT"):
         s.validate_for_startup()
+
+
+# ---- Sprint 8.2: RESEARCH_LEDGER_DIR (defaulted, never hard-required) ----
+
+def test_research_ledger_dir_defaults_to_a_relative_data_path(monkeypatch):
+    s = _settings(monkeypatch, RESEARCH_LEDGER_DIR=None)
+    assert s.research_ledger_dir == "data/research"
+
+
+def test_research_ledger_dir_reads_the_environment_override(monkeypatch):
+    s = _settings(monkeypatch, RESEARCH_LEDGER_DIR="/data/research")
+    assert s.research_ledger_dir == "/data/research"
+
+
+def test_missing_research_ledger_dir_does_not_block_production_startup(monkeypatch):
+    """Deliberately NOT added to the hard-blocking missing-vars check above -
+    a research-storage misconfiguration degrades research readiness
+    (GET /status), it must never crash-loop the whole app the way a missing
+    WEBHOOK_SECRET/API_KEY correctly does."""
+    s = _settings(monkeypatch, RESEARCH_LEDGER_DIR=None)
+    s.validate_for_startup()  # must not raise
