@@ -83,6 +83,20 @@ def _criterion_result() -> CriterionResult:
     return CriterionResult(criterion=_acceptance_criterion(), actual_value=0.5, passed=True, reason=None)
 
 
+# ---- Sprint 8.1: TargetKind.DECISION_SEQUENCE ----
+
+def test_target_kind_is_closed_at_exactly_four_members():
+    assert {k.value for k in TargetKind} == {"fact", "setup", "feature", "decision_sequence"}
+
+
+def test_acceptance_criterion_representable_with_decision_sequence_target_kind():
+    criterion = AcceptanceCriterion(
+        description="enter_long_rate clears 0.05", kind=CriterionKind.MEAN_ABOVE_THRESHOLD,
+        target_kind=TargetKind.DECISION_SEQUENCE, target="enter_long_rate", threshold=0.05,
+    )
+    assert criterion.target_kind == TargetKind.DECISION_SEQUENCE
+
+
 def _experiment(**overrides) -> Experiment:
     fields = dict(
         experiment_id="e1", hypothesis_id="h1", executed_at=_OCCURRED_AT, code_version="abc123",

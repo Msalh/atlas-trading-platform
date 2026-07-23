@@ -41,6 +41,8 @@ from atlas.research.models import (
     ValidationVerdict,
 )
 from atlas.research.serialization import (
+    acceptance_criterion_from_dict,
+    acceptance_criterion_to_dict,
     evidence_from_dict,
     evidence_to_dict,
     experiment_from_dict,
@@ -213,6 +215,27 @@ def test_feature_round_trips():
 def test_finding_round_trips():
     f = _finding()
     assert finding_from_dict(finding_to_dict(f)) == f
+
+
+# ---- Sprint 8.1: TargetKind.DECISION_SEQUENCE ----
+
+def test_acceptance_criterion_round_trips_with_decision_sequence_target_kind():
+    criterion = AcceptanceCriterion(
+        description="enter_long_rate clears 0.05", kind=CriterionKind.MEAN_ABOVE_THRESHOLD,
+        target_kind=TargetKind.DECISION_SEQUENCE, target="enter_long_rate", threshold=0.05,
+    )
+    assert acceptance_criterion_from_dict(acceptance_criterion_to_dict(criterion)) == criterion
+
+
+def test_acceptance_criterion_from_dict_backward_compatible_for_pre_sprint_8_1_fact_target_kind():
+    """A pre-Sprint-8.1 serialized criterion can only ever have stored
+    FACT/SETUP/FEATURE as target_kind - TargetKind(data["target_kind"])
+    (unchanged since Sprint 2) must still construct it exactly, with no
+    awareness that DECISION_SEQUENCE now also exists."""
+    criterion = _acceptance_criterion()  # target_kind=TargetKind.FACT
+    data = acceptance_criterion_to_dict(criterion)
+    assert data["target_kind"] == "fact"
+    assert acceptance_criterion_from_dict(data) == criterion
 
 
 def test_realization_round_trips():

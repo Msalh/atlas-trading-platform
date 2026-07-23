@@ -97,11 +97,22 @@ class TargetKind(str, Enum):
     property implicitly. FEATURE was deliberately deferred through Sprint
     1 ("extending TargetKind to reference Feature, not built yet, would
     be speculative") and added only now that atlas.research.features
-    (Sprint 4) actually exists - additive only, FACT/SETUP unchanged."""
+    (Sprint 4) actually exists - additive only, FACT/SETUP unchanged.
+
+    DECISION_SEQUENCE (Phase N4 Sprint 8.1) resolves against one of the
+    closed decision-rate target names atlas.research.statistics.
+    decision_rate_target() derives from ResearchDispositionKind (e.g.
+    "enter_long_rate") - the identical, already-precedented move this
+    enum's own FEATURE addition made: additive only, FACT/SETUP/FEATURE
+    unchanged. Serialization needs no change - acceptance_criterion_from_dict()
+    already constructs TargetKind generically from its stored string
+    value, so a pre-Sprint-8.1 serialized criterion (necessarily FACT/
+    SETUP/FEATURE) round-trips exactly as before."""
 
     FACT = "fact"
     SETUP = "setup"
     FEATURE = "feature"
+    DECISION_SEQUENCE = "decision_sequence"
 
 
 class CriterionKind(str, Enum):
