@@ -60,7 +60,8 @@ from typing import Mapping, Optional, Union
 from atlas.research.backtesting.models import ResearchDecision, ResearchDispositionKind
 from atlas.research.features.models import FeatureComputed, FeatureOutcome
 from atlas.research.fingerprint import compute_fingerprint
-from atlas.research.models import Evidence, Experiment, TargetKind
+from atlas.research.models import AcceptanceCriterion, Evidence, Experiment, TargetKind
+from atlas.research.replay_bridge import ReplayFrame
 
 _Number = Union[int, float, str, bool]
 _MAX_AUTOCORRELATION_LAG = 100
@@ -103,6 +104,53 @@ def _effective_sample_size(values: list[float]) -> float:
     return max(1.0, min(effective_n, float(n)))
 
 
+def _series_statistics_metrics(prefix: str, values: list[float], threshold: float) -> dict[str, _Number]:
+    """Sprint 8.1. The one shared formula block, extracted verbatim (not
+    rewritten) from compute_evidence()'s own per-criterion loop below -
+    computes the full {prefix}__* metric family (sample_size/computable/
+    mean/std_dev/effective_sample_size/confidence_interval_95_low/
+    high_normal_approx/effect_size_computable/effect_size_vs_threshold)
+    from an arbitrary per-observation float series. Used identically by
+    compute_evidence() (a Feature's own per-bar values) and
+    compute_decision_sequence_evidence() (a decision-rate target's own
+    per-frame 0/1 indicator series) - a 0/1 indicator series is, for this
+    formula's purposes, just another per-observation float series;
+    nothing here assumes continuity. Every operation, in the same order,
+    as this block's own pre-extraction form - relocated, not altered, so
+    Feature-based Evidence remains numerically identical in every case."""
+    n = len(values)
+    metrics: dict[str, _Number] = {f"{prefix}__sample_size": n}
+    computable = n >= 2
+    metrics[f"{prefix}__computable"] = computable
+    if not computable:
+        return metrics
+
+    mean = sum(values) / n
+    variance = sum((v - mean) ** 2 for v in values) / (n - 1)
+    std_dev = math.sqrt(variance)
+    effective_sample_size = _effective_sample_size(values)
+    # The confidence interval is an inferential statistic exactly like
+    # the p-value Validation computes downstream, and was subject to
+    # the identical raw-n anti-conservative bias - corrected here too
+    # (Sprint 6.1), using the same effective_sample_size. The key name
+    # (and its own "normal_approx" disclosure) is unchanged; only the
+    # value is now honest about serial dependence.
+    standard_error = std_dev / math.sqrt(effective_sample_size)
+
+    metrics[f"{prefix}__mean"] = mean
+    metrics[f"{prefix}__std_dev"] = std_dev
+    metrics[f"{prefix}__effective_sample_size"] = effective_sample_size
+    metrics[f"{prefix}__confidence_interval_95_low_normal_approx"] = mean - 1.96 * standard_error
+    metrics[f"{prefix}__confidence_interval_95_high_normal_approx"] = mean + 1.96 * standard_error
+
+    effect_size_computable = std_dev > 0
+    metrics[f"{prefix}__effect_size_computable"] = effect_size_computable
+    if effect_size_computable:
+        metrics[f"{prefix}__effect_size_vs_threshold"] = (mean - threshold) / std_dev
+
+    return metrics
+
+
 def compute_evidence(
     experiment: Experiment, feature_series: Mapping[str, tuple[FeatureOutcome, ...]],
     evidence_id: str, computed_at: str,
@@ -122,37 +170,7 @@ def compute_evidence(
         feature_id = result.criterion.target
         series = feature_series.get(feature_id, ())
         values = [outcome.value for outcome in series if isinstance(outcome, FeatureComputed)]
-        n = len(values)
-
-        prefix = feature_id
-        metrics[f"{prefix}__sample_size"] = n
-        computable = n >= 2
-        metrics[f"{prefix}__computable"] = computable
-        if not computable:
-            continue
-
-        mean = sum(values) / n
-        variance = sum((v - mean) ** 2 for v in values) / (n - 1)
-        std_dev = math.sqrt(variance)
-        effective_sample_size = _effective_sample_size(values)
-        # The confidence interval is an inferential statistic exactly like
-        # the p-value Validation computes downstream, and was subject to
-        # the identical raw-n anti-conservative bias - corrected here too
-        # (Sprint 6.1), using the same effective_sample_size. The key name
-        # (and its own "normal_approx" disclosure) is unchanged; only the
-        # value is now honest about serial dependence.
-        standard_error = std_dev / math.sqrt(effective_sample_size)
-
-        metrics[f"{prefix}__mean"] = mean
-        metrics[f"{prefix}__std_dev"] = std_dev
-        metrics[f"{prefix}__effective_sample_size"] = effective_sample_size
-        metrics[f"{prefix}__confidence_interval_95_low_normal_approx"] = mean - 1.96 * standard_error
-        metrics[f"{prefix}__confidence_interval_95_high_normal_approx"] = mean + 1.96 * standard_error
-
-        effect_size_computable = std_dev > 0
-        metrics[f"{prefix}__effect_size_computable"] = effect_size_computable
-        if effect_size_computable:
-            metrics[f"{prefix}__effect_size_vs_threshold"] = (mean - result.criterion.threshold) / std_dev
+        metrics.update(_series_statistics_metrics(feature_id, values, result.criterion.threshold))
 
     fingerprint = compute_fingerprint({"experiment_id": experiment.experiment_id, "metrics": metrics})
     return Evidence(
@@ -161,32 +179,72 @@ def compute_evidence(
     )
 
 
+_DECISION_RATE_TARGETS: dict[ResearchDispositionKind, str] = {
+    ResearchDispositionKind.NO_ACTION: "no_action_rate",
+    ResearchDispositionKind.ENTER_LONG: "enter_long_rate",
+    ResearchDispositionKind.ENTER_SHORT: "enter_short_rate",
+    ResearchDispositionKind.EXIT: "exit_rate",
+}
+_TARGET_TO_DISPOSITION: dict[str, ResearchDispositionKind] = {v: k for k, v in _DECISION_RATE_TARGETS.items()}
+
+
+def decision_rate_target(disposition: ResearchDispositionKind) -> str:
+    """Sprint 8.1. The one authoritative ResearchDispositionKind ->
+    decision-rate target name mapping - never reproduced via scattered
+    string concatenation elsewhere in this package. enter_long_rate means
+    ENTER_LONG decisions per evaluated ReplayFrame. It does NOT mean trade
+    win rate, probability of profit, profitable-trade frequency, or
+    expectancy - those require matching decisions against price data plus
+    commission/slippage assumptions that appear nowhere in the frozen
+    roadmap for this sprint, deliberately not computed here."""
+    return _DECISION_RATE_TARGETS[disposition]
+
+
 def compute_decision_sequence_evidence(
-    experiment: Experiment, decisions: tuple[ResearchDecision, ...],
-    evidence_id: str, computed_at: str, decision_sequence_path: Optional[str] = None,
+    experiment: Experiment, decisions: tuple[ResearchDecision, ...], frames: tuple[ReplayFrame, ...],
+    criteria: tuple[AcceptanceCriterion, ...], evidence_id: str, computed_at: str,
+    decision_sequence_path: Optional[str] = None,
 ) -> Evidence:
-    """Sprint 8. Statistics's own decision-sequence counterpart to
-    compute_evidence() (the Feature-series path above, Sprint 5, untouched
-    by this addition) - given an already-executed decision sequence
+    """Sprint 8, revised Sprint 8.1. Statistics's own decision-sequence
+    counterpart to compute_evidence() (the Feature-series path above,
+    Sprint 5, untouched) - given an already-executed decision sequence
     (atlas.research.backtesting's own output, never re-executed here: this
     function reads ResearchDecision as a plain value type, exactly the
     same "TYPE only, never the computation machinery" posture already
-    established for FeatureOutcome/FeatureComputed above), computes
-    decision-frequency metrics: how often the Realization acted, never
-    whether those actions were profitable. Realized P&L/win-rate
-    statistics require matching decisions against price data plus
-    execution-cost assumptions (commissions, slippage) that appear nowhere
-    in the frozen roadmap for this sprint - deliberately not invented
-    here, not a gap silently papered over.
+    established for FeatureOutcome/FeatureComputed above), computes:
+
+    1. Descriptive decision-frequency metrics (sample_size, and per-
+       disposition counts/rates for all four ResearchDispositionKind
+       values) - unconditional, exactly as Sprint 8 first built them.
+
+    2. Inferential metrics (mean/std_dev/effective_sample_size/confidence_
+       interval/effect_size), via the identical _series_statistics_metrics()
+       helper compute_evidence() uses - but ONLY for the decision-rate
+       targets `criteria` actually asks for (each TargetKind.DECISION_SEQUENCE
+       criterion's own `target`, resolved back to a ResearchDispositionKind
+       via decision_rate_target()'s own closed mapping), never for every
+       disposition merely because it exists. FEATURE/FACT/SETUP criteria in
+       `criteria` are not this function's concern and are silently skipped
+       here - the same symmetric posture compute_evidence() already applies
+       to non-FEATURE criteria - never rejected, since a hypothesis may
+       legitimately carry both kinds (see build_realization_experiment()'s
+       own Sprint 8.1 update). An unrecognized decision-rate target name
+       fails explicitly - never silently skipped, never producing empty or
+       default metrics for it.
+
+    Never realized P&L/win-rate: see decision_rate_target()'s own docstring
+    for exactly what a decision-rate target does and does not mean.
 
     decision_sequence_path is a plain pass-through, never written by this
     function - Statistics stays pure/no-I/O (this package's own __init__.py),
     exactly mirroring Experiment.profiling_report_path's own long-standing
-    "always None until something else deliberately writes one" precedent.
+    "always None until something else deliberately writes one" precedent."""
+    if len(decisions) != len(frames):
+        raise ValueError(
+            f"decisions ({len(decisions)}) and frames ({len(frames)}) must be the same length - "
+            f"exactly one ResearchDecision per evaluated ReplayFrame"
+        )
 
-    sample_size is always present, even when it is 0 (Design Principle
-    III.4 - insufficient data is its own explicit outcome, never silently
-    omitted)."""
     n = len(decisions)
     metrics: dict[str, _Number] = {"decision_sequence__sample_size": n}
     computable = n > 0
@@ -196,6 +254,18 @@ def compute_decision_sequence_evidence(
             count = sum(1 for d in decisions if d.disposition == kind)
             metrics[f"decision_sequence__{kind.value}_count"] = count
             metrics[f"decision_sequence__{kind.value}_rate"] = count / n
+
+    for criterion in criteria:
+        if criterion.target_kind != TargetKind.DECISION_SEQUENCE:
+            continue
+        disposition = _TARGET_TO_DISPOSITION.get(criterion.target)
+        if disposition is None:
+            raise ValueError(
+                f"unknown decision-rate target {criterion.target!r} - must be one of "
+                f"{sorted(_TARGET_TO_DISPOSITION)}"
+            )
+        indicator_series = [1.0 if d.disposition == disposition else 0.0 for d in decisions]
+        metrics.update(_series_statistics_metrics(criterion.target, indicator_series, criterion.threshold))
 
     fingerprint = compute_fingerprint({"experiment_id": experiment.experiment_id, "metrics": metrics})
     return Evidence(

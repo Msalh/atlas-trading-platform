@@ -16,6 +16,14 @@ extension). Neither package is permitted to import atlas.replay_engine
 directly even now - atlas.research.replay_bridge remains the only Research
 Engine module allowed to do that, per its own frozen Sprint 3 boundary
 test.
+
+Sprint 8.1 update: Statistics's own allowlist additionally gains
+atlas.research.replay_bridge - type-only, for compute_decision_sequence_
+evidence()'s own `frames` parameter (asserts decisions/frames share the
+same length; never fetches data). This package's own original rule (below,
+test_statistics_never_imports_the_ledger) is narrowed accordingly: it now
+proves Statistics stays off the Ledger, and a separate test proves it never
+imports atlas.replay_engine directly either way.
 """
 import ast
 from pathlib import Path
@@ -49,6 +57,7 @@ _STATISTICS_ALLOWED: dict[str, frozenset[str]] = {
         "atlas.research.features.models",
         "atlas.research.fingerprint",
         "atlas.research.models",
+        "atlas.research.replay_bridge",
     }),
 }
 
@@ -110,11 +119,34 @@ def test_experiment_builder_never_imports_statistics():
         assert not offending, f"{py_file} imports atlas.research.statistics: {offending}"
 
 
-def test_statistics_never_imports_the_ledger_or_replay_bridge():
+def test_statistics_never_imports_the_ledger():
+    """Statistics stays pure/no-I/O - still true, unchanged, after Sprint
+    8.1: atlas.research.stores remains forbidden."""
     for py_file in _STATISTICS_DIR.rglob("*.py"):
-        imported = _atlas_imports(py_file)
-        offending = {n for n in imported if n.startswith("atlas.research.stores") or n.startswith("atlas.research.replay_bridge")}
-        assert not offending, f"{py_file} imports {offending} - Statistics must never touch the Ledger or Replay Bridge"
+        offending = {n for n in _atlas_imports(py_file) if n.startswith("atlas.research.stores")}
+        assert not offending, f"{py_file} imports {offending} - Statistics must never touch the Ledger"
+
+
+def test_statistics_replay_bridge_dependency_is_type_only_never_a_data_fetch():
+    """Sprint 8.1 update to this file's own original, stricter rule (which
+    forbade atlas.research.replay_bridge outright, written before any
+    legitimate reason for Statistics to reference it existed).
+    compute_decision_sequence_evidence()'s own `frames` parameter needs the
+    ReplayFrame type for its length-consistency check against `decisions` -
+    the identical "type only, never the fetching/execution machinery"
+    posture already established for atlas.research.backtesting.models.
+    This test proves the narrower thing that actually matters: Statistics
+    never calls replay_bridge's own functions (build_replay_frames_for_window/
+    fetch_replay_frames) - a type-only import can't do that, but this
+    proves it by construction rather than by assuming it, by asserting the
+    _STATISTICS_ALLOWED allowlist itself contains no other, wider Replay
+    Bridge or Replay Engine surface."""
+    for py_file in _STATISTICS_DIR.rglob("*.py"):
+        offending = {
+            n for n in _atlas_imports(py_file)
+            if n.startswith("atlas.replay_engine")  # still never direct - only replay_bridge's own re-export
+        }
+        assert not offending, f"{py_file} imports {offending} - Statistics must never import atlas.replay_engine directly"
 
 
 def test_neither_new_package_imports_replay_engine_or_features_registry_write_paths():

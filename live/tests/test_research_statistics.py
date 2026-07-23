@@ -7,8 +7,23 @@ always reproduces the same Evidence (Principle VII.1's first real test),
 and Sprint 6.1's own effective_sample_size autocorrelation correction.
 """
 import random
+from datetime import datetime, timedelta, timezone
 
 import pytest
+from atlas.core.events import Event
+from atlas.core.primitives import Symbol, Timeframe
+from atlas.market_context.models import (
+    ContextQuality,
+    DriftStatus,
+    MarketContext,
+    SessionClassification,
+    SessionPhase,
+    SessionProgress,
+    VolatilityClassification,
+    VolatilityRegime,
+)
+from atlas.market_engine.models import BarStatus, MarketState
+from atlas.replay_engine.models import ReplayFrame
 from atlas.research.backtesting.models import ResearchDecision, ResearchDispositionKind
 from atlas.research.features.models import FeatureComputed, FeatureInsufficientData
 from atlas.research.models import (
@@ -22,9 +37,13 @@ from atlas.research.models import (
 from atlas.research.statistics.service import (
     _autocorrelation,
     _effective_sample_size,
+    _series_statistics_metrics,
     compute_decision_sequence_evidence,
     compute_evidence,
+    decision_rate_target,
 )
+from atlas.rule_engine.models import RuleEngineOutput
+from atlas.setup_engine.models import SetupEngineOutput
 
 _OCCURRED_AT = "2026-07-22T00:00:00+00:00"
 
@@ -260,7 +279,10 @@ def test_compute_evidence_publishes_effective_sample_size_alongside_unchanged_ra
     assert evidence.metrics["mean_atr__effective_sample_size"] >= 1.0
 
 
-# ---- Sprint 8: compute_decision_sequence_evidence() ----
+# ---- Sprint 8/8.1: compute_decision_sequence_evidence() ----
+
+_DECISION_BASE = datetime(2026, 7, 22, 12, 0, tzinfo=timezone.utc)
+
 
 def _decision(disposition: ResearchDispositionKind, occurred_at: str = _OCCURRED_AT) -> ResearchDecision:
     return ResearchDecision(
@@ -269,15 +291,68 @@ def _decision(disposition: ResearchDispositionKind, occurred_at: str = _OCCURRED
     )
 
 
+def _frame(index: int) -> ReplayFrame:
+    occurred_at = _DECISION_BASE + timedelta(minutes=5 * index)
+    market_state = MarketState(
+        envelope=Event(event_type="bar_closed", source="test", occurred_at=occurred_at, event_id=f"e{index}"),
+        schema_version="1.0", symbol=Symbol("MNQU6"), timeframe=Timeframe.M5, bar_status=BarStatus.CLOSED,
+    )
+    rule_engine_output = RuleEngineOutput(
+        schema_version="1.0", symbol="MNQU6", timeframe="5m", occurred_at=occurred_at.isoformat(), facts={},
+    )
+    setup_engine_output = SetupEngineOutput(
+        schema_version="1.0", symbol="MNQU6", timeframe="5m", occurred_at=occurred_at.isoformat(), setups=(),
+    )
+    session = SessionClassification(
+        phase=SessionPhase.MID_SESSION,
+        progress=SessionProgress(
+            session_open_at=occurred_at, session_close_at=occurred_at,
+            minutes_since_session_open=5, minutes_until_session_close=395,
+        ),
+        upstream_session_name="RTH", upstream_is_rth=True, drift_status=DriftStatus.AGREEMENT,
+    )
+    volatility = VolatilityClassification(regime=VolatilityRegime.NORMAL, atr_percentile_rank=0.5, lookback_bars_used=288)
+    market_context = MarketContext(
+        symbol=Symbol("MNQU6"), timeframe=Timeframe.M5, occurred_at=occurred_at,
+        session=session, volatility=volatility, quality=ContextQuality.TRUSTED,
+        classifier_version="REGIME_CLASSIFIER_V1", calendar_version="CME_RTH_V1",
+        context_fingerprint="0123456789abcdef",
+    )
+    return ReplayFrame(
+        market_state=market_state, rule_engine_output=rule_engine_output, setup_engine_output=setup_engine_output,
+        market_context=market_context, setup_interpretations=(),
+    )
+
+
+def _frames(n: int) -> tuple[ReplayFrame, ...]:
+    return tuple(_frame(i) for i in range(n))
+
+
+def _decision_sequence_criterion(target: str = "enter_long_rate", threshold: float = 0.0) -> AcceptanceCriterion:
+    return AcceptanceCriterion(
+        description="stub", kind=CriterionKind.MEAN_ABOVE_THRESHOLD,
+        target_kind=TargetKind.DECISION_SEQUENCE, target=target, threshold=threshold,
+    )
+
+
 def test_compute_decision_sequence_evidence_empty_sequence_is_explicitly_not_computable():
     experiment = _experiment((_criterion_result(),))
-    evidence = compute_decision_sequence_evidence(experiment, (), evidence_id="ev1", computed_at=_OCCURRED_AT)
+    evidence = compute_decision_sequence_evidence(experiment, (), (), (), evidence_id="ev1", computed_at=_OCCURRED_AT)
     assert evidence.metrics["decision_sequence__sample_size"] == 0
     assert evidence.metrics["decision_sequence__computable"] is False
     assert "decision_sequence__enter_long_count" not in evidence.metrics
 
 
-def test_compute_decision_sequence_evidence_counts_and_rates_every_disposition():
+def test_compute_decision_sequence_evidence_rejects_mismatched_decisions_and_frames_length():
+    experiment = _experiment((_criterion_result(),))
+    decisions = (_decision(ResearchDispositionKind.NO_ACTION),)
+    with pytest.raises(ValueError, match="must be the same length"):
+        compute_decision_sequence_evidence(experiment, decisions, _frames(2), (), evidence_id="ev1", computed_at=_OCCURRED_AT)
+
+
+def test_compute_decision_sequence_evidence_counts_and_rates_every_disposition_descriptively():
+    """The descriptive count/rate metrics remain unconditional (Sprint 8's
+    own behavior) - they are not gated by which criteria were requested."""
     experiment = _experiment((_criterion_result(),))
     decisions = (
         _decision(ResearchDispositionKind.NO_ACTION),
@@ -285,7 +360,9 @@ def test_compute_decision_sequence_evidence_counts_and_rates_every_disposition()
         _decision(ResearchDispositionKind.ENTER_LONG),
         _decision(ResearchDispositionKind.EXIT),
     )
-    evidence = compute_decision_sequence_evidence(experiment, decisions, evidence_id="ev1", computed_at=_OCCURRED_AT)
+    evidence = compute_decision_sequence_evidence(
+        experiment, decisions, _frames(4), (), evidence_id="ev1", computed_at=_OCCURRED_AT,
+    )
 
     assert evidence.metrics["decision_sequence__sample_size"] == 4
     assert evidence.metrics["decision_sequence__computable"] is True
@@ -295,12 +372,60 @@ def test_compute_decision_sequence_evidence_counts_and_rates_every_disposition()
     assert evidence.metrics["decision_sequence__enter_long_rate"] == pytest.approx(0.25)
     assert evidence.metrics["decision_sequence__enter_short_count"] == 0
     assert evidence.metrics["decision_sequence__exit_count"] == 1
+    # no inferential family computed - no criteria were requested
+    assert "enter_long_rate__mean" not in evidence.metrics
+
+
+def test_compute_decision_sequence_evidence_computes_inferential_family_only_for_requested_targets():
+    """The user's own explicit constraint: must not compute unrelated
+    inferential metric families merely because the disposition exists."""
+    experiment = _experiment((_criterion_result(),))
+    decisions = (
+        _decision(ResearchDispositionKind.ENTER_LONG), _decision(ResearchDispositionKind.NO_ACTION),
+        _decision(ResearchDispositionKind.ENTER_LONG), _decision(ResearchDispositionKind.NO_ACTION),
+    )
+    criteria = (_decision_sequence_criterion(target="enter_long_rate", threshold=0.1),)
+    evidence = compute_decision_sequence_evidence(
+        experiment, decisions, _frames(4), criteria, evidence_id="ev1", computed_at=_OCCURRED_AT,
+    )
+
+    assert evidence.metrics["enter_long_rate__sample_size"] == 4
+    assert evidence.metrics["enter_long_rate__mean"] == pytest.approx(0.5)
+    assert "exit_rate__mean" not in evidence.metrics  # not requested - never computed
+    assert "no_action_rate__mean" not in evidence.metrics
+
+
+def test_compute_decision_sequence_evidence_ignores_feature_criteria():
+    """FEATURE/FACT/SETUP criteria are silently skipped here (Statistics's
+    own symmetric posture, mirroring compute_evidence()'s skip of non-
+    FEATURE criteria) - never rejected, since a hypothesis may legitimately
+    carry both kinds."""
+    experiment = _experiment((_criterion_result(),))
+    decisions = (_decision(ResearchDispositionKind.ENTER_LONG),)
+    feature_criterion = AcceptanceCriterion(
+        description="stub", kind=CriterionKind.MEAN_ABOVE_THRESHOLD, target_kind=TargetKind.FEATURE,
+        target="mean_atr", threshold=2.0,
+    )
+    evidence = compute_decision_sequence_evidence(
+        experiment, decisions, _frames(1), (feature_criterion,), evidence_id="ev1", computed_at=_OCCURRED_AT,
+    )
+    assert "mean_atr__mean" not in evidence.metrics
+
+
+def test_compute_decision_sequence_evidence_rejects_unknown_target_explicitly():
+    experiment = _experiment((_criterion_result(),))
+    decisions = (_decision(ResearchDispositionKind.ENTER_LONG),)
+    criteria = (_decision_sequence_criterion(target="does_not_exist"),)
+    with pytest.raises(ValueError, match="unknown decision-rate target"):
+        compute_decision_sequence_evidence(
+            experiment, decisions, _frames(1), criteria, evidence_id="ev1", computed_at=_OCCURRED_AT,
+        )
 
 
 def test_compute_decision_sequence_evidence_decision_sequence_path_is_a_plain_pass_through():
     experiment = _experiment((_criterion_result(),))
     evidence = compute_decision_sequence_evidence(
-        experiment, (_decision(ResearchDispositionKind.NO_ACTION),),
+        experiment, (_decision(ResearchDispositionKind.NO_ACTION),), _frames(1), (),
         evidence_id="ev1", computed_at=_OCCURRED_AT, decision_sequence_path="/tmp/seq.json",
     )
     assert evidence.decision_sequence_path == "/tmp/seq.json"
@@ -309,7 +434,8 @@ def test_compute_decision_sequence_evidence_decision_sequence_path_is_a_plain_pa
 def test_compute_decision_sequence_evidence_defaults_decision_sequence_path_to_none():
     experiment = _experiment((_criterion_result(),))
     evidence = compute_decision_sequence_evidence(
-        experiment, (_decision(ResearchDispositionKind.NO_ACTION),), evidence_id="ev1", computed_at=_OCCURRED_AT,
+        experiment, (_decision(ResearchDispositionKind.NO_ACTION),), _frames(1), (),
+        evidence_id="ev1", computed_at=_OCCURRED_AT,
     )
     assert evidence.decision_sequence_path is None
 
@@ -317,7 +443,63 @@ def test_compute_decision_sequence_evidence_defaults_decision_sequence_path_to_n
 def test_compute_decision_sequence_evidence_is_deterministic():
     experiment = _experiment((_criterion_result(),))
     decisions = (_decision(ResearchDispositionKind.ENTER_LONG), _decision(ResearchDispositionKind.EXIT))
-    first = compute_decision_sequence_evidence(experiment, decisions, evidence_id="ev1", computed_at=_OCCURRED_AT)
-    second = compute_decision_sequence_evidence(experiment, decisions, evidence_id="ev1", computed_at=_OCCURRED_AT)
+    criteria = (_decision_sequence_criterion(),)
+    first = compute_decision_sequence_evidence(
+        experiment, decisions, _frames(2), criteria, evidence_id="ev1", computed_at=_OCCURRED_AT,
+    )
+    second = compute_decision_sequence_evidence(
+        experiment, decisions, _frames(2), criteria, evidence_id="ev1", computed_at=_OCCURRED_AT,
+    )
     assert first.fingerprint == second.fingerprint
     assert first.metrics == second.metrics
+
+
+# ---- Sprint 8.1: decision_rate_target() closed mapping ----
+
+def test_decision_rate_target_covers_every_research_disposition_kind():
+    assert {decision_rate_target(k) for k in ResearchDispositionKind} == {
+        "no_action_rate", "enter_long_rate", "enter_short_rate", "exit_rate",
+    }
+
+
+def test_decision_rate_target_exact_mapping():
+    assert decision_rate_target(ResearchDispositionKind.NO_ACTION) == "no_action_rate"
+    assert decision_rate_target(ResearchDispositionKind.ENTER_LONG) == "enter_long_rate"
+    assert decision_rate_target(ResearchDispositionKind.ENTER_SHORT) == "enter_short_rate"
+    assert decision_rate_target(ResearchDispositionKind.EXIT) == "exit_rate"
+
+
+# ---- Sprint 8.1: shared helper exact numeric equivalence ----
+
+def test_decision_sequence_metrics_exactly_match_shared_helper_on_the_same_indicator_series():
+    """The user's own required proof: decision-sequence metrics computed
+    from a binary indicator series must be numerically identical to the
+    shared series-statistics helper computing directly on those same
+    values - not merely similar, exactly equal."""
+    values = [1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0]
+    direct = _series_statistics_metrics("enter_long_rate", values, threshold=0.1)
+
+    decisions = tuple(
+        _decision(ResearchDispositionKind.ENTER_LONG if v == 1.0 else ResearchDispositionKind.NO_ACTION)
+        for v in values
+    )
+    experiment = _experiment((_criterion_result(),))
+    criteria = (_decision_sequence_criterion(target="enter_long_rate", threshold=0.1),)
+    evidence = compute_decision_sequence_evidence(
+        experiment, decisions, _frames(len(decisions)), criteria, evidence_id="ev1", computed_at=_OCCURRED_AT,
+    )
+
+    for key, value in direct.items():
+        assert evidence.metrics[key] == value
+
+
+def test_compute_evidence_feature_metrics_unchanged_by_the_shared_helper_extraction():
+    """No regression: compute_evidence()'s own Feature-based output must
+    be identical to its pre-extraction values (same fixture/assertions as
+    the original Sprint 5/6.1 test above, repeated here as an explicit
+    Sprint 8.1 non-regression proof)."""
+    experiment = _experiment((_criterion_result(),))
+    series = {"mean_atr": _computed_series([1.0, 2.0, 3.0, 4.0, 5.0])}
+    evidence = compute_evidence(experiment, series, evidence_id="ev1", computed_at=_OCCURRED_AT)
+    assert evidence.metrics["mean_atr__mean"] == pytest.approx(3.0)
+    assert evidence.metrics["mean_atr__std_dev"] == pytest.approx(1.5811388300841898)

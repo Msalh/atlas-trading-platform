@@ -44,4 +44,29 @@ machinery, ever) while still being able to read the data type that
 machinery produces. Still no dependency on
 atlas.research.experiment_builder, and still pure/no-I/O -
 decision_sequence_path is a plain pass-through field, never written here.
+
+--- Sprint 8.1: Validation integration ---
+
+The Sprint 8 architectural finding: atlas.research.validation already
+consumes any Evidence whose metrics follow the {target}__mean/__std_dev/
+__sample_size/__effective_sample_size/... key family, regardless of what
+computed them - it has been criterion-target-agnostic since Sprint 5.
+compute_decision_sequence_evidence() is revised (not replaced) to also
+populate that exact family for each requested decision-rate target - via
+_series_statistics_metrics(), one shared helper extracted verbatim (never
+altered) from compute_evidence()'s own formula block, so Feature-based
+Evidence remains numerically identical in every case. decision_rate_target()
+is the one authoritative ResearchDispositionKind -> target-name mapping
+(no_action_rate/enter_long_rate/enter_short_rate/exit_rate) - never
+reproduced via scattered string concatenation. Only criteria whose
+target_kind is TargetKind.DECISION_SEQUENCE are processed; an unrecognized
+target name fails explicitly, never silently skipped.
+
+Gains one further type-only dependency, atlas.research.replay_bridge (the
+ReplayFrame type only, for compute_decision_sequence_evidence()'s own
+`frames` parameter - used to assert decisions/frames share the same length,
+never to fetch or re-derive anything). atlas.research.validation and
+atlas.research.ranking are untouched by this sprint - proven, not merely
+asserted, by test_research_sprint8_1_validation_ranking_integration.py's
+own dependency audit.
 """

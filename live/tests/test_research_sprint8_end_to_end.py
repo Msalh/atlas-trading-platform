@@ -107,7 +107,7 @@ def test_realization_bound_and_decision_free_pipelines_coexist_over_real_replay_
         experiment_tracker,
     )
     stage_bc_evidence = compute_decision_sequence_evidence(
-        stage_bc_outcome.experiment, stage_bc_outcome.decision_sequence,
+        stage_bc_outcome.experiment, stage_bc_outcome.decision_sequence, tuple(frames), (),
         evidence_id="ev_stage_bc", computed_at=_BASE.isoformat(),
     )
 
