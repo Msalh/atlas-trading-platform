@@ -50,8 +50,8 @@ from slowapi.middleware import SlowAPIMiddleware
 from atlas.alerting import ClaudeFailureTracker, alert_on_forward_failure
 from atlas.api.security import require_api_key
 from atlas.api.v1 import (
-    activity, ai, analytics, health, market_state, research, risk, rule_engine, setup_engine, status, stats,
-    stream, trades, webhook,
+    activity, ai, analytics, health, market_state, research, research_pipeline, risk, rule_engine, setup_engine,
+    status, stats, stream, trades, webhook,
 )
 from atlas.config import settings
 from atlas.db import create_pool
@@ -245,6 +245,12 @@ app.include_router(research.router, prefix="/api/v1", tags=["v1"], dependencies=
 # UI v2: live Setup Engine state and episode projection - zero changes to
 # atlas/setup_engine/ or atlas/rule_engine/, same shared-key auth.
 app.include_router(setup_engine.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
+# Sprint 8.2 (Railway Staging Deployment): POST /research/run (mode="smoke"
+# only, this sprint) and GET /research/leaderboard - see that router's own
+# module docstring. Zero changes to any atlas.research.** package; this
+# router only calls into their existing public functions, same shared-key
+# auth as every other authenticated router above.
+app.include_router(research_pipeline.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
 
 # Legacy, unversioned surface - preserved so the existing TradingView alert keeps
 # working without any change on TradingView's side. The legacy HTML dashboard
