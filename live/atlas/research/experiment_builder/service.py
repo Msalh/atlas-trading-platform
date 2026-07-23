@@ -278,18 +278,33 @@ def build_realization_experiment(
     requested_start: str, requested_end: str, source_description: str,
     generated_at: datetime, experiment_id: str, tracker: ExperimentStore,
 ) -> ExperimentBuildOutcome:
-    """Sprint 8, Stage B/C. Mirrors build_experiment()'s own construction
-    logic exactly - same symbol/timeframe validation, same TargetKind.FEATURE-
-    only criteria check (a Realization tests the same underlying Hypothesis,
-    whose acceptance_criteria shape is unchanged), same cache-hit-vs-new-
-    execution decision - extended to (a) thread realization.realization_id
-    into semantic_fingerprint and realization.fingerprint into
-    execution_fingerprint (see both functions' own docstrings), and (b)
-    additionally execute the Realization (atlas.research.backtesting.
-    execute_realization()) to produce a decision sequence, returned raw via
+    """Sprint 8, Stage B/C; criteria handling revised Sprint 8.1. Mirrors
+    build_experiment()'s own construction logic - same symbol/timeframe
+    validation, same cache-hit-vs-new-execution decision - extended to (a)
+    thread realization.realization_id into semantic_fingerprint and
+    realization.fingerprint into execution_fingerprint (see both functions'
+    own docstrings), and (b) additionally execute the Realization
+    (atlas.research.backtesting.execute_realization()) to produce a
+    decision sequence, returned raw via
     ExperimentBuildOutcome.decision_sequence for Statistics's own extension
     to separately turn into Evidence - this function never computes
     Evidence itself.
+
+    Criteria handling (Sprint 8.1): a hypothesis may carry a mix of
+    TargetKind.FEATURE and TargetKind.DECISION_SEQUENCE criteria.
+    DECISION_SEQUENCE criteria are this function's own concern to skip, not
+    reject - they are deferred to
+    atlas.research.statistics.compute_decision_sequence_evidence(), which
+    takes the exact criteria sequence and knows how to evaluate them - the
+    same symmetric posture compute_evidence() already applies to non-
+    FEATURE criteria. Any other target kind (FACT/SETUP) remains
+    unsupported here, exactly as in build_experiment(), and still raises
+    explicitly. Experiment.criteria_results/passed cover FEATURE criteria
+    only, as they always have - passed is vacuously True when a hypothesis
+    carries zero FEATURE criteria (an entirely decision-sequence-based
+    hypothesis is valid; its real judgment happens via validate() on the
+    decision-sequence Evidence separately, never via this mechanical
+    field).
 
     execute_realization() is deliberately called AFTER the cache-hit check,
     not before: unlike feature_series (which execution_fingerprint's own
@@ -318,22 +333,32 @@ def build_realization_experiment(
             f"{realization.hypothesis_id!r}, not {hypothesis.hypothesis_id!r}"
         )
 
+    feature_criteria = []
     for criterion in hypothesis.acceptance_criteria:
+        if criterion.target_kind == TargetKind.DECISION_SEQUENCE:
+            # Sprint 8.1: not this function's concern - deferred to
+            # atlas.research.statistics.compute_decision_sequence_evidence(),
+            # mirroring compute_evidence()'s own symmetric skip of non-
+            # FEATURE criteria. A hypothesis may legitimately carry both
+            # kinds - this is a skip, never a rejection.
+            continue
         if criterion.target_kind != TargetKind.FEATURE:
             raise ValueError(
                 f"{hypothesis.hypothesis_id}: build_realization_experiment only supports TargetKind.FEATURE "
-                f"criteria this sprint, got {criterion.target_kind.value!r} for {criterion.target!r}"
+                f"and TargetKind.DECISION_SEQUENCE criteria, got {criterion.target_kind.value!r} "
+                f"for {criterion.target!r}"
             )
         if criterion.target not in hypothesis.feature_refs:
             raise ValueError(
                 f"{hypothesis.hypothesis_id}: criterion targets feature_id {criterion.target!r}, "
                 f"which is not listed in the hypothesis's own feature_refs {hypothesis.feature_refs}"
             )
+        feature_criteria.append(criterion)
 
     manifest = build_dataset_manifest(states, requested_start, requested_end, source_description, generated_at)
     semantic_fingerprint = compute_semantic_fingerprint(hypothesis, manifest, realization_id=realization.realization_id)
 
-    feature_ids = sorted({c.target for c in hypothesis.acceptance_criteria})
+    feature_ids = sorted({c.target for c in feature_criteria})
     feature_pins = resolve_feature_pins(feature_ids)
     registrations_by_id = {r.feature.feature_id: r for r in REGISTRY}
     feature_series = {
@@ -355,7 +380,7 @@ def build_realization_experiment(
         )
 
     criteria_results = tuple(
-        _evaluate_feature_criterion(c, feature_series[c.target]) for c in hypothesis.acceptance_criteria
+        _evaluate_feature_criterion(c, feature_series[c.target]) for c in feature_criteria
     )
     passed = all(r.passed for r in criteria_results)
     decision_sequence = execute_realization(realization, frames)

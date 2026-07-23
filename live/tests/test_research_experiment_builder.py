@@ -494,3 +494,73 @@ def test_build_realization_experiment_produces_a_real_enter_long_over_real_repla
     )
     dispositions = [d.disposition for d in outcome.decision_sequence]
     assert ResearchDispositionKind.ENTER_LONG in dispositions
+
+
+# ---- Sprint 8.1: mixed FEATURE + DECISION_SEQUENCE criteria ----
+
+def test_build_realization_experiment_accepts_mixed_feature_and_decision_sequence_criteria(tmp_path: Path):
+    tracker = ExperimentTracker(tmp_path / "experiments.jsonl")
+    h = _hypothesis(acceptance_criteria=(
+        AcceptanceCriterion(
+            description="mean_atr clears 2.0", kind=CriterionKind.MEAN_ABOVE_THRESHOLD,
+            target_kind=TargetKind.FEATURE, target="mean_atr", threshold=2.0,
+        ),
+        AcceptanceCriterion(
+            description="enter_long_rate clears 0.0", kind=CriterionKind.MEAN_ABOVE_THRESHOLD,
+            target_kind=TargetKind.DECISION_SEQUENCE, target="enter_long_rate", threshold=0.0,
+        ),
+    ))
+    realization = _realization(tmp_path, hypothesis=h, parameters={"threshold": 2.0})
+    closes = [1.0] * 5 + [3.0] * 15
+    states = _series_with_close([3.0] * 20, closes)
+    frames = build_replay_frames_for_window(states)
+
+    outcome = build_realization_experiment(
+        h, realization, frames, _BASE.isoformat(), _BASE.isoformat(), "test", _BASE, "e1", tracker,
+    )
+    # criteria_results reflects only the FEATURE criterion - the
+    # DECISION_SEQUENCE one is this function's own concern to skip
+    assert len(outcome.experiment.criteria_results) == 1
+    assert outcome.experiment.criteria_results[0].criterion.target == "mean_atr"
+    # the decision sequence itself was still computed, unaffected
+    assert outcome.decision_sequence is not None
+    assert len(outcome.decision_sequence) == 20
+
+
+def test_build_realization_experiment_still_rejects_fact_and_setup_criteria(tmp_path: Path):
+    tracker = ExperimentTracker(tmp_path / "experiments.jsonl")
+    h = _hypothesis(acceptance_criteria=(
+        AcceptanceCriterion(
+            description="x", kind=CriterionKind.MIN_FIRING_RATE, target_kind=TargetKind.FACT,
+            target="trend_5m", threshold=0.1,
+        ),
+    ))
+    realization = _realization(tmp_path, hypothesis=h)
+    states = _series_with_close([3.0] * 20, [1.0] * 20)
+    frames = build_replay_frames_for_window(states)
+    with pytest.raises(ValueError, match="TargetKind.FEATURE"):
+        build_realization_experiment(
+            h, realization, frames, _BASE.isoformat(), _BASE.isoformat(), "test", _BASE, "e1", tracker,
+        )
+
+
+def test_build_realization_experiment_passed_is_vacuously_true_with_zero_feature_criteria(tmp_path: Path):
+    """An entirely decision-sequence-based hypothesis is valid - its real
+    judgment happens via validate() on the decision-sequence Evidence
+    separately, never via this mechanical field."""
+    tracker = ExperimentTracker(tmp_path / "experiments.jsonl")
+    h = _hypothesis(acceptance_criteria=(
+        AcceptanceCriterion(
+            description="enter_long_rate clears 0.0", kind=CriterionKind.MEAN_ABOVE_THRESHOLD,
+            target_kind=TargetKind.DECISION_SEQUENCE, target="enter_long_rate", threshold=0.0,
+        ),
+    ), feature_refs=())
+    realization = _realization(tmp_path, hypothesis=h, parameters={"threshold": 2.0})
+    states = _series_with_close([3.0] * 20, [1.0] * 20)
+    frames = build_replay_frames_for_window(states)
+
+    outcome = build_realization_experiment(
+        h, realization, frames, _BASE.isoformat(), _BASE.isoformat(), "test", _BASE, "e1", tracker,
+    )
+    assert outcome.experiment.criteria_results == ()
+    assert outcome.experiment.passed is True
