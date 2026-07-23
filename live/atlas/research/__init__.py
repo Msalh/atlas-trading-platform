@@ -139,7 +139,30 @@ LeaderboardSnapshot.ranking_policy_id/.ranking_policy_version/
 non-SUPPORTED or superseded results) - all Optional/defaulted, backward
 compatible with every pre-Sprint-7 call site.
 
-Every later Sprint 8-14 package the roadmap describes
-(atlas.research.discovery, .formalization, .backtesting, .memory,
-.knowledge_graph, .assistant, .promotion) does not exist yet.
+Phase N4 Sprint 8 (Realizations + Backtesting) adds atlas.research.backtesting -
+a pure execution core turning one Realization (TEMPLATED_STRATEGY/
+STRATEGY_VARIANT only) plus an already-fetched ReplayFrame sequence into a
+deterministic decision sequence via ResearchStrategyPlugin/
+ResearchStrategyFactory (see that package's own __init__.py for the full
+boundary, the purity contract, and the structural-separation proof from
+atlas.strategy_engine.ports.StrategyPlugin). Extends
+atlas.research.experiment_builder (construct_realization(),
+build_realization_experiment() - Stage A's own build_experiment() is
+untouched) and atlas.research.statistics
+(compute_decision_sequence_evidence() - decision-frequency metrics only,
+never realized P&L, which needs price-matching and execution-cost
+assumptions outside this sprint's scope). Two additive fields were needed
+on frozen models.py types: RealizationTemplateKind (a new closed enum) and
+Realization.template_kind (Optional, defaulted, required for
+TEMPLATED_STRATEGY/STRATEGY_VARIANT and forbidden otherwise).
+
+Deliberately does not extend atlas.research.validation/.ranking this
+sprint: validate() reads Evidence.metrics keyed by
+f"{criterion.target}__mean" (Feature-shaped), which
+compute_decision_sequence_evidence()'s decision-frequency metrics don't
+produce - a real, disclosed follow-up, not a gap silently papered over.
+
+Every later Sprint 9-14 package the roadmap describes
+(atlas.research.discovery, .formalization, .memory, .knowledge_graph,
+.assistant, .promotion) does not exist yet.
 """
