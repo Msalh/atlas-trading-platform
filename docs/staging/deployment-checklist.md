@@ -131,7 +131,11 @@ snapshot/kill-switch display with fake numbers.
 the Research Ledger uses append-only JSONL storage - see
 `docs/ui_v2/deployment-runbook.md`'s own Scaling section for the full reasoning. Do
 not increase the backend service's replica count above 1 in Railway's **Settings** →
-**Scaling** until the Ledger storage architecture changes.
+**Scaling** until the Ledger storage architecture changes. That section also states
+the single-writer assumption explicitly and flags that a Railway deploy strategy
+overlapping old/new containers would need this assumption re-evaluated - confirm
+which strategy this service actually uses before treating replica count 1 as
+sufficient on its own.
 
 ## Step 3 - Railway: deploy and verify startup
 

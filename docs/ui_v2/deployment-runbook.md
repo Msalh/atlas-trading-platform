@@ -137,6 +137,8 @@ A healthy first boot's log should show, in order: migrations applying, then the 
 
 This constraint is specific to the backend service and to the Research Ledger specifically - it does not affect the frontend service (stateless, scales freely) or Postgres itself (already a real multi-writer-safe database).
 
+**Single-writer assumption, stated explicitly.** Every design decision in `atlas/research/stores.py` (append-only writes, `RecordConflictError` on a differing re-submission, no locking) assumes exactly one process ever holds a given Volume-mounted JSONL file open for writing at a time - replica count 1 (above) is necessary but not sufficient to guarantee this by itself. **If Railway's deployment strategy for this service ever overlaps the old and new containers during a deploy** (a rolling/blue-green style transition where both briefly serve traffic against the same Volume, rather than a hard stop-then-start) **, this single-writer assumption no longer holds for the duration of that overlap**, and the concurrency safety of the Ledger stores must be re-evaluated before relying on it - this has not been verified against Railway's actual default deploy behavior for a Volume-attached service. Confirm which strategy Railway uses for this service (Settings → Deploy, or Railway's own docs on deployment strategies) before treating "replica count 1" as sufficient on its own.
+
 ### 3.8 Restart-persistence verification procedure
 
 The one check that actually proves the Volume works, not just that the app believes it's configured correctly - run this once after every first deploy, and again after any change to the Volume or `RESEARCH_LEDGER_DIR`:
@@ -162,6 +164,10 @@ The one check that actually proves the Volume works, not just that the app belie
      -H "Authorization: Bearer <API_KEY>" | python3 -m json.tool
    ```
 6. **Confirm the same data comes back** - `ok: true`, same `snapshot_id`, same `entries` as step 2. If this instead returns a `404` ("no leaderboard snapshot with id..."), the Volume is not actually persisting across restarts - stop and re-check the Volume mount (Step 1.5 of `docs/staging/deployment-checklist.md`) and `RESEARCH_LEDGER_DIR` (§3.1) before considering this deployment verified, regardless of what step 1's `GET /status` reported (a healthy `research_ledger.status` only proves the path is writable *right now* - it cannot prove persistence across a restart by itself, which is exactly why this six-step procedure exists as a separate check).
+
+### 3.9 Known follow-up (not blocking the first deployment): automate the Research/Promotion smoke checks
+
+`live/scripts/smoke_test.sh` predates the Research Ledger and Promotion work entirely - it covers health/auth/webhook/SSE/security-header checks only. Steps 1-2 above (smoke run + leaderboard read-back) and the promotion-decision equivalent (`POST /api/v1/research/promotion/decide` against the resulting candidate, then `GET /api/v1/research/promotion?promotion_id=...` to read it back) are currently manual curl procedures, documented here and in `docs/staging/deployment-checklist.md` Step 5, but not scripted. **This is intentionally deferred until after the first successful Railway deployment** - there is no live deployment yet to validate the script against, and scripting it prematurely against untested assumptions about response shapes would be more likely to need rework than to save time. Once the first deployment in this runbook succeeds, extending `smoke_test.sh` to cover `POST /research/run`, `GET /research/leaderboard`, `GET /research/promotion/candidates`, and `POST /research/promotion/decide` + its read-back is the next operational task.
 
 ---
 
