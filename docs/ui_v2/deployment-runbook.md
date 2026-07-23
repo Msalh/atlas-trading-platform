@@ -55,6 +55,7 @@ All required variables are validated by `atlas.config.Settings.validate_for_star
 | `MARKET_STATE_WEBHOOK_SECRET` | Yes | Protects `POST /api/v1/market-state`, the ingestion path every UI v2 LIVE page ultimately depends on having real data for. |
 | `FRONTEND_ORIGINS` | Conditional | **Not required for the UI v2 BFF path, and no longer required for the SSE connection either** (production-hardening amendment: `/api/v1/stream` is now proxied through the frontend's own same-origin `/api/stream` route - see §4.2 - so, like the JSON BFF proxy, it's a server-to-server call never subject to browser CORS, regardless of which platform hosts either side). It IS still required, set to the frontend service's **public** Railway domain, if the pre-UI-v2 legacy pages remain in use (`/rule-engine`, trades/analytics/AI/activity - these still fetch directly from the browser). Set it regardless unless you are certain the legacy pages are fully retired. |
 | `ANTHROPIC_API_KEY`, `PICKMYTRADE_WEBHOOK_URL`, `ALERT_WEBHOOK_URL`, `CLAUDE_FAILURE_ALERT_THRESHOLD`, `RISK_ENFORCEMENT`, `ACCOUNT_*` | Optional | Unrelated to UI v2 - see `docs/staging/deployment-checklist.md`'s own Safety Gates section before setting any of these, especially `PICKMYTRADE_WEBHOOK_URL` (real order execution) and `RISK_ENFORCEMENT`. |
+| `RESEARCH_LEDGER_DIR` | Defaulted, not startup-blocking | Sprint 8.2. Where the Research Ledger's nine JSONL stores live - point it at a mounted Volume path (e.g. `/data/research`, see `docs/staging/deployment-checklist.md` Step 1.5) or nothing written there survives a redeploy. Unlike the four "Yes" rows above, an unset/misconfigured value **degrades** `GET /status`'s `research_ledger` field rather than crash-looping the service - see §3.5b. |
 
 ### 3.2 Which variables must match the frontend service
 
@@ -99,9 +100,74 @@ Look at the `research_snapshots` object:
 - `detail` per file is a short, sanitized, human-readable explanation - never a raw filesystem path or stack trace, safe to paste into a support ticket or Slack message as-is.
 - **Fix path**: regenerate and re-commit the three files (`python scripts/export_research_snapshots.py`, run from `live/`) and redeploy. There is no way to fix a degraded snapshot state without a new deploy - this state is computed once at startup, not re-checked live.
 
+### 3.5b How to confirm the Research Ledger is ready
+
+```
+curl -s https://<backend-service>.up.railway.app/api/v1/status \
+  -H "Authorization: Bearer <API_KEY>" | python3 -m json.tool
+```
+
+Look at the `research_ledger` object - the write-side counterpart to `research_snapshots` (§3.5), same shape:
+
+```json
+"research_ledger": {
+  "status": "ready",
+  "reason": null,
+  "checks": {
+    "configuration_valid": { "ok": true, "detail": null },
+    "ledger_directory": { "ok": true, "detail": null },
+    "volume_mounted": { "ok": true, "detail": null },
+    "jsonl_stores_initialized": { "ok": true, "detail": null },
+    "registries_available": { "ok": true, "detail": null }
+  }
+}
+```
+
+- `status: "ready"` means `RESEARCH_LEDGER_DIR` resolved to a real, writable, readable directory at startup - checked once, not per-request, same as `research_snapshots`.
+- `status: "degraded"` means `POST /api/v1/research/run` (any mode) will 503 rather than silently writing to a broken or ephemeral location. Check `reason` (the name of the first failing check) against the Volume setup in `docs/staging/deployment-checklist.md` Step 1.5 and the `RESEARCH_LEDGER_DIR` value in Step 2 - the most common cause is simply forgetting to set `RESEARCH_LEDGER_DIR` to a path inside the mounted Volume, which does **not** crash-loop the service (see §3.1's table) but does mean nothing persists across a redeploy.
+- The same five checks are also logged once as a human-readable "Research Startup" block at process start - see §3.6.
+
 ### 3.6 Startup log expectations
 
-A healthy first boot's log should show, in order: migrations applying, then `Uvicorn running on http://0.0.0.0:$PORT`, with no `RuntimeError` before it. The snapshot readiness check runs silently during this same startup sequence (in `atlas.main`'s `lifespan()`) and never itself prevents startup - if it will 503 the FROZEN endpoints, you won't see that from the log, only from `GET /status` (§3.5).
+A healthy first boot's log should show, in order: migrations applying, then the "Research Startup" block (Sprint 8.2 - `atlas.research_deploy.startup_check.build_startup_report()`, one line per check with a ✓ or ✗, logged exactly once), then `Uvicorn running on http://0.0.0.0:$PORT`, with no `RuntimeError` before it. Both the snapshot readiness check and the Research Ledger check run silently during this same startup sequence (in `atlas.main`'s `lifespan()`) and never themselves prevent startup - if either will degrade its own endpoints, you won't see a crash from the log, only from `GET /status` (§3.5, §3.5b) or the Research Startup block itself.
+
+### 3.7 Scaling
+
+**Horizontal scaling is intentionally unsupported while the Research Ledger uses append-only JSONL storage.** The nine JSONL stores (`atlas/research/stores.py`) have no file-locking or multi-writer coordination - two backend replicas writing to the same Volume-mounted files concurrently could interleave or corrupt records. Running multiple backend replicas is outside the supported deployment model until the Ledger storage architecture changes (e.g. moving these stores to Postgres). Do not increase the backend service's replica count above 1 in Railway's **Settings** → **Scaling**.
+
+This constraint is specific to the backend service and to the Research Ledger specifically - it does not affect the frontend service (stateless, scales freely) or Postgres itself (already a real multi-writer-safe database).
+
+**Single-writer assumption, stated explicitly.** Every design decision in `atlas/research/stores.py` (append-only writes, `RecordConflictError` on a differing re-submission, no locking) assumes exactly one process ever holds a given Volume-mounted JSONL file open for writing at a time - replica count 1 (above) is necessary but not sufficient to guarantee this by itself. **If Railway's deployment strategy for this service ever overlaps the old and new containers during a deploy** (a rolling/blue-green style transition where both briefly serve traffic against the same Volume, rather than a hard stop-then-start) **, this single-writer assumption no longer holds for the duration of that overlap**, and the concurrency safety of the Ledger stores must be re-evaluated before relying on it - this has not been verified against Railway's actual default deploy behavior for a Volume-attached service. Confirm which strategy Railway uses for this service (Settings → Deploy, or Railway's own docs on deployment strategies) before treating "replica count 1" as sufficient on its own.
+
+### 3.8 Restart-persistence verification procedure
+
+The one check that actually proves the Volume works, not just that the app believes it's configured correctly - run this once after every first deploy, and again after any change to the Volume or `RESEARCH_LEDGER_DIR`:
+
+1. **Run the smoke test:**
+   ```
+   curl -s -X POST https://<backend-service>.up.railway.app/api/v1/research/run \
+     -H "Authorization: Bearer <API_KEY>" -H "Content-Type: application/json" \
+     -d '{"mode": "smoke"}' | python3 -m json.tool
+   ```
+   Confirm `ok: true` and every entry under `steps` is `true`. Record the `snapshot_id` from the response.
+2. **Read the leaderboard** using that `snapshot_id`:
+   ```
+   curl -s "https://<backend-service>.up.railway.app/api/v1/research/leaderboard?snapshot_id=<snapshot_id>" \
+     -H "Authorization: Bearer <API_KEY>" | python3 -m json.tool
+   ```
+   Confirm it returns `ok: true` with the same `snapshot_id` and one entry.
+3. **Restart or redeploy the backend service** - in Railway's dashboard, either **Deploy** → **Redeploy** (same image) or trigger a new deploy (e.g. an empty commit). Either wipes the ephemeral filesystem; only the Volume-mounted path survives.
+4. **Wait for the new deployment to be healthy** - `GET /health` returns `{"ok": true, ...}`, and the "Research Startup" block in the deploy logs shows `✓ Registries available` (§3.6).
+5. **Read the same leaderboard snapshot again**, using the identical `snapshot_id` from step 1:
+   ```
+   curl -s "https://<backend-service>.up.railway.app/api/v1/research/leaderboard?snapshot_id=<snapshot_id>" \
+     -H "Authorization: Bearer <API_KEY>" | python3 -m json.tool
+   ```
+6. **Confirm the same data comes back** - `ok: true`, same `snapshot_id`, same `entries` as step 2. If this instead returns a `404` ("no leaderboard snapshot with id..."), the Volume is not actually persisting across restarts - stop and re-check the Volume mount (Step 1.5 of `docs/staging/deployment-checklist.md`) and `RESEARCH_LEDGER_DIR` (§3.1) before considering this deployment verified, regardless of what step 1's `GET /status` reported (a healthy `research_ledger.status` only proves the path is writable *right now* - it cannot prove persistence across a restart by itself, which is exactly why this six-step procedure exists as a separate check).
+
+### 3.9 Known follow-up (not blocking the first deployment): automate the Research/Promotion smoke checks
+
+`live/scripts/smoke_test.sh` predates the Research Ledger and Promotion work entirely - it covers health/auth/webhook/SSE/security-header checks only. Steps 1-2 above (smoke run + leaderboard read-back) and the promotion-decision equivalent (`POST /api/v1/research/promotion/decide` against the resulting candidate, then `GET /api/v1/research/promotion?promotion_id=...` to read it back) are currently manual curl procedures, documented here and in `docs/staging/deployment-checklist.md` Step 5, but not scripted. **This is intentionally deferred until after the first successful Railway deployment** - there is no live deployment yet to validate the script against, and scripting it prematurely against untested assumptions about response shapes would be more likely to need rework than to save time. Once the first deployment in this runbook succeeds, extending `smoke_test.sh` to cover `POST /research/run`, `GET /research/leaderboard`, `GET /research/promotion/candidates`, and `POST /research/promotion/decide` + its read-back is the next operational task.
 
 ---
 
@@ -155,7 +221,13 @@ For the deployed artifact specifically, use the browser's DevTools → Sources p
    curl -s https://<backend-service>.up.railway.app/health
    curl -s https://<backend-service>.up.railway.app/api/v1/status -H "Authorization: Bearer <API_KEY>"
    ```
-   Confirm `/health` returns `{"ok": true, ...}` and `/status` returns 200 with a real JSON body (not a 401, which would mean `API_KEY` isn't set or doesn't match what you're sending). Also verify snapshots per §3.5 - confirm `research_snapshots.status == "ready"` before moving on.
+   Confirm `/health` returns `{"ok": true, ...}` and `/status` returns 200 with a real JSON body (not a 401, which would mean `API_KEY` isn't set or doesn't match what you're sending). Also verify snapshots per §3.5 - confirm `research_snapshots.status == "ready"` before moving on. Also verify the Research Ledger per §3.5b - confirm `research_ledger.status == "ready"`, then run the smoke test:
+   ```
+   curl -s -X POST https://<backend-service>.up.railway.app/api/v1/research/run \
+     -H "Authorization: Bearer <API_KEY>" -H "Content-Type: application/json" \
+     -d '{"mode": "smoke"}' | python3 -m json.tool
+   ```
+   Confirm `ok: true` and every entry under `steps` is `true` (Realization/Experiment/Evidence/Validation/LeaderboardSnapshot all actually persisted, not just computed - see `atlas/api/v1/research_pipeline.py`'s own module docstring). Then read the same snapshot back from a separate request: `GET /api/v1/research/leaderboard?snapshot_id=<snapshot_id from the response>` should return it - proof the Volume round-trips data, not just that the write call itself didn't crash.
 4. **Deploy the frontend** - a second service in the same project, Root Directory `frontend`, with the variables from §4.1 set (`ATLAS_API_KEY` matching the backend's `API_KEY`, `NEXT_PUBLIC_API_BASE_URL` set to the backend's **public** URL from step 3).
 5. **Verify the frontend** loads at all: open its public Railway URL in a browser, confirm the dashboard shell renders with no console errors.
 6. **Verify internal networking** is available for future use (§4.4), even though current code doesn't use it: from the Railway dashboard, confirm both services show as being in the same project and that Railway's private networking is enabled for the project (this is a one-time project-level check, not something you configure per-deploy).
@@ -297,6 +369,10 @@ Fill this in once a real deployment happens. Nothing below is filled in yet - th
 | Deployment timestamp (CT) | |
 | `GET /health` result | |
 | `GET /status` → `research_snapshots.status` | |
+| `GET /status` → `research_ledger.status` | |
+| `POST /research/run {"mode":"smoke"}` result (`ok`, all `steps`) | |
+| `GET /research/leaderboard?snapshot_id=...` round-trip confirmed | |
+| Restart-persistence verification (§3.8) - same snapshot readable after redeploy | |
 | Backend test results (`pytest -q`) | |
 | Ruff result | |
 | Frontend test results (`npm test`) | |

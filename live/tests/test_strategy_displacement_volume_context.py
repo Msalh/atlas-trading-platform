@@ -1,0 +1,471 @@
+"""
+Phase N3, Sprint 3; migrated Sprint 6 (Setup Interpretation integration).
+Tests for atlas.strategy_engine.strategies.displacement_volume_context
+.DisplacementVolumeContext - the first concrete StrategyPlugin. Every
+ReplayFrame here is built from real project model constructors
+(MarketState, RuleEngineOutput, SetupEngineOutput, MarketContext,
+SetupInterpretation), not loose mocks, so these tests exercise the plugin
+against the actual typed shapes it reads in production.
+
+Sprint 6 note: the old "trend_5m key entirely absent from
+RuleEngineOutput.facts" test case (present through Sprint 3) has no
+equivalent left to test post-migration - that state can no longer reach
+this plugin at all: interpret_setups() would itself raise
+SetupInterpretationMissingFactError inside Replay Engine's own
+build_replay_output_window(), before a ReplayFrame carrying it could ever
+be constructed (the same "structurally unreachable through the real
+construction path" class of state Setup Interpretation's own Sprint 3
+Integration Review already established for this exact scenario). It was
+never reachable through real MarketState-derived data even before this
+migration (REGISTRY always evaluates every fact) - dropped, not silently
+weakened, and disclosed here.
+"""
+import ast
+from datetime import datetime, timezone
+from pathlib import Path
+
+import pytest
+from atlas.core.events import Event
+from atlas.core.primitives import Symbol, Timeframe
+from atlas.market_context.models import (
+    ContextQuality,
+    DriftStatus,
+    MarketContext,
+    SessionClassification,
+    SessionPhase,
+    SessionProgress,
+    VolatilityClassification,
+    VolatilityRegime,
+)
+from atlas.market_engine.models import BarStatus, MarketState
+from atlas.replay_engine.models import ReplayFrame
+from atlas.rule_engine.models import RuleEngineOutput
+from atlas.setup_engine.models import InsufficientData as SetupInsufficientData
+from atlas.setup_engine.models import SetupEngineOutput, SetupEvidence, SetupResult, Severity
+from atlas.setup_interpretation.models import DirectionSource, SetupDirection, SetupInterpretation
+from atlas.strategy_engine.models import StrategyDirection, StrategyDisposition
+from atlas.strategy_engine.service import evaluate_strategies
+from atlas.strategy_engine.strategies.displacement_volume_context import (
+    STRATEGY_ID,
+    STRATEGY_VERSION,
+    TARGET_SETUP_NAME,
+    DisplacementVolumeContext,
+    MissingSetupInterpretationError,
+)
+
+_OCCURRED_AT = datetime(2026, 7, 21, 12, 0, tzinfo=timezone.utc)
+_FINGERPRINT = "0123456789abcdef"
+
+
+def _market_state() -> MarketState:
+    return MarketState(
+        envelope=Event(event_type="bar_closed", source="test", occurred_at=_OCCURRED_AT, event_id="e0"),
+        schema_version="1.0", symbol=Symbol("MNQU6"), timeframe=Timeframe.M5, bar_status=BarStatus.CLOSED,
+    )
+
+
+def _rule_engine_output() -> RuleEngineOutput:
+    """DisplacementVolumeContext no longer reads this field at all (Sprint
+    6) - kept minimal only because it remains a required ReplayFrame
+    field, unrelated to what this plugin actually consumes."""
+    return RuleEngineOutput(
+        schema_version="1.0", symbol="MNQU6", timeframe="5m", occurred_at=_OCCURRED_AT.isoformat(), facts={},
+    )
+
+
+def _setup_engine_output(setup_outcome=None) -> SetupEngineOutput:
+    setups = (setup_outcome,) if setup_outcome is not None else ()
+    return SetupEngineOutput(
+        schema_version="1.0", symbol="MNQU6", timeframe="5m", occurred_at=_OCCURRED_AT.isoformat(), setups=setups,
+    )
+
+
+def _market_context(quality: ContextQuality = ContextQuality.TRUSTED) -> MarketContext:
+    session = SessionClassification(
+        phase=SessionPhase.MID_SESSION,
+        progress=SessionProgress(
+            session_open_at=_OCCURRED_AT, session_close_at=_OCCURRED_AT,
+            minutes_since_session_open=5, minutes_until_session_close=395,
+        ),
+        upstream_session_name="RTH", upstream_is_rth=True, drift_status=DriftStatus.AGREEMENT,
+    )
+    volatility = VolatilityClassification(
+        regime=VolatilityRegime.NORMAL, atr_percentile_rank=0.5, lookback_bars_used=288,
+    )
+    return MarketContext(
+        symbol=Symbol("MNQU6"), timeframe=Timeframe.M5, occurred_at=_OCCURRED_AT,
+        session=session, volatility=volatility, quality=quality,
+        classifier_version="REGIME_CLASSIFIER_V1", calendar_version="CME_RTH_V1",
+        context_fingerprint=_FINGERPRINT,
+    )
+
+
+def _interpretation(direction: SetupDirection, source: DirectionSource, detected: bool = True) -> SetupInterpretation:
+    return SetupInterpretation(
+        occurred_at=_OCCURRED_AT, setup_id=TARGET_SETUP_NAME, detected=detected, direction=direction, source=source,
+        source_fact_ids=("trend_5m",) if source == DirectionSource.RULE_FACT else (),
+        reason_codes=("stub_reason",),
+        interpretation_version="SETUP_INTERPRETATION_V1", interpretation_fingerprint="fedcba9876543210",
+    )
+
+
+_BULLISH = _interpretation(SetupDirection.BULLISH, DirectionSource.RULE_FACT)
+_BEARISH = _interpretation(SetupDirection.BEARISH, DirectionSource.RULE_FACT)
+_AMBIGUOUS = _interpretation(SetupDirection.AMBIGUOUS, DirectionSource.RULE_FACT)
+_UNAVAILABLE = _interpretation(SetupDirection.UNAVAILABLE, DirectionSource.INSUFFICIENT_DATA)
+_NEUTRAL = _interpretation(SetupDirection.NEUTRAL, DirectionSource.INTENTIONALLY_NEUTRAL)
+
+
+def _frame(
+    setup_outcome=None, interpretation: SetupInterpretation = None, quality: ContextQuality = ContextQuality.TRUSTED,
+) -> ReplayFrame:
+    return ReplayFrame(
+        market_state=_market_state(),
+        rule_engine_output=_rule_engine_output(),
+        setup_engine_output=_setup_engine_output(setup_outcome),
+        market_context=_market_context(quality),
+        setup_interpretations=(interpretation,) if interpretation is not None else (),
+    )
+
+
+def _triggered_setup() -> SetupResult:
+    return SetupResult(
+        setup_name=TARGET_SETUP_NAME, definition_version="1.0", detected=True, severity=Severity.NORMAL,
+        evidence=SetupEvidence(supporting_facts=()),
+    )
+
+
+def _not_triggered_setup() -> SetupResult:
+    return SetupResult(
+        setup_name=TARGET_SETUP_NAME, definition_version="1.0", detected=False, severity=None,
+        evidence=SetupEvidence(supporting_facts=()),
+    )
+
+
+def _insufficient_setup() -> SetupInsufficientData:
+    return SetupInsufficientData(setup_name=TARGET_SETUP_NAME, definition_version="1.0", reason="no history")
+
+
+# ---- 1. stable strategy_id and strategy_version ----
+
+def test_strategy_id_and_version_are_stable():
+    plugin = DisplacementVolumeContext()
+    assert plugin.strategy_id == STRATEGY_ID == "displacement_volume_context"
+    assert plugin.strategy_version == STRATEGY_VERSION == "1.0.0"
+    for _ in range(20):
+        assert plugin.strategy_id == STRATEGY_ID
+        assert plugin.strategy_version == STRATEGY_VERSION
+
+
+# ---- 2. target setup absent -> NO_SIGNAL / FLAT (unchanged by migration) ----
+
+def test_setup_absent_from_output_yields_no_signal_flat():
+    frame = _frame(setup_outcome=None)
+    decision = DisplacementVolumeContext().evaluate(frame)
+    assert decision.disposition == StrategyDisposition.NO_SIGNAL
+    assert decision.direction == StrategyDirection.FLAT
+    assert decision.setup_ids == ()
+    assert decision.reason_codes == ("setup_absent",)
+
+
+def test_setup_evaluated_as_insufficient_data_yields_no_signal_flat():
+    frame = _frame(setup_outcome=_insufficient_setup())
+    decision = DisplacementVolumeContext().evaluate(frame)
+    assert decision.disposition == StrategyDisposition.NO_SIGNAL
+    assert decision.direction == StrategyDirection.FLAT
+
+
+# ---- 3. setup present but not triggered -> NO_SIGNAL / FLAT (unchanged) ----
+
+def test_setup_present_but_not_triggered_yields_no_signal_flat():
+    frame = _frame(setup_outcome=_not_triggered_setup())
+    decision = DisplacementVolumeContext().evaluate(frame)
+    assert decision.disposition == StrategyDisposition.NO_SIGNAL
+    assert decision.direction == StrategyDirection.FLAT
+    assert decision.setup_ids == ()
+
+
+# ---- 4/5. long/short accepted candidate, via SetupInterpretation ----
+
+def test_bullish_interpretation_yields_long_accepted_candidate():
+    frame = _frame(setup_outcome=_triggered_setup(), interpretation=_BULLISH, quality=ContextQuality.TRUSTED)
+    decision = DisplacementVolumeContext().evaluate(frame)
+    assert decision.disposition == StrategyDisposition.CANDIDATE
+    assert decision.direction == StrategyDirection.LONG
+    assert decision.reason_codes == ("accepted",)
+
+
+def test_bearish_interpretation_yields_short_accepted_candidate():
+    frame = _frame(setup_outcome=_triggered_setup(), interpretation=_BEARISH, quality=ContextQuality.TRUSTED)
+    decision = DisplacementVolumeContext().evaluate(frame)
+    assert decision.disposition == StrategyDisposition.CANDIDATE
+    assert decision.direction == StrategyDirection.SHORT
+    assert decision.reason_codes == ("accepted",)
+
+
+def test_degraded_context_quality_still_allows_a_candidate():
+    """DEGRADED is documented as still-trustworthy for volatility - the
+    only Market Context signal this plugin's acceptance logic reads."""
+    frame = _frame(setup_outcome=_triggered_setup(), interpretation=_BULLISH, quality=ContextQuality.DEGRADED)
+    decision = DisplacementVolumeContext().evaluate(frame)
+    assert decision.disposition == StrategyDisposition.CANDIDATE
+
+
+# ---- 6. insufficient/untrusted context -> REJECTED / FLAT (unchanged gate) ----
+
+def test_unknown_context_quality_rejects_before_ever_reading_the_interpretation():
+    """Passes a real BULLISH interpretation to prove the UNKNOWN gate
+    short-circuits before the interpretation is ever consulted - the
+    identical ordering the old trend_5m read used to have."""
+    frame = _frame(setup_outcome=_triggered_setup(), interpretation=_BULLISH, quality=ContextQuality.UNKNOWN)
+    decision = DisplacementVolumeContext().evaluate(frame)
+    assert decision.disposition == StrategyDisposition.REJECTED
+    assert decision.direction == StrategyDirection.FLAT
+    assert decision.reason_codes == ("context_insufficient",)
+
+
+def test_unavailable_interpretation_rejects_as_context_insufficient():
+    frame = _frame(setup_outcome=_triggered_setup(), interpretation=_UNAVAILABLE)
+    decision = DisplacementVolumeContext().evaluate(frame)
+    assert decision.disposition == StrategyDisposition.REJECTED
+    assert decision.direction == StrategyDirection.FLAT
+    assert decision.reason_codes == ("context_insufficient",)
+
+
+# ---- 7. ambiguous interpretation -> REJECTED / FLAT context_conflict (unchanged outcome) ----
+
+def test_ambiguous_interpretation_is_a_context_conflict_and_rejects():
+    frame = _frame(setup_outcome=_triggered_setup(), interpretation=_AMBIGUOUS, quality=ContextQuality.TRUSTED)
+    decision = DisplacementVolumeContext().evaluate(frame)
+    assert decision.disposition == StrategyDisposition.REJECTED
+    assert decision.direction == StrategyDirection.FLAT
+    assert decision.reason_codes == ("context_conflict",)
+
+
+# ---- NEUTRAL: defensive-only, new Sprint 6 branch ----
+
+def test_neutral_interpretation_is_handled_defensively_not_raised():
+    """Structurally unreachable through the real pipeline for this
+    RULE_FACT-sourced setup (see the production module's own docstring) -
+    still must not raise, per StrategyPlugin's own "never raises for an
+    ordinary outcome" contract."""
+    frame = _frame(setup_outcome=_triggered_setup(), interpretation=_NEUTRAL, quality=ContextQuality.TRUSTED)
+    decision = DisplacementVolumeContext().evaluate(frame)
+    assert decision.disposition == StrategyDisposition.REJECTED
+    assert decision.direction == StrategyDirection.FLAT
+    assert decision.reason_codes == ("unexpected_neutral_interpretation",)
+    assert decision.reason_codes != ("accepted",)
+    assert decision.reason_codes != ("context_conflict",)
+    assert decision.reason_codes != ("context_insufficient",)
+
+
+# ---- missing matching interpretation: internal contract violation ----
+
+def test_missing_matching_interpretation_raises_a_typed_internal_error():
+    """ReplayFrame's own dense contract guarantees an entry for every
+    registered setup - an empty setup_interpretations tuple here can never
+    arise from the real pipeline (Setup Engine's REGISTRY and Setup
+    Interpretation's SETUP_INTERPRETATION_V1 cover the identical four
+    setup IDs), so this is exclusively a hand-built, synthetic contract
+    violation - proving the plugin fails loudly rather than silently
+    falling back to Rule Engine facts."""
+    frame = _frame(setup_outcome=_triggered_setup(), interpretation=None, quality=ContextQuality.TRUSTED)
+    with pytest.raises(MissingSetupInterpretationError, match=TARGET_SETUP_NAME):
+        DisplacementVolumeContext().evaluate(frame)
+
+
+def test_missing_matching_interpretation_is_not_raised_for_setup_absent_or_unknown_context():
+    """The setup_absent and UNKNOWN-context short-circuits both return
+    before the interpretation lookup - an empty setup_interpretations
+    tuple must not raise in either case."""
+    absent = _frame(setup_outcome=None, interpretation=None)
+    decision = DisplacementVolumeContext().evaluate(absent)
+    assert decision.disposition == StrategyDisposition.NO_SIGNAL
+
+    unknown = _frame(setup_outcome=_triggered_setup(), interpretation=None, quality=ContextQuality.UNKNOWN)
+    decision = DisplacementVolumeContext().evaluate(unknown)
+    assert decision.disposition == StrategyDisposition.REJECTED
+    assert decision.reason_codes == ("context_insufficient",)
+
+
+# ---- 8. candidate/rejected both contain the target setup ID (unchanged) ----
+
+def test_candidate_contains_the_target_setup_id():
+    frame = _frame(setup_outcome=_triggered_setup(), interpretation=_BULLISH)
+    decision = DisplacementVolumeContext().evaluate(frame)
+    assert decision.setup_ids == (TARGET_SETUP_NAME,)
+
+
+def test_rejected_also_contains_the_target_setup_id_since_it_was_recognized():
+    frame = _frame(setup_outcome=_triggered_setup(), interpretation=_AMBIGUOUS)
+    decision = DisplacementVolumeContext().evaluate(frame)
+    assert decision.setup_ids == (TARGET_SETUP_NAME,)
+
+
+# ---- 9. decisions use frame occurred_at and context fingerprint exactly (unchanged) ----
+
+def test_decisions_use_the_frame_occurred_at_and_context_fingerprint_exactly():
+    frame = _frame(setup_outcome=_triggered_setup(), interpretation=_BULLISH)
+    decision = DisplacementVolumeContext().evaluate(frame)
+    assert decision.occurred_at == frame.market_state.envelope.occurred_at
+    assert decision.context_fingerprint == frame.market_context.context_fingerprint
+
+
+# ---- 10. no stop/target/invalidation/confidence invented (unchanged) ----
+
+def test_no_stop_target_invalidation_or_confidence_is_ever_invented():
+    frames = [
+        _frame(setup_outcome=None),
+        _frame(setup_outcome=_triggered_setup(), interpretation=_BULLISH),
+        _frame(setup_outcome=_triggered_setup(), interpretation=_BEARISH),
+        _frame(setup_outcome=_triggered_setup(), interpretation=_AMBIGUOUS),
+        _frame(setup_outcome=_triggered_setup(), interpretation=_UNAVAILABLE),
+        _frame(setup_outcome=_triggered_setup(), interpretation=_NEUTRAL),
+        _frame(setup_outcome=_triggered_setup(), interpretation=_BULLISH, quality=ContextQuality.UNKNOWN),
+    ]
+    for frame in frames:
+        decision = DisplacementVolumeContext().evaluate(frame)
+        assert decision.stop is None
+        assert decision.target is None
+        assert decision.invalidation is None
+        assert decision.confidence is None
+
+
+# ---- 11. determinism across repeated evaluations (unchanged) ----
+
+def test_determinism_across_repeated_evaluations():
+    frame = _frame(setup_outcome=_triggered_setup(), interpretation=_BULLISH)
+    plugin = DisplacementVolumeContext()
+    results = [plugin.evaluate(frame) for _ in range(100)]
+    assert all(result == results[0] for result in results)
+
+
+# ---- 12. ReplayFrame is not mutated (extended to the new field) ----
+
+def test_replay_frame_is_not_mutated():
+    frame = _frame(setup_outcome=_triggered_setup(), interpretation=_BULLISH)
+    original_market_state = frame.market_state
+    original_setup_engine_output = frame.setup_engine_output
+    original_rule_engine_output = frame.rule_engine_output
+    original_market_context = frame.market_context
+    original_setup_interpretations = frame.setup_interpretations
+
+    DisplacementVolumeContext().evaluate(frame)
+
+    assert frame.market_state is original_market_state
+    assert frame.setup_engine_output is original_setup_engine_output
+    assert frame.rule_engine_output is original_rule_engine_output
+    assert frame.market_context is original_market_context
+    assert frame.setup_interpretations is original_setup_interpretations
+
+
+# ---- 13. works through evaluate_strategies() without special handling (unchanged) ----
+
+def test_works_through_evaluate_strategies_without_special_handling():
+    frame = _frame(setup_outcome=_triggered_setup(), interpretation=_BULLISH)
+    result = evaluate_strategies(frame, [DisplacementVolumeContext()])
+    assert len(result) == 1
+    assert result[0].disposition == StrategyDisposition.CANDIDATE
+    assert result[0].strategy_id == STRATEGY_ID
+    assert result[0].strategy_version == STRATEGY_VERSION
+
+
+def test_multiple_frames_through_evaluate_strategies_produce_independent_decisions():
+    plugin = DisplacementVolumeContext()
+    trusted_up = evaluate_strategies(_frame(setup_outcome=_triggered_setup(), interpretation=_BULLISH), [plugin])
+    unknown_context = evaluate_strategies(
+        _frame(setup_outcome=_triggered_setup(), interpretation=_BULLISH, quality=ContextQuality.UNKNOWN), [plugin],
+    )
+    assert trusted_up[0].disposition == StrategyDisposition.CANDIDATE
+    assert unknown_context[0].disposition == StrategyDisposition.REJECTED
+
+
+# ---- 14. dependency audit for the concrete strategy module ----
+
+_STRATEGY_MODULE = (
+    Path(__file__).resolve().parent.parent / "atlas" / "strategy_engine" / "strategies"
+    / "displacement_volume_context.py"
+)
+
+_ALLOWED_ATLAS_IMPORTS = frozenset({
+    "atlas.market_context.models",
+    "atlas.replay_engine.models",
+    "atlas.setup_engine.models",
+    "atlas.setup_interpretation.models",
+    "atlas.strategy_engine.models",
+})
+
+_FORBIDDEN_PREFIXES = (
+    "atlas.market_engine", "atlas.rule_engine", "atlas.repositories", "atlas.api", "atlas.events",
+    "atlas.execution", "atlas.paper_trading", "atlas.brokers", "atlas.services", "atlas.research",
+    "atlas.research_export", "atlas.live_view", "atlas.profiling",
+)
+
+
+def _imported_module_roots(file_path: Path) -> set[str]:
+    tree = ast.parse(file_path.read_text(encoding="utf-8"))
+    roots: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            roots.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            roots.add(node.module)
+    return roots
+
+
+def _facts_attribute_accesses(file_path: Path) -> int:
+    """AST-based, not a substring search - this module's own docstring
+    legitimately mentions "frame.rule_engine_output.facts" in prose while
+    explaining what Sprint 6 removed; a blunt substring search would
+    false-positive on that history. Counting actual ast.Attribute(attr=
+    "facts") nodes only matches real code performing the access."""
+    tree = ast.parse(file_path.read_text(encoding="utf-8"))
+    return sum(1 for node in ast.walk(tree) if isinstance(node, ast.Attribute) and node.attr == "facts")
+
+
+def test_dependency_audit_only_approved_atlas_modules_are_imported():
+    atlas_imports = {name for name in _imported_module_roots(_STRATEGY_MODULE) if name.startswith("atlas.")}
+    assert atlas_imports <= _ALLOWED_ATLAS_IMPORTS, f"unexpected imports: {atlas_imports - _ALLOWED_ATLAS_IMPORTS}"
+
+
+def test_dependency_audit_zero_rule_engine_imports():
+    """Sprint 6: the one disclosed widening Sprint 3 made to Strategy
+    Engine's Sprint 1 dependency ceiling (atlas.rule_engine.models
+    .FactResult) is now fully removed."""
+    imported = _imported_module_roots(_STRATEGY_MODULE)
+    rule_engine_imports = {name for name in imported if name.startswith("atlas.rule_engine")}
+    assert rule_engine_imports == set()
+
+
+def test_dependency_audit_setup_interpretation_import_is_limited_to_models_only():
+    imported = _imported_module_roots(_STRATEGY_MODULE)
+    setup_interpretation_imports = {name for name in imported if name.startswith("atlas.setup_interpretation")}
+    assert setup_interpretation_imports == {"atlas.setup_interpretation.models"}
+
+
+def test_dependency_audit_no_forbidden_package_is_imported():
+    atlas_imports = {name for name in _imported_module_roots(_STRATEGY_MODULE) if name.startswith("atlas.")}
+    for name in atlas_imports:
+        assert not name.startswith(_FORBIDDEN_PREFIXES), f"forbidden import: {name}"
+
+
+def test_dependency_audit_no_async_or_networking_constructs():
+    source = _STRATEGY_MODULE.read_text(encoding="utf-8")
+    assert "async def" not in source
+    assert "import asyncio" not in source
+
+
+def test_strategy_module_never_accesses_dot_facts():
+    """Confirms 'strategy never accesses RuleEngineOutput.facts' directly,
+    AST-based rather than a substring search over the module's own prose."""
+    assert _facts_attribute_accesses(_STRATEGY_MODULE) == 0
+
+
+def test_strategy_module_does_not_import_fact_result_or_any_rule_engine_symbol():
+    source = _STRATEGY_MODULE.read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    imported_names = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("atlas.rule_engine"):
+            imported_names.update(alias.name for alias in node.names)
+    assert imported_names == set()

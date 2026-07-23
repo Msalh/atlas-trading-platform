@@ -12,15 +12,21 @@ operational/deployment state, not a fact about the research baseline
 itself, so it belongs on the same operational surface as the database/
 webhook/PickMyTrade/Claude checks below, never folded into FROZEN
 content.
+
+Sprint 8.2: research_ledger exposes the same one-time startup readiness
+check for the Research Ledger's nine JSONL stores
+(atlas/research_deploy/startup_check.py) - the write-side counterpart to
+research_snapshots above.
 """
 import logging
 
 from fastapi import APIRouter, Depends
 
-from atlas.api.deps import get_repository, get_snapshots_readiness, get_system_status
+from atlas.api.deps import get_ledger_readiness, get_repository, get_snapshots_readiness, get_system_status
 from atlas.config import settings
 from atlas.events import types as event_types
 from atlas.repositories.base import TradeRepository
+from atlas.research_deploy.startup_check import LedgerReadiness
 from atlas.research_export.startup_check import SnapshotsReadiness
 from atlas.status import SystemStatus
 
@@ -49,6 +55,7 @@ async def status(
     repository: TradeRepository = Depends(get_repository),
     system_status: SystemStatus = Depends(get_system_status),
     snapshots_readiness: SnapshotsReadiness = Depends(get_snapshots_readiness),
+    ledger_readiness: LedgerReadiness = Depends(get_ledger_readiness),
 ):
     try:
         await repository.ping()
@@ -97,4 +104,5 @@ async def status(
             "last_error": claude_payload.get("error") if claude_payload else None,
         },
         "research_snapshots": snapshots_readiness.to_dict(),
+        "research_ledger": ledger_readiness.to_dict(),
     }

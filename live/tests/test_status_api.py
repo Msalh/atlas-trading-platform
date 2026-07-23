@@ -5,10 +5,11 @@ from unittest.mock import patch
 import pytest
 
 import atlas.ai as ai_module
-from atlas.api.deps import get_snapshots_readiness
+from atlas.api.deps import get_ledger_readiness, get_snapshots_readiness
 from atlas.api.v1 import webhook
 from atlas.config import settings
 from atlas.main import app
+from atlas.research_deploy.startup_check import LedgerCheckResult, LedgerReadiness, internal_error_readiness
 from atlas.research_export.startup_check import SnapshotCheckResult, SnapshotsReadiness
 from tests.conftest import entry_payload
 
@@ -193,3 +194,63 @@ class TestStatusExposesResearchSnapshotsReadiness:
         assert ":\\" not in detail
         assert "/home/" not in detail
         assert "research_export" not in detail  # no package-internal path leakage either
+
+
+class TestStatusExposesResearchLedgerReadiness:
+    """Sprint 8.2: the write-side counterpart to
+    TestStatusExposesResearchSnapshotsReadiness above."""
+
+    def _override(self, readiness: LedgerReadiness):
+        app.dependency_overrides[get_ledger_readiness] = lambda: readiness
+
+    def teardown_method(self):
+        app.dependency_overrides.pop(get_ledger_readiness, None)
+
+    def test_ready_by_default(self, client):
+        resp = client.get("/api/v1/status")
+        body = resp.json()["research_ledger"]
+        assert body["status"] == "ready"
+        assert body["reason"] is None
+        assert set(body["checks"].keys()) == {
+            "configuration_valid", "ledger_directory", "volume_mounted",
+            "jsonl_stores_initialized", "registries_available",
+        }
+        for check in body["checks"].values():
+            assert check["ok"] is True
+
+    def test_degraded_state_is_visible_with_structured_detail(self, client):
+        self._override(LedgerReadiness((
+            LedgerCheckResult("configuration_valid", True, None, None),
+            LedgerCheckResult("ledger_directory", False, "directory_not_creatable", "directory could not be created"),
+            LedgerCheckResult("volume_mounted", False, "skipped", "skipped - ledger_directory failed"),
+            LedgerCheckResult("jsonl_stores_initialized", True, None, None),
+            LedgerCheckResult("registries_available", False, "skipped", "skipped - volume_mounted failed"),
+        )))
+        resp = client.get("/api/v1/status")
+        body = resp.json()["research_ledger"]
+        assert body["status"] == "degraded"
+        assert body["reason"] == "directory_not_creatable"
+        assert body["checks"]["ledger_directory"]["ok"] is False
+        assert body["checks"]["ledger_directory"]["reason"] == "directory_not_creatable"
+        assert body["checks"]["ledger_directory"]["detail"] == "directory could not be created"
+
+    def test_research_ledger_not_configured_is_visible_with_its_own_reason_code(self, client):
+        """The production-safety correction's own required contract: a
+        missing RESEARCH_LEDGER_DIR in production must surface this exact,
+        stable reason code - never a generic 'configuration_valid'."""
+        from atlas.research_deploy.startup_check import check_ledger_storage
+        self._override(check_ledger_storage(None)[0])
+        resp = client.get("/api/v1/status")
+        body = resp.json()["research_ledger"]
+        assert body["status"] == "degraded"
+        assert body["reason"] == "research_ledger_not_configured"
+        assert body["checks"]["configuration_valid"]["reason"] == "research_ledger_not_configured"
+
+    def test_internal_error_readiness_is_visible(self, client):
+        self._override(internal_error_readiness())
+        resp = client.get("/api/v1/status")
+        body = resp.json()["research_ledger"]
+        assert body["status"] == "degraded"
+        for check in body["checks"].values():
+            assert check["ok"] is False
+            assert "server logs" in check["detail"]

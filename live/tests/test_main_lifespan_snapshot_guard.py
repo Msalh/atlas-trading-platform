@@ -31,8 +31,13 @@ def _raise_unexpected_error(_directory):
     raise RuntimeError("simulated unexpected failure inside check_snapshots, host=db.internal port=5432")
 
 
-async def test_an_unexpected_check_snapshots_exception_does_not_fail_startup(monkeypatch):
+async def test_an_unexpected_check_snapshots_exception_does_not_fail_startup(monkeypatch, tmp_path):
     monkeypatch.setattr(main_module.settings, "environment", "development")
+    # Sprint 8.2: the real lifespan now also runs check_ledger_storage()
+    # against settings.research_ledger_dir - point it at a throwaway
+    # tmp_path so this test never writes into the real live/data/research
+    # directory (the default is a relative path, resolved against cwd).
+    monkeypatch.setattr(main_module.settings, "research_ledger_dir", str(tmp_path / "research"))
     monkeypatch.setattr(main_module, "create_pool", _fake_create_pool)
     monkeypatch.setattr(main_module, "check_snapshots", _raise_unexpected_error)
 

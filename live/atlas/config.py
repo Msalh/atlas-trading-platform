@@ -6,6 +6,7 @@ a default. Tests override attributes on the shared `settings` instance directly
 (e.g. `monkeypatch.setattr(settings, "webhook_secret", "test-secret")`).
 """
 import os
+from typing import Optional
 
 
 class Settings:
@@ -91,6 +92,43 @@ class Settings:
         # = $2/point - also a placeholder until a real symbols table exists (see the
         # same architecture-decisions.md note).
         self.account_point_value = float(os.environ.get("ACCOUNT_POINT_VALUE", "2.0"))
+
+        # Sprint 8.2 (Railway Staging Deployment): where the Research Ledger's
+        # nine JSONL stores (atlas/research/stores.py) live on disk. The raw
+        # env var, unmodified - never defaulted here (see
+        # resolved_research_ledger_dir() below for why the "data/research"
+        # convenience default must apply in development only, never in
+        # production/staging). Never added to validate_for_startup()'s
+        # hard-blocking checks - deliberately consistent with this
+        # deployment's own established posture for research-only concerns
+        # (see atlas/research_export/startup_check.py's "never block LIVE,
+        # never crash startup" contract): an unconfigured or non-persistent
+        # value degrades research readiness (GET /status's research_ledger
+        # field, atlas/research_deploy/startup_check.py), it never takes down
+        # webhook/trades/risk endpoints.
+        self.research_ledger_dir = os.environ.get("RESEARCH_LEDGER_DIR", "").strip()
+
+    def resolved_research_ledger_dir(self) -> Optional[str]:
+        """Sprint 8.2, corrected: the effective Research Ledger directory to
+        use, or None when it must be treated as unconfigured.
+
+        Development ONLY may fall back to the local "data/research"
+        convenience default. Production/staging (ENVIRONMENT=production,
+        the default - "there is no separate staging mode") must NEVER apply
+        that fallback: a relative path can be writable on Railway's own
+        ephemeral filesystem, meaning startup readiness would report
+        healthy, the smoke test would pass, writes would succeed, and every
+        record would silently vanish on the next redeploy - a false
+        persistence success, worse than an honest failure. Returning None
+        here (rather than a path) is what makes
+        atlas.research_deploy.startup_check.check_ledger_storage() report
+        research_ledger_not_configured instead of quietly using an implicit
+        path - see that module's own docstring for the full contract."""
+        if self.research_ledger_dir:
+            return self.research_ledger_dir
+        if self.environment == "development":
+            return "data/research"
+        return None
 
     def validate_for_startup(self) -> None:
         """Called once from atlas/main.py's lifespan, before the app accepts any
