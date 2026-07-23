@@ -7,7 +7,8 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from atlas.api.deps import (  # noqa: E402
-    get_event_bus, get_market_state_repository, get_repository, get_snapshots_readiness, get_system_status,
+    get_event_bus, get_ledger_readiness, get_ledger_stores, get_market_state_repository, get_repository,
+    get_snapshots_readiness, get_system_status,
 )
 from atlas.api.security import require_api_key  # noqa: E402
 from atlas.config import settings  # noqa: E402
@@ -18,6 +19,7 @@ from atlas.main import app  # noqa: E402
 from atlas.market_engine.repositories.memory import InMemoryMarketStateRepository  # noqa: E402
 from atlas.rate_limit import limiter  # noqa: E402
 from atlas.repositories.memory import InMemoryTradeRepository  # noqa: E402
+from atlas.research_deploy.startup_check import check_ledger_storage  # noqa: E402
 from atlas.research_export.startup_check import (  # noqa: E402
     EXPECTED_SNAPSHOT_FILES, SnapshotCheckResult, SnapshotsReadiness,
 )
@@ -70,6 +72,25 @@ def snapshots_readiness():
 
 
 @pytest.fixture
+def ledger_readiness_and_stores(tmp_path):
+    """A real, writable tmp_path-backed check_ledger_storage() run - gives
+    tests genuinely working LedgerStores (not a hand-built fake), the same
+    way the smoke-test endpoint itself will exercise them, without needing
+    the app's own real lifespan to run."""
+    return check_ledger_storage(tmp_path / "research")
+
+
+@pytest.fixture
+def ledger_readiness(ledger_readiness_and_stores):
+    return ledger_readiness_and_stores[0]
+
+
+@pytest.fixture
+def ledger_stores(ledger_readiness_and_stores):
+    return ledger_readiness_and_stores[1]
+
+
+@pytest.fixture
 def event_bus(system_status):
     """A real EventBus with the same logging + SystemStatus subscribers production
     uses attached - exercises the same wiring as atlas.main's lifespan, just without a
@@ -82,7 +103,10 @@ def event_bus(system_status):
 
 
 @pytest.fixture
-def client(repository, market_state_repository, event_bus, system_status, snapshots_readiness, monkeypatch):
+def client(
+    repository, market_state_repository, event_bus, system_status, snapshots_readiness,
+    ledger_readiness, ledger_stores, monkeypatch,
+):
     """A TestClient wired to an in-memory repository via FastAPI's
     dependency_overrides - the standard way to test routes without a real database.
     This bypasses the Postgres-backed lifespan entirely (TestClient never triggers it
@@ -109,6 +133,8 @@ def client(repository, market_state_repository, event_bus, system_status, snapsh
     app.dependency_overrides[get_event_bus] = lambda: event_bus
     app.dependency_overrides[get_system_status] = lambda: system_status
     app.dependency_overrides[get_snapshots_readiness] = lambda: snapshots_readiness
+    app.dependency_overrides[get_ledger_readiness] = lambda: ledger_readiness
+    app.dependency_overrides[get_ledger_stores] = lambda: ledger_stores
     app.dependency_overrides[require_api_key] = lambda: None
     try:
         yield TestClient(app)

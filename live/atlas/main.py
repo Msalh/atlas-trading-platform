@@ -36,8 +36,10 @@ Deploy: see README.md and ../docs/sprint9/deployment-checklist.md.
 """
 import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -62,6 +64,11 @@ from atlas.market_engine.repositories.postgres import PostgresMarketStateReposit
 from atlas.monitoring import MarketStateStalenessMonitor
 from atlas.rate_limit import limiter
 from atlas.repositories.postgres import PostgresTradeRepository
+from atlas.research_deploy.startup_check import (
+    build_startup_report,
+    check_ledger_storage,
+)
+from atlas.research_deploy.startup_check import internal_error_readiness as ledger_internal_error_readiness
 from atlas.research_export.startup_check import check_snapshots, internal_error_readiness
 from atlas.status import SystemStatus
 
@@ -101,6 +108,25 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("snapshot readiness check failed unexpectedly at startup")
         app.state.snapshots_readiness = internal_error_readiness()
+
+    # Sprint 8.2 (Railway Staging Deployment): same "never raise, never
+    # block startup, never take LIVE endpoints down with it" contract as
+    # the snapshot check above, applied to the write side - see
+    # atlas/research_deploy/startup_check.py's own module docstring. The
+    # startup report is logged exactly once here, reflecting true
+    # per-check state on both a ready and a degraded run.
+    ledger_check_started_at = time.monotonic()
+    try:
+        app.state.ledger_readiness, app.state.ledger_stores = check_ledger_storage(
+            Path(settings.research_ledger_dir)
+        )
+    except Exception:
+        logger.exception("ledger readiness check failed unexpectedly at startup")
+        app.state.ledger_readiness = ledger_internal_error_readiness()
+        app.state.ledger_stores = None
+    ledger_elapsed_ms = (time.monotonic() - ledger_check_started_at) * 1000
+    logger.info(build_startup_report(app.state.ledger_readiness, settings.environment, ledger_elapsed_ms))
+
     pool = await create_pool()
     app.state.pool = pool
     app.state.repository = PostgresTradeRepository(pool)

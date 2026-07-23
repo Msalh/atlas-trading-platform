@@ -48,9 +48,10 @@ def test_check_ledger_storage_rejects_blank_configuration():
     readiness, stores = check_ledger_storage(Path(""))
     assert readiness.status == "degraded"
     assert readiness.reason == "configuration_valid"
-    assert stores is None
+    assert stores is not None  # always constructed - side-effect-free, never None
     for name in LEDGER_CHECK_NAMES:
-        assert readiness.result_for(name).ok is False
+        if name != "jsonl_stores_initialized":
+            assert readiness.result_for(name).ok is False
 
 
 def test_check_ledger_storage_all_five_checks_always_present(tmp_path: Path):

@@ -144,58 +144,63 @@ def internal_error_readiness() -> LedgerReadiness:
     ))
 
 
-def check_ledger_storage(directory: Path) -> tuple[LedgerReadiness, Optional[LedgerStores]]:
+def check_ledger_storage(directory: Path) -> tuple[LedgerReadiness, LedgerStores]:
     """Pure aside from file I/O - safe to call at startup, and directly
-    testable against a tmp_path fixture. Returns (readiness, stores) -
-    stores is None only when a check failed badly enough that constructing
-    them would be meaningless (blank config, unwritable directory);
-    otherwise it's the real LedgerStores atlas.main should attach to
-    app.state, so lifespan never constructs the nine stores twice."""
+    testable against a tmp_path fixture. Always returns real LedgerStores,
+    even on a degraded readiness - constructing them is side-effect-free
+    (each store class just holds a Path; nothing touches disk until a
+    caller actually reads or writes through one), so atlas.main's lifespan
+    always has something to attach to app.state rather than a None a
+    caller would need to guard against separately from the readiness
+    check. A genuinely broken directory surfaces its own real, observable
+    error at the point of actual use - never masked behind a None here."""
     results: list[LedgerCheckResult] = []
 
     directory_str = str(directory).strip()
-    if not directory_str or directory_str == ".":
-        results.append(LedgerCheckResult("configuration_valid", False, "RESEARCH_LEDGER_DIR resolves to a blank path"))
-        results.extend(
-            LedgerCheckResult(name, False, "skipped - configuration_valid failed")
-            for name in LEDGER_CHECK_NAMES if name != "configuration_valid"
-        )
-        return LedgerReadiness(tuple(results)), None
-    results.append(LedgerCheckResult("configuration_valid", True, None))
+    config_valid = bool(directory_str) and directory_str != "."
+    results.append(
+        LedgerCheckResult("configuration_valid", config_valid,
+                           None if config_valid else "RESEARCH_LEDGER_DIR resolves to a blank path")
+    )
 
-    try:
-        directory.mkdir(parents=True, exist_ok=True)
-        results.append(LedgerCheckResult("ledger_directory", True, None))
-    except OSError:
-        results.append(LedgerCheckResult("ledger_directory", False, "directory could not be created"))
-        results.extend(
-            LedgerCheckResult(name, False, "skipped - ledger_directory failed")
-            for name in ("volume_mounted", "jsonl_stores_initialized", "registries_available")
-        )
-        return LedgerReadiness(tuple(results)), None
+    directory_ready = False
+    if config_valid:
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+            results.append(LedgerCheckResult("ledger_directory", True, None))
+            directory_ready = True
+        except OSError:
+            results.append(LedgerCheckResult("ledger_directory", False, "directory could not be created"))
+    else:
+        results.append(LedgerCheckResult("ledger_directory", False, "skipped - configuration_valid failed"))
 
-    sentinel = directory / ".startup_check"
-    try:
-        sentinel.write_text("ok", encoding="utf-8")
-        sentinel.unlink()
-        results.append(LedgerCheckResult("volume_mounted", True, None))
-    except OSError:
-        results.append(LedgerCheckResult("volume_mounted", False, "directory is not writable"))
-        results.extend(
-            LedgerCheckResult(name, False, "skipped - volume_mounted failed")
-            for name in ("jsonl_stores_initialized", "registries_available")
-        )
-        return LedgerReadiness(tuple(results)), None
+    writable = False
+    if directory_ready:
+        sentinel = directory / ".startup_check"
+        try:
+            sentinel.write_text("ok", encoding="utf-8")
+            sentinel.unlink()
+            results.append(LedgerCheckResult("volume_mounted", True, None))
+            writable = True
+        except OSError:
+            results.append(LedgerCheckResult("volume_mounted", False, "directory is not writable"))
+    else:
+        results.append(LedgerCheckResult("volume_mounted", False, "skipped - ledger_directory failed"))
 
     stores = _build_stores(directory)
     results.append(LedgerCheckResult("jsonl_stores_initialized", True, None))
 
-    try:
-        for store in stores.all_stores():
-            store.all()
-        results.append(LedgerCheckResult("registries_available", True, None))
-    except Exception:
-        results.append(LedgerCheckResult("registries_available", False, "one or more registries could not be read"))
+    if writable:
+        try:
+            for store in stores.all_stores():
+                store.all()
+            results.append(LedgerCheckResult("registries_available", True, None))
+        except Exception:
+            results.append(
+                LedgerCheckResult("registries_available", False, "one or more registries could not be read")
+            )
+    else:
+        results.append(LedgerCheckResult("registries_available", False, "skipped - volume_mounted failed"))
 
     return LedgerReadiness(tuple(results)), stores
 
