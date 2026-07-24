@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { fetchRisk } from "@/lib/riskApi";
 import { pollInterval } from "@/lib/intervals";
 import { useLiveUpdatesConnected } from "@/lib/live-updates";
 
@@ -9,7 +9,7 @@ export function KillSwitchBanner() {
   const sseConnected = useLiveUpdatesConnected();
   const { data } = useQuery({
     queryKey: ["risk"],
-    queryFn: api.risk,
+    queryFn: fetchRisk,
     refetchInterval: pollInterval(sseConnected, 5_000),
   });
 

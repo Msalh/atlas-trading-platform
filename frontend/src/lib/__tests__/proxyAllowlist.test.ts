@@ -37,6 +37,12 @@ describe("isAllowedProxyPath", () => {
     expect(isAllowedProxyMethod("status", "GET")).toBe(true);
   });
 
+  it("allows risk - Sprint 11A Group 0B's riskApi.ts reads it through the secure proxy, no params", () => {
+    expect(isAllowedProxyPath("risk")).toBe(true);
+    expect(isAllowedProxyMethod("risk", "GET")).toBe(true);
+    expect(filterAllowedParams("risk", new URLSearchParams({ foo: "bar" })).toString()).toBe("");
+  });
+
   it("rejects a near-miss of an allowed path (no prefix matching)", () => {
     expect(isAllowedProxyPath("research/re1/summary/extra")).toBe(false);
     expect(isAllowedProxyPath("research")).toBe(false);

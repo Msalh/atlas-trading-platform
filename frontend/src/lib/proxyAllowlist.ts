@@ -73,6 +73,9 @@ export const ALLOWED_PROXY_ROUTES: Readonly<Record<string, ProxyRouteConfig>> = 
   "status": { GET: { params: [] } },
   "research/leaderboard": { GET: { params: [] } },
   "research/promotion": { GET: { params: [] } },
+  // Sprint 11A Group 0B - account risk snapshot (riskApi.ts). No params -
+  // atlas/api/v1/risk.py always scopes to the single configured account.
+  "risk": { GET: { params: [] } },
   // Sprint 10 Slice E - Promotion Queue reads. read_promotion_candidates()
   // itself has existed since Sprint 9 (atlas/api/v1/promotion.py); this is
   // the first slice with a consuming page, exactly like research/lineage's
