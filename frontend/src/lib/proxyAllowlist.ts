@@ -82,6 +82,11 @@ export const ALLOWED_PROXY_ROUTES: Readonly<Record<string, ProxyRouteConfig>> = 
   "trades/current": { GET: { params: [] } },
   "trades": { GET: { params: ["limit", "status"] } },
   "stats/today": { GET: { params: [] } },
+  // Sprint 11A Group 4 - Analytics-page reads (analyticsApi.ts). No params -
+  // atlas/api/v1/analytics.py always computes over the full trade history.
+  "analytics/summary": { GET: { params: [] } },
+  "analytics/equity-curve": { GET: { params: [] } },
+  "analytics/breakdown": { GET: { params: [] } },
   // Sprint 10 Slice E - Promotion Queue reads. read_promotion_candidates()
   // itself has existed since Sprint 9 (atlas/api/v1/promotion.py); this is
   // the first slice with a consuming page, exactly like research/lineage's

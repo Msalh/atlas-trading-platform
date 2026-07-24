@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { api } from "@/lib/api";
+import { fetchEquityCurve } from "@/lib/analyticsApi";
 import { formatDateShort, formatPnl } from "@/lib/format";
 import { pollInterval } from "@/lib/intervals";
 import { useLiveUpdatesConnected } from "@/lib/live-updates";
@@ -11,7 +11,7 @@ export function EquityCurveChart() {
   const sseConnected = useLiveUpdatesConnected();
   const { data, isLoading, isError } = useQuery({
     queryKey: ["analytics", "equity-curve"],
-    queryFn: api.equityCurve,
+    queryFn: fetchEquityCurve,
     refetchInterval: pollInterval(sseConnected, 30_000),
   });
 

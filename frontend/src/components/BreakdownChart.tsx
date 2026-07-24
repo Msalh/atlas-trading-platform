@@ -1,7 +1,7 @@
 "use client";
 
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import type { BreakdownGroup } from "@/lib/api";
+import type { BreakdownGroup } from "@/lib/analyticsApi";
 import { formatPct, formatPnl } from "@/lib/format";
 
 export function BreakdownChart({ title, groups }: { title: string; groups: BreakdownGroup[] }) {

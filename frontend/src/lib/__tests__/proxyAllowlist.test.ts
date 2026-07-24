@@ -43,6 +43,15 @@ describe("isAllowedProxyPath", () => {
     expect(filterAllowedParams("risk", new URLSearchParams({ foo: "bar" })).toString()).toBe("");
   });
 
+  it("allows analytics/summary, analytics/equity-curve, and analytics/breakdown - Sprint 11A Group 4's Analytics reads", () => {
+    expect(isAllowedProxyPath("analytics/summary")).toBe(true);
+    expect(isAllowedProxyMethod("analytics/summary", "GET")).toBe(true);
+    expect(isAllowedProxyPath("analytics/equity-curve")).toBe(true);
+    expect(isAllowedProxyMethod("analytics/equity-curve", "GET")).toBe(true);
+    expect(isAllowedProxyPath("analytics/breakdown")).toBe(true);
+    expect(isAllowedProxyMethod("analytics/breakdown", "GET")).toBe(true);
+  });
+
   it("allows trades/current, trades, and stats/today - Sprint 11A Group 2's Dashboard reads", () => {
     expect(isAllowedProxyPath("trades/current")).toBe(true);
     expect(isAllowedProxyMethod("trades/current", "GET")).toBe(true);

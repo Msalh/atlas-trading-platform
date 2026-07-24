@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { fetchAnalyticsSummary } from "@/lib/analyticsApi";
 import { formatPct, formatPnl, formatRatio } from "@/lib/format";
 import { pollInterval } from "@/lib/intervals";
 import { useLiveUpdatesConnected } from "@/lib/live-updates";
@@ -30,7 +30,7 @@ export function AnalyticsSummaryCards() {
   const sseConnected = useLiveUpdatesConnected();
   const { data, isLoading, isError } = useQuery({
     queryKey: ["analytics", "summary"],
-    queryFn: api.analyticsSummary,
+    queryFn: fetchAnalyticsSummary,
     refetchInterval: pollInterval(sseConnected, 30_000),
   });
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { fetchBreakdown } from "@/lib/analyticsApi";
 import { pollInterval } from "@/lib/intervals";
 import { useLiveUpdatesConnected } from "@/lib/live-updates";
 import { BreakdownChart } from "@/components/BreakdownChart";
@@ -10,7 +10,7 @@ export function BreakdownSection() {
   const sseConnected = useLiveUpdatesConnected();
   const { data, isLoading, isError } = useQuery({
     queryKey: ["analytics", "breakdown"],
-    queryFn: api.breakdown,
+    queryFn: fetchBreakdown,
     refetchInterval: pollInterval(sseConnected, 30_000),
   });
 
