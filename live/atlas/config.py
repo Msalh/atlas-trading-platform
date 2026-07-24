@@ -159,6 +159,18 @@ class Settings:
         self.trader_now_service_mode = os.environ.get(
             "TRADER_NOW_SERVICE_MODE", ""
         ).strip()
+        # Immutable build identity for the dedicated read-only deployment.
+        # These values are supplied by the deployment pipeline; the service
+        # never queries its hosting provider at runtime.
+        self.trader_now_build_commit = os.environ.get(
+            "TRADER_NOW_BUILD_COMMIT", ""
+        ).strip()
+        self.trader_now_release_tag = os.environ.get(
+            "TRADER_NOW_RELEASE_TAG", ""
+        ).strip()
+        self.trader_now_build_timestamp = os.environ.get(
+            "TRADER_NOW_BUILD_TIMESTAMP", ""
+        ).strip()
 
     def resolved_research_ledger_dir(self) -> Optional[str]:
         """Sprint 8.2, corrected: the effective Research Ledger directory to

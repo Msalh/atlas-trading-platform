@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -12,7 +13,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from atlas.api.security import require_api_key
-from atlas.api.v1 import trader_now
+from atlas.api.v1 import operations, trader_now
 from atlas.application.trader_now_production import (
     TraderNowProductionConfig,
     build_trader_now_application,
@@ -53,12 +54,29 @@ def _validate_configuration() -> TraderNowProductionConfig:
         "TRADER_NOW_CALENDAR_VERSION": settings.trader_now_calendar_version,
         "TRADER_NOW_HOLIDAYS_JSON": settings.trader_now_holidays_json,
         "TRADER_NOW_EARLY_CLOSES_JSON": settings.trader_now_early_closes_json,
+        "TRADER_NOW_BUILD_COMMIT": settings.trader_now_build_commit,
+        "TRADER_NOW_RELEASE_TAG": settings.trader_now_release_tag,
+        "TRADER_NOW_BUILD_TIMESTAMP": settings.trader_now_build_timestamp,
     }
     missing = [name for name, value in required.items() if not value]
     if missing:
         raise RuntimeError(
             f"{', '.join(missing)} required by TraderNow read-only service"
         )
+    if not re.fullmatch(r"[0-9a-f]{40}", settings.trader_now_build_commit):
+        raise RuntimeError("TRADER_NOW_BUILD_COMMIT must be a full lowercase Git SHA")
+    if not re.fullmatch(
+        r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", settings.trader_now_release_tag
+    ):
+        raise RuntimeError("TRADER_NOW_RELEASE_TAG has an invalid format")
+    try:
+        build_timestamp = datetime.fromisoformat(
+            settings.trader_now_build_timestamp.replace("Z", "+00:00")
+        )
+    except ValueError:
+        raise RuntimeError("TRADER_NOW_BUILD_TIMESTAMP must be ISO-8601") from None
+    if build_timestamp.tzinfo is None or build_timestamp.utcoffset() is None:
+        raise RuntimeError("TRADER_NOW_BUILD_TIMESTAMP must be timezone-aware")
     return TraderNowProductionConfig.from_settings(settings)
 
 
@@ -95,6 +113,8 @@ async def lifespan(app: FastAPI):
     app.state.market_state_repository = repository
     app.state.trader_now_application = application
     app.state.configuration_valid = True
+    app.state.last_success_at = None
+    app.state.last_response_duration_ms = None
     logger.info(
         "trader_now_read_service_started",
         extra={
@@ -130,6 +150,13 @@ async def request_observability(request: Request, call_next):
     started = time.monotonic()
     response = await call_next(request)
     elapsed_ms = (time.monotonic() - started) * 1000
+    if 200 <= response.status_code < 400:
+        request.app.state.last_success_at = (
+            datetime.now(timezone.utc)
+            .isoformat(timespec="microseconds")
+            .replace("+00:00", "Z")
+        )
+        request.app.state.last_response_duration_ms = round(elapsed_ms, 3)
     response.headers["X-Correlation-ID"] = correlation_id
     logger.info(
         "read_only_request_completed",
@@ -181,6 +208,11 @@ async def readiness(request: Request):
 
 app.include_router(
     trader_now.router,
+    prefix="/api/v1",
+    dependencies=[Depends(require_api_key)],
+)
+app.include_router(
+    operations.router,
     prefix="/api/v1",
     dependencies=[Depends(require_api_key)],
 )

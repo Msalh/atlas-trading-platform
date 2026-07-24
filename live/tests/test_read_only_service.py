@@ -25,6 +25,9 @@ VALID_CONFIG = {
     "trader_now_holidays_json": "[]",
     "trader_now_early_closes_json": "{}",
     "trader_now_service_mode": "read_only",
+    "trader_now_build_commit": "1f10332a792c042dfab0bebb987f2e0610e00272",
+    "trader_now_release_tag": "trader-now-read-only-v1.0.0",
+    "trader_now_build_timestamp": "2026-07-24T10:00:00Z",
 }
 
 
@@ -79,6 +82,9 @@ def configured_service(monkeypatch):
         "atlas.read_only_service.verify_read_only_access", verify_access
     )
     monkeypatch.setattr(
+        "atlas.api.v1.operations.verify_read_only_access", verify_access
+    )
+    monkeypatch.setattr(
         "atlas.read_only_service.PostgresMarketStateRepository",
         FakeRepository,
     )
@@ -131,7 +137,7 @@ def test_smoke_lifecycle_routes_auth_no_data_and_shutdown(configured_service):
     # Fixture shutdown happens after this test body.
 
 
-def test_only_three_approved_routes_are_mounted():
+def test_only_four_approved_routes_are_mounted():
     def flatten(routes, prefix=""):
         for route in routes:
             original = getattr(route, "original_router", None)
@@ -150,7 +156,73 @@ def test_only_three_approved_routes_are_mounted():
         ("GET", "/health"),
         ("GET", "/readiness"),
         ("GET", "/api/v1/trader-now"),
+        ("GET", "/api/v1/operations/status"),
     }
+
+
+def test_operations_status_is_authenticated_sanitized_and_runtime_verified(
+    configured_service,
+):
+    client, _, _ = configured_service
+    assert client.get("/api/v1/operations/status").status_code == 401
+    response = client.get("/api/v1/operations/status", headers=_auth())
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"service", "build", "database", "requests"}
+    assert set(body["database"]) == {
+        "ready",
+        "transaction_read_only",
+        "pool_status",
+        "latest_probe_duration_ms",
+    }
+    assert body["database"]["ready"] is True
+    assert body["database"]["transaction_read_only"] is True
+    assert body["build"]["response_schema_version"] == "trader_now_response.v2"
+    serialized = response.text.lower()
+    for forbidden in (
+        "database_url",
+        "postgresql://",
+        "api_key",
+        "password",
+        "hostname",
+        "environment",
+    ):
+        assert forbidden not in serialized
+
+
+def test_operations_status_sanitizes_database_failure(configured_service):
+    client, _, _ = configured_service
+
+    async def failed_access(_pool):
+        raise RuntimeError("postgresql://user:password@secret-host/database")
+
+    from atlas import read_only_service
+    from atlas.api.v1 import operations
+
+    original_service = read_only_service.verify_read_only_access
+    original_operations = operations.verify_read_only_access
+    read_only_service.verify_read_only_access = failed_access
+    operations.verify_read_only_access = failed_access
+    try:
+        response = client.get("/api/v1/operations/status", headers=_auth())
+        assert response.status_code == 200
+        assert response.json()["service"]["status"] == "degraded"
+        assert response.json()["database"]["ready"] is False
+        assert response.json()["database"]["transaction_read_only"] is False
+        assert response.json()["database"]["pool_status"] == "unavailable"
+        assert "secret-host" not in response.text
+        assert "password" not in response.text
+    finally:
+        read_only_service.verify_read_only_access = original_service
+        operations.verify_read_only_access = original_operations
+
+
+@pytest.mark.parametrize("method", ["post", "put", "patch", "delete"])
+def test_operations_status_rejects_mutation_methods(configured_service, method):
+    client, _, _ = configured_service
+    assert getattr(client, method)(
+        "/api/v1/operations/status", headers=_auth()
+    ).status_code == 405
 
 
 @pytest.mark.parametrize(

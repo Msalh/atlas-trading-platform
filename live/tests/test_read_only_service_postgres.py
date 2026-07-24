@@ -49,6 +49,9 @@ def production_settings(monkeypatch):
         "trader_now_calendar_version": "phase-13a.cme.v1",
         "trader_now_holidays_json": "[]",
         "trader_now_early_closes_json": "{}",
+        "trader_now_build_commit": "1f10332a792c042dfab0bebb987f2e0610e00272",
+        "trader_now_release_tag": "trader-now-read-only-v1.0.0",
+        "trader_now_build_timestamp": "2026-07-24T10:00:00Z",
     }
     for name, value in values.items():
         monkeypatch.setattr(settings, name, value)
