@@ -5,10 +5,14 @@ concrete repository/pool directly - this is what lets tests override these
 dependencies with the in-memory test double via `app.dependency_overrides`, without
 the route code ever knowing the difference.
 """
+
 from typing import Optional
 
 from fastapi import Request
 
+from atlas.api.trader_now_deps import (
+    get_trader_now_application as get_trader_now_application,
+)
 from atlas.events.bus import EventBus
 from atlas.market_engine.ports import MarketStateRepository
 from atlas.repositories.base import TradeRepository

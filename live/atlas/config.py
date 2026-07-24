@@ -5,6 +5,7 @@ so there is exactly one place to see what the app depends on and one place to ch
 a default. Tests override attributes on the shared `settings` instance directly
 (e.g. `monkeypatch.setattr(settings, "webhook_secret", "test-secret")`).
 """
+
 import os
 from typing import Optional
 
@@ -20,7 +21,9 @@ class Settings:
         # should never compromise the other. Same body-embedded-field,
         # constant-time-comparison scheme as WEBHOOK_SECRET - see
         # atlas/api/v1/market_state.py.
-        self.market_state_webhook_secret = os.environ.get("MARKET_STATE_WEBHOOK_SECRET", "")
+        self.market_state_webhook_secret = os.environ.get(
+            "MARKET_STATE_WEBHOOK_SECRET", ""
+        )
         self.anthropic_api_key = os.environ.get("ANTHROPIC_API_KEY", "")
         self.claude_model = os.environ.get("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
         self.pickmytrade_webhook_url = os.environ.get("PICKMYTRADE_WEBHOOK_URL", "")
@@ -38,7 +41,9 @@ class Settings:
         # Sprint 9: display-only by default (Sprint 4's original scope). Only when
         # this is explicitly "true" does a breached kill switch actually block new
         # PickMyTrade forwards - see atlas/api/v1/webhook.py's risk-enforcement gate.
-        self.risk_enforcement = os.environ.get("RISK_ENFORCEMENT", "false").strip().lower() == "true"
+        self.risk_enforcement = (
+            os.environ.get("RISK_ENFORCEMENT", "false").strip().lower() == "true"
+        )
 
         # Sprint 10: a Slack-compatible incoming webhook URL (also works with Discord
         # and most generic webhook receivers) - see atlas/alerting.py. If unset,
@@ -49,7 +54,9 @@ class Settings:
         # trade review, and reports combined) before atlas.alerting.ClaudeFailureTracker
         # sends one alert - see that class's docstring for why this is a streak count,
         # not "alert on every failure."
-        self.claude_failure_alert_threshold = int(os.environ.get("CLAUDE_FAILURE_ALERT_THRESHOLD", "3"))
+        self.claude_failure_alert_threshold = int(
+            os.environ.get("CLAUDE_FAILURE_ALERT_THRESHOLD", "3")
+        )
         # Market Engine Sprint 7 - see atlas/monitoring.py. Default 15 minutes:
         # roughly 3x a 5-minute bar interval, a buffer against normal
         # delivery/processing jitter without being so loose that a genuine
@@ -68,7 +75,11 @@ class Settings:
         # frontend development works with zero configuration; set this explicitly in
         # production to the deployed frontend's origin(s).
         self.frontend_origins = [
-            o.strip() for o in os.environ.get("FRONTEND_ORIGINS", "http://localhost:3000").split(",") if o.strip()
+            o.strip()
+            for o in os.environ.get("FRONTEND_ORIGINS", "http://localhost:3000").split(
+                ","
+            )
+            if o.strip()
         ]
 
         # Account risk parameters (Sprint 4). One account, one instrument (MNQ) in
@@ -80,13 +91,23 @@ class Settings:
         # whether they were actually set, so the UI can warn loudly instead of quietly
         # showing risk numbers computed against made-up limits.
         account_env_keys = [
-            "ACCOUNT_STARTING_BALANCE", "ACCOUNT_DAILY_LOSS_LIMIT",
-            "ACCOUNT_TRAILING_DRAWDOWN_LIMIT", "ACCOUNT_MAX_CONTRACTS",
+            "ACCOUNT_STARTING_BALANCE",
+            "ACCOUNT_DAILY_LOSS_LIMIT",
+            "ACCOUNT_TRAILING_DRAWDOWN_LIMIT",
+            "ACCOUNT_MAX_CONTRACTS",
         ]
-        self.account_configured = all(os.environ.get(k) is not None for k in account_env_keys)
-        self.account_starting_balance = float(os.environ.get("ACCOUNT_STARTING_BALANCE", "50000"))
-        self.account_daily_loss_limit = float(os.environ.get("ACCOUNT_DAILY_LOSS_LIMIT", "1000"))
-        self.account_trailing_drawdown_limit = float(os.environ.get("ACCOUNT_TRAILING_DRAWDOWN_LIMIT", "2000"))
+        self.account_configured = all(
+            os.environ.get(k) is not None for k in account_env_keys
+        )
+        self.account_starting_balance = float(
+            os.environ.get("ACCOUNT_STARTING_BALANCE", "50000")
+        )
+        self.account_daily_loss_limit = float(
+            os.environ.get("ACCOUNT_DAILY_LOSS_LIMIT", "1000")
+        )
+        self.account_trailing_drawdown_limit = float(
+            os.environ.get("ACCOUNT_TRAILING_DRAWDOWN_LIMIT", "2000")
+        )
         self.account_max_contracts = int(os.environ.get("ACCOUNT_MAX_CONTRACTS", "5"))
         # Dollars per point per contract for the traded instrument. MNQ (Micro Nasdaq)
         # = $2/point - also a placeholder until a real symbols table exists (see the
@@ -107,6 +128,37 @@ class Settings:
         # field, atlas/research_deploy/startup_check.py), it never takes down
         # webhook/trades/risk endpoints.
         self.research_ledger_dir = os.environ.get("RESEARCH_LEDGER_DIR", "").strip()
+
+        # Explicit persisted analysis-series identity and operator-owned CME
+        # exception calendar. No value implies a contract or rollover.
+        self.trader_now_product = os.environ.get("TRADER_NOW_PRODUCT", "").strip()
+        self.trader_now_market_data_provider = os.environ.get(
+            "TRADER_NOW_MARKET_DATA_PROVIDER", ""
+        ).strip()
+        self.trader_now_market_data_series_symbol = os.environ.get(
+            "TRADER_NOW_MARKET_DATA_SERIES_SYMBOL", ""
+        ).strip()
+        self.trader_now_market_data_series_type = os.environ.get(
+            "TRADER_NOW_MARKET_DATA_SERIES_TYPE", ""
+        ).strip()
+        self.trader_now_series_resolution_version = os.environ.get(
+            "TRADER_NOW_SERIES_RESOLUTION_VERSION", ""
+        ).strip()
+        self.trader_now_series_effective_date = os.environ.get(
+            "TRADER_NOW_SERIES_EFFECTIVE_DATE", ""
+        ).strip()
+        self.trader_now_calendar_version = os.environ.get(
+            "TRADER_NOW_CALENDAR_VERSION", ""
+        ).strip()
+        self.trader_now_holidays_json = os.environ.get(
+            "TRADER_NOW_HOLIDAYS_JSON", ""
+        ).strip()
+        self.trader_now_early_closes_json = os.environ.get(
+            "TRADER_NOW_EARLY_CLOSES_JSON", ""
+        ).strip()
+        self.trader_now_service_mode = os.environ.get(
+            "TRADER_NOW_SERVICE_MODE", ""
+        ).strip()
 
     def resolved_research_ledger_dir(self) -> Optional[str]:
         """Sprint 8.2, corrected: the effective Research Ledger directory to
@@ -172,6 +224,25 @@ class Settings:
                 f"secret or API key means that check is silently disabled, not "
                 f"enforced. Set the missing variable(s), or set ENVIRONMENT=development "
                 f"for local testing only (never for a real deployment)."
+            )
+        trader_now_required = {
+            "TRADER_NOW_PRODUCT": self.trader_now_product,
+            "TRADER_NOW_MARKET_DATA_PROVIDER": self.trader_now_market_data_provider,
+            "TRADER_NOW_MARKET_DATA_SERIES_SYMBOL": self.trader_now_market_data_series_symbol,
+            "TRADER_NOW_MARKET_DATA_SERIES_TYPE": self.trader_now_market_data_series_type,
+            "TRADER_NOW_SERIES_RESOLUTION_VERSION": self.trader_now_series_resolution_version,
+            "TRADER_NOW_SERIES_EFFECTIVE_DATE": self.trader_now_series_effective_date,
+            "TRADER_NOW_CALENDAR_VERSION": self.trader_now_calendar_version,
+            "TRADER_NOW_HOLIDAYS_JSON": self.trader_now_holidays_json,
+            "TRADER_NOW_EARLY_CLOSES_JSON": self.trader_now_early_closes_json,
+        }
+        missing_trader_now = [
+            name for name, value in trader_now_required.items() if not value
+        ]
+        if missing_trader_now:
+            raise RuntimeError(
+                f"{', '.join(missing_trader_now)} not set. Refusing to start "
+                "TraderNow in production without explicit market-data series and calendar configuration."
             )
         if self.risk_enforcement and not self.account_configured:
             raise RuntimeError(

@@ -14,7 +14,9 @@ writing to and reading from a path that would vanish on the next redeploy.
 Does not touch a real Postgres - create_pool is replaced with a fake,
 mirroring test_main_lifespan_snapshot_guard.py's own pattern exactly.
 """
+
 from fastapi.testclient import TestClient
+import pytest
 
 import atlas.main as main_module
 from atlas.api.deps import get_repository
@@ -26,11 +28,46 @@ class _FakePool:
         pass
 
 
+class _FakeMarketStateRepository:
+    def __init__(self, pool):
+        self.pool = pool
+
+    async def ping(self):
+        return True
+
+    async def get_history(self, symbol, timeframe, limit=100):
+        return []
+
+
 async def _fake_create_pool():
     return _FakePool()
 
 
-async def test_required_2_production_without_research_ledger_dir_starts_but_degrades(monkeypatch):
+@pytest.fixture(autouse=True)
+def _trader_now_production_configuration(monkeypatch):
+    values = {
+        "trader_now_product": "MNQ",
+        "trader_now_market_data_provider": "tradingview",
+        "trader_now_market_data_series_symbol": "MNQ1!",
+        "trader_now_market_data_series_type": "continuous",
+        "trader_now_series_resolution_version": "tradingview-mnq1.v1",
+        "trader_now_series_effective_date": "2026-07-13",
+        "trader_now_calendar_version": "cme-equity-index.2026.v1",
+        "trader_now_holidays_json": "[]",
+        "trader_now_early_closes_json": "{}",
+    }
+    for name, value in values.items():
+        monkeypatch.setattr(main_module.settings, name, value)
+    monkeypatch.setattr(
+        main_module,
+        "PostgresMarketStateRepository",
+        _FakeMarketStateRepository,
+    )
+
+
+async def test_required_2_production_without_research_ledger_dir_starts_but_degrades(
+    monkeypatch,
+):
     monkeypatch.setattr(main_module.settings, "environment", "production")
     monkeypatch.setattr(main_module.settings, "research_ledger_dir", "")
     monkeypatch.setattr(main_module.settings, "webhook_secret", "wh")
@@ -49,7 +86,9 @@ async def test_required_2_production_without_research_ledger_dir_starts_but_degr
         assert app.state.ledger_stores is None
 
 
-async def test_required_6_no_implicit_write_under_data_research_in_production(monkeypatch, tmp_path):
+async def test_required_6_no_implicit_write_under_data_research_in_production(
+    monkeypatch, tmp_path
+):
     """No file or directory named "research" (or anything else) may be
     created anywhere under cwd when production has no RESEARCH_LEDGER_DIR -
     the exact false-persistence-success scenario the correction exists to
@@ -69,7 +108,9 @@ async def test_required_6_no_implicit_write_under_data_research_in_production(mo
     assert list(tmp_path.iterdir()) == []
 
 
-async def test_required_4_trading_and_status_routes_stay_available_when_ledger_degraded(monkeypatch):
+async def test_required_4_trading_and_status_routes_stay_available_when_ledger_degraded(
+    monkeypatch,
+):
     """Research readiness degrading must never take webhook/trades/status
     down with it - proven with a real TestClient request, not just an
     inspection of app.state."""
@@ -94,13 +135,15 @@ async def test_required_4_trading_and_status_routes_stay_available_when_ledger_d
         try:
             degraded_client = TestClient(app)
             status_resp = degraded_client.get(
-                "/api/v1/status", headers={"Authorization": "Bearer test-api-key"},
+                "/api/v1/status",
+                headers={"Authorization": "Bearer test-api-key"},
             )
             assert status_resp.status_code == 200
             assert status_resp.json()["research_ledger"]["status"] == "degraded"
 
             trades_resp = degraded_client.get(
-                "/api/v1/trades", headers={"Authorization": "Bearer test-api-key"},
+                "/api/v1/trades",
+                headers={"Authorization": "Bearer test-api-key"},
             )
             assert trades_resp.status_code == 200
 
@@ -110,7 +153,9 @@ async def test_required_4_trading_and_status_routes_stay_available_when_ledger_d
             app.dependency_overrides.pop(get_repository, None)
 
 
-async def test_required_3_research_run_rejects_with_503_when_ledger_not_configured(monkeypatch):
+async def test_required_3_research_run_rejects_with_503_when_ledger_not_configured(
+    monkeypatch,
+):
     monkeypatch.setattr(main_module.settings, "environment", "production")
     monkeypatch.setattr(main_module.settings, "research_ledger_dir", "")
     monkeypatch.setattr(main_module.settings, "webhook_secret", "wh")
@@ -122,7 +167,8 @@ async def test_required_3_research_run_rejects_with_503_when_ledger_not_configur
     async with main_module.lifespan(app):
         no_override_client = TestClient(app)
         resp = no_override_client.post(
-            "/api/v1/research/run", json={"mode": "smoke"},
+            "/api/v1/research/run",
+            json={"mode": "smoke"},
             headers={"Authorization": "Bearer test-api-key"},
         )
         assert resp.status_code == 503
@@ -131,9 +177,13 @@ async def test_required_3_research_run_rejects_with_503_when_ledger_not_configur
         assert body["reason"] == "research_ledger_not_configured"
 
 
-async def test_required_5_production_with_explicit_writable_dir_stays_ready_and_smoke_passes(monkeypatch, tmp_path):
+async def test_required_5_production_with_explicit_writable_dir_stays_ready_and_smoke_passes(
+    monkeypatch, tmp_path
+):
     monkeypatch.setattr(main_module.settings, "environment", "production")
-    monkeypatch.setattr(main_module.settings, "research_ledger_dir", str(tmp_path / "research"))
+    monkeypatch.setattr(
+        main_module.settings, "research_ledger_dir", str(tmp_path / "research")
+    )
     monkeypatch.setattr(main_module.settings, "webhook_secret", "wh")
     monkeypatch.setattr(main_module.settings, "api_key", "test-api-key")
     monkeypatch.setattr(main_module.settings, "market_state_webhook_secret", "ms")
@@ -146,7 +196,8 @@ async def test_required_5_production_with_explicit_writable_dir_stays_ready_and_
 
         ready_client = TestClient(app)
         resp = ready_client.post(
-            "/api/v1/research/run", json={"mode": "smoke"},
+            "/api/v1/research/run",
+            json={"mode": "smoke"},
             headers={"Authorization": "Bearer test-api-key"},
         )
         assert resp.status_code == 200
@@ -161,4 +212,5 @@ def teardown_module():
     # a real TestClient - make sure no override leaks into unrelated tests
     # that run after this file in the same session.
     from atlas.main import app
+
     app.dependency_overrides.clear()

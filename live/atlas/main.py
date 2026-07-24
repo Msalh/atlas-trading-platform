@@ -34,6 +34,7 @@ Run locally (requires DATABASE_URL pointing at a Postgres instance):
 
 Deploy: see README.md and ../docs/sprint9/deployment-checklist.md.
 """
+
 import asyncio
 import logging
 import time
@@ -48,10 +49,30 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from atlas.alerting import ClaudeFailureTracker, alert_on_forward_failure
+from atlas.application.trader_now_production import (
+    TraderNowProductionConfig,
+    build_trader_now_application,
+)
 from atlas.api.security import require_api_key
 from atlas.api.v1 import (
-    activity, ai, analytics, health, market_state, promotion, research, research_lineage, research_pipeline, risk,
-    rule_engine, setup_engine, status, stats, stream, trades, webhook,
+    activity,
+    ai,
+    analytics,
+    health,
+    market_state,
+    promotion,
+    research,
+    research_lineage,
+    research_pipeline,
+    risk,
+    rule_engine,
+    setup_engine,
+    status,
+    stats,
+    stream,
+    trader_now,
+    trades,
+    webhook,
 )
 from atlas.config import settings
 from atlas.db import create_pool
@@ -68,15 +89,22 @@ from atlas.research_deploy.startup_check import (
     build_startup_report,
     check_ledger_storage,
 )
-from atlas.research_deploy.startup_check import internal_error_readiness as ledger_internal_error_readiness
-from atlas.research_export.startup_check import check_snapshots, internal_error_readiness
+from atlas.research_deploy.startup_check import (
+    internal_error_readiness as ledger_internal_error_readiness,
+)
+from atlas.research_export.startup_check import (
+    check_snapshots,
+    internal_error_readiness,
+)
 from atlas.status import SystemStatus
 
 configure_logging()
 logger = logging.getLogger(__name__)
 
 
-async def _market_state_staleness_loop(app: FastAPI, monitor: MarketStateStalenessMonitor, interval_seconds: float) -> None:
+async def _market_state_staleness_loop(
+    app: FastAPI, monitor: MarketStateStalenessMonitor, interval_seconds: float
+) -> None:
     """Sprint 7. A thin adapter, deliberately - all the interesting logic
     (what counts as stale, what counts as expected market hours, alert-once-
     on-transition) lives in atlas.monitoring, fully unit-tested there. This
@@ -92,6 +120,22 @@ async def _market_state_staleness_loop(app: FastAPI, monitor: MarketStateStalene
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings.validate_for_startup()
+    trader_now_values = (
+        settings.trader_now_product,
+        settings.trader_now_market_data_provider,
+        settings.trader_now_market_data_series_symbol,
+        settings.trader_now_market_data_series_type,
+        settings.trader_now_series_resolution_version,
+        settings.trader_now_series_effective_date,
+        settings.trader_now_calendar_version,
+        settings.trader_now_holidays_json,
+        settings.trader_now_early_closes_json,
+    )
+    trader_now_config = (
+        TraderNowProductionConfig.from_settings(settings)
+        if settings.environment == "production" or any(trader_now_values)
+        else None
+    )
     app.state.started_at = datetime.now(timezone.utc)
     # Production-hardening amendment 3: computed once here, never per-request -
     # does not raise on a missing/invalid snapshot (LIVE endpoints have no
@@ -136,7 +180,11 @@ async def lifespan(app: FastAPI):
         app.state.ledger_readiness = ledger_internal_error_readiness()
         app.state.ledger_stores = None
     ledger_elapsed_ms = (time.monotonic() - ledger_check_started_at) * 1000
-    logger.info(build_startup_report(app.state.ledger_readiness, settings.environment, ledger_elapsed_ms))
+    logger.info(
+        build_startup_report(
+            app.state.ledger_readiness, settings.environment, ledger_elapsed_ms
+        )
+    )
 
     pool = await create_pool()
     app.state.pool = pool
@@ -144,6 +192,18 @@ async def lifespan(app: FastAPI):
     # Sprint 3 (Market Engine): reuses the same connection pool - it's the same
     # Postgres database, a different table, no reason for a second pool.
     app.state.market_state_repository = PostgresMarketStateRepository(pool)
+    if trader_now_config is not None:
+        try:
+            await app.state.market_state_repository.ping()
+            app.state.trader_now_application = build_trader_now_application(
+                repository=app.state.market_state_repository,
+                config=trader_now_config,
+            )
+        except Exception:
+            await pool.close()
+            raise
+    elif hasattr(app.state, "trader_now_application"):
+        del app.state.trader_now_application
     app.state.event_bus = EventBus()
     app.state.system_status = SystemStatus()
     for event_type in ALL_EVENT_TYPES:
@@ -153,9 +213,17 @@ async def lifespan(app: FastAPI):
     # Sprint 10: operational alerting - see atlas/alerting.py. Both are no-ops
     # (send_alert never actually POSTs anything) when ALERT_WEBHOOK_URL is unset, so
     # this subscription is always safe to register.
-    app.state.event_bus.subscribe(event_types.TRADE_ENTRY_FORWARD_FAILED, alert_on_forward_failure)
-    claude_failure_tracker = ClaudeFailureTracker(threshold=settings.claude_failure_alert_threshold)
-    for ai_event_type in (event_types.AI_ENTRY_SCORED, event_types.AI_TRADE_REVIEWED, event_types.AI_REPORT_GENERATED):
+    app.state.event_bus.subscribe(
+        event_types.TRADE_ENTRY_FORWARD_FAILED, alert_on_forward_failure
+    )
+    claude_failure_tracker = ClaudeFailureTracker(
+        threshold=settings.claude_failure_alert_threshold
+    )
+    for ai_event_type in (
+        event_types.AI_ENTRY_SCORED,
+        event_types.AI_TRADE_REVIEWED,
+        event_types.AI_REPORT_GENERATED,
+    ):
         app.state.event_bus.subscribe(ai_event_type, claude_failure_tracker.record)
 
     # Market Engine Sprint 7 - a long-running background task, a genuinely new
@@ -167,7 +235,11 @@ async def lifespan(app: FastAPI):
         threshold_minutes=settings.market_state_staleness_threshold_minutes
     )
     staleness_task = asyncio.create_task(
-        _market_state_staleness_loop(app, staleness_monitor, settings.market_state_staleness_check_interval_seconds)
+        _market_state_staleness_loop(
+            app,
+            staleness_monitor,
+            settings.market_state_staleness_check_interval_seconds,
+        )
     )
 
     yield
@@ -185,7 +257,8 @@ async def lifespan(app: FastAPI):
 # in production now that every real endpoint requires the API key anyway. Disabled
 # only in production so local development keeps the interactive docs.
 _docs_kwargs = (
-    {} if settings.environment == "development"
+    {}
+    if settings.environment == "development"
     else {"docs_url": None, "redoc_url": None, "openapi_url": None}
 )
 app = FastAPI(title="Atlas AI Trading Platform", lifespan=lifespan, **_docs_kwargs)
@@ -204,7 +277,9 @@ async def _security_headers(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
+    response.headers["Strict-Transport-Security"] = (
+        "max-age=63072000; includeSubDomains"
+    )
     response.headers["Content-Security-Policy"] = "default-src 'none'"
     return response
 
@@ -240,39 +315,106 @@ app.include_router(market_state.router, prefix="/api/v1", tags=["v1"])
 # one auth scheme, so require_api_key is applied here at registration time
 # (unlike market_state.router, which mixes two schemes on one router and
 # applies auth per-route instead).
-app.include_router(rule_engine.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
-app.include_router(trades.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
-app.include_router(status.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
-app.include_router(stats.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
-app.include_router(stream.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
-app.include_router(risk.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
-app.include_router(analytics.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
-app.include_router(ai.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
-app.include_router(activity.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
+app.include_router(
+    rule_engine.router,
+    prefix="/api/v1",
+    tags=["v1"],
+    dependencies=[Depends(require_api_key)],
+)
+app.include_router(
+    trader_now.router,
+    prefix="/api/v1",
+    tags=["v1"],
+    dependencies=[Depends(require_api_key)],
+)
+app.include_router(
+    trades.router,
+    prefix="/api/v1",
+    tags=["v1"],
+    dependencies=[Depends(require_api_key)],
+)
+app.include_router(
+    status.router,
+    prefix="/api/v1",
+    tags=["v1"],
+    dependencies=[Depends(require_api_key)],
+)
+app.include_router(
+    stats.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)]
+)
+app.include_router(
+    stream.router,
+    prefix="/api/v1",
+    tags=["v1"],
+    dependencies=[Depends(require_api_key)],
+)
+app.include_router(
+    risk.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)]
+)
+app.include_router(
+    analytics.router,
+    prefix="/api/v1",
+    tags=["v1"],
+    dependencies=[Depends(require_api_key)],
+)
+app.include_router(
+    ai.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)]
+)
+app.include_router(
+    activity.router,
+    prefix="/api/v1",
+    tags=["v1"],
+    dependencies=[Depends(require_api_key)],
+)
 # UI v2: reads only the checked-in live/research/snapshots/*.json files
 # this router's own docstring describes - no computation on request, same
 # shared-key auth as every other read-only router above.
-app.include_router(research.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
+app.include_router(
+    research.router,
+    prefix="/api/v1",
+    tags=["v1"],
+    dependencies=[Depends(require_api_key)],
+)
 # UI v2: live Setup Engine state and episode projection - zero changes to
 # atlas/setup_engine/ or atlas/rule_engine/, same shared-key auth.
-app.include_router(setup_engine.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
+app.include_router(
+    setup_engine.router,
+    prefix="/api/v1",
+    tags=["v1"],
+    dependencies=[Depends(require_api_key)],
+)
 # Sprint 8.2 (Railway Staging Deployment): POST /research/run (mode="smoke"
 # only, this sprint) and GET /research/leaderboard - see that router's own
 # module docstring. Zero changes to any atlas.research.** package; this
 # router only calls into their existing public functions, same shared-key
 # auth as every other authenticated router above.
-app.include_router(research_pipeline.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
+app.include_router(
+    research_pipeline.router,
+    prefix="/api/v1",
+    tags=["v1"],
+    dependencies=[Depends(require_api_key)],
+)
 # Sprint 9 (Promotion & Certification): the mandatory human review gate's
 # own minimal API surface - see that router's own module docstring for why
 # it's a separate router from research_pipeline.py above. Zero changes to
 # any atlas.research.** package.
-app.include_router(promotion.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
+app.include_router(
+    promotion.router,
+    prefix="/api/v1",
+    tags=["v1"],
+    dependencies=[Depends(require_api_key)],
+)
 # Sprint 10 Slice A (Research Operations Integration): GET /research/lineage -
 # one composed, read-only walk from a PromotionRecord or ValidationResult back
 # through LeaderboardSnapshot/Evidence/Experiment/Realization - see that
 # router's own module docstring. Zero changes to any atlas.research.**
 # package; reads only, via each store's own existing .get()/.all().
-app.include_router(research_lineage.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)])
+app.include_router(
+    research_lineage.router,
+    prefix="/api/v1",
+    tags=["v1"],
+    dependencies=[Depends(require_api_key)],
+)
 
 # Legacy, unversioned surface - preserved so the existing TradingView alert keeps
 # working without any change on TradingView's side. The legacy HTML dashboard

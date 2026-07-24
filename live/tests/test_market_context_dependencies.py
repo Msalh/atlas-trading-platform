@@ -36,6 +36,7 @@ atlas.research_export, and every atlas.rule_engine module except
 window_integrity), no circular imports, and session.py/regime.py's mutual
 independence from each other and from service.py/fingerprint.py.
 """
+
 import ast
 from pathlib import Path
 
@@ -45,6 +46,7 @@ _ATLAS_ROOT = Path(__file__).resolve().parent.parent / "atlas"
 _MARKET_CONTEXT_DIR = _ATLAS_ROOT / "market_context"
 _REPLAY_ENGINE_DIR = _ATLAS_ROOT / "replay_engine"
 _STRATEGY_ENGINE_DIR = _ATLAS_ROOT / "strategy_engine"
+_TRADER_NOW_DIR = _ATLAS_ROOT / "trader_now"
 
 # The real, certified allowlist per module - see this file's own docstring
 # for the two corrections versus Sprint 5's written (incomplete) version.
@@ -53,26 +55,32 @@ _ALLOWED_ATLAS_IMPORTS: dict[str, frozenset[str]] = {
     "models.py": frozenset({"atlas.core.primitives"}),
     "definitions.py": frozenset(),
     "fingerprint.py": frozenset(),
-    "session.py": frozenset({
-        "atlas.market_context.definitions",
-        "atlas.market_context.models",
-    }),
-    "regime.py": frozenset({
-        "atlas.market_context.definitions",
-        "atlas.market_context.models",
-        "atlas.market_engine.models",
-        "atlas.rule_engine.window_integrity",
-    }),
-    "service.py": frozenset({
-        "atlas.core.primitives",
-        "atlas.market_context.definitions",
-        "atlas.market_context.fingerprint",
-        "atlas.market_context.models",
-        "atlas.market_context.regime",
-        "atlas.market_context.session",
-        "atlas.market_engine.models",
-        "atlas.rule_engine.window_integrity",
-    }),
+    "session.py": frozenset(
+        {
+            "atlas.market_context.definitions",
+            "atlas.market_context.models",
+        }
+    ),
+    "regime.py": frozenset(
+        {
+            "atlas.market_context.definitions",
+            "atlas.market_context.models",
+            "atlas.market_engine.models",
+            "atlas.rule_engine.window_integrity",
+        }
+    ),
+    "service.py": frozenset(
+        {
+            "atlas.core.primitives",
+            "atlas.market_context.definitions",
+            "atlas.market_context.fingerprint",
+            "atlas.market_context.models",
+            "atlas.market_context.regime",
+            "atlas.market_context.session",
+            "atlas.market_engine.models",
+            "atlas.rule_engine.window_integrity",
+        }
+    ),
 }
 
 _FORBIDDEN_PREFIXES = ("atlas.setup_engine", "atlas.research", "atlas.research_export")
@@ -92,30 +100,39 @@ def _imported_module_roots(file_path: Path) -> set[str]:
 
 
 def _atlas_imports(file_path: Path) -> set[str]:
-    return {name for name in _imported_module_roots(file_path) if name.startswith("atlas.")}
+    return {
+        name for name in _imported_module_roots(file_path) if name.startswith("atlas.")
+    }
 
 
 # ---- Per-file allowlist enforcement ----
+
 
 @pytest.mark.parametrize("filename", sorted(_ALLOWED_ATLAS_IMPORTS))
 def test_module_imports_stay_within_the_approved_allowlist(filename):
     file_path = _MARKET_CONTEXT_DIR / filename
     disallowed = _atlas_imports(file_path) - _ALLOWED_ATLAS_IMPORTS[filename]
-    assert not disallowed, f"{filename} imports unapproved project-layer modules: {disallowed}"
+    assert not disallowed, (
+        f"{filename} imports unapproved project-layer modules: {disallowed}"
+    )
 
 
 @pytest.mark.parametrize("filename", sorted(_ALLOWED_ATLAS_IMPORTS))
 def test_no_module_imports_setup_engine_research_or_research_export(filename):
     file_path = _MARKET_CONTEXT_DIR / filename
     for name in _atlas_imports(file_path):
-        assert not name.startswith(_FORBIDDEN_PREFIXES), f"{filename} imports forbidden module {name}"
+        assert not name.startswith(_FORBIDDEN_PREFIXES), (
+            f"{filename} imports forbidden module {name}"
+        )
 
 
 # ---- Rule Engine dependency is limited to exactly window_integrity ----
 
+
 def test_regime_py_rule_engine_dependency_is_limited_to_window_integrity():
     rule_engine_imports = {
-        name for name in _atlas_imports(_MARKET_CONTEXT_DIR / "regime.py")
+        name
+        for name in _atlas_imports(_MARKET_CONTEXT_DIR / "regime.py")
         if name.startswith("atlas.rule_engine")
     }
     assert rule_engine_imports == {"atlas.rule_engine.window_integrity"}
@@ -123,35 +140,53 @@ def test_regime_py_rule_engine_dependency_is_limited_to_window_integrity():
 
 def test_service_py_rule_engine_dependency_is_limited_to_window_integrity():
     rule_engine_imports = {
-        name for name in _atlas_imports(_MARKET_CONTEXT_DIR / "service.py")
+        name
+        for name in _atlas_imports(_MARKET_CONTEXT_DIR / "service.py")
         if name.startswith("atlas.rule_engine")
     }
     assert rule_engine_imports == {"atlas.rule_engine.window_integrity"}
 
 
 def test_session_definitions_fingerprint_and_models_never_import_rule_engine():
-    for filename in ("session.py", "definitions.py", "fingerprint.py", "models.py", "__init__.py"):
+    for filename in (
+        "session.py",
+        "definitions.py",
+        "fingerprint.py",
+        "models.py",
+        "__init__.py",
+    ):
         rule_engine_imports = {
-            name for name in _atlas_imports(_MARKET_CONTEXT_DIR / filename)
+            name
+            for name in _atlas_imports(_MARKET_CONTEXT_DIR / filename)
             if name.startswith("atlas.rule_engine")
         }
-        assert not rule_engine_imports, f"{filename} must never import atlas.rule_engine, got {rule_engine_imports}"
+        assert not rule_engine_imports, (
+            f"{filename} must never import atlas.rule_engine, got {rule_engine_imports}"
+        )
 
 
 # ---- session.py / regime.py mutual independence ----
 
+
 def test_session_and_regime_do_not_import_each_other_service_or_fingerprint():
     forbidden = {
-        "atlas.market_context.regime", "atlas.market_context.session",
-        "atlas.market_context.service", "atlas.market_context.fingerprint",
+        "atlas.market_context.regime",
+        "atlas.market_context.session",
+        "atlas.market_context.service",
+        "atlas.market_context.fingerprint",
     }
     session_imports = _atlas_imports(_MARKET_CONTEXT_DIR / "session.py")
     regime_imports = _atlas_imports(_MARKET_CONTEXT_DIR / "regime.py")
-    assert not (session_imports & forbidden), f"session.py imports: {session_imports & forbidden}"
-    assert not (regime_imports & forbidden), f"regime.py imports: {regime_imports & forbidden}"
+    assert not (session_imports & forbidden), (
+        f"session.py imports: {session_imports & forbidden}"
+    )
+    assert not (regime_imports & forbidden), (
+        f"regime.py imports: {regime_imports & forbidden}"
+    )
 
 
 # ---- No circular imports ----
+
 
 def test_no_module_market_context_depends_on_imports_market_context_back():
     """market_context depends on atlas.core, atlas.market_engine, and
@@ -164,13 +199,20 @@ def test_no_module_market_context_depends_on_imports_market_context_back():
     for directory_name in ("core", "market_engine", "rule_engine"):
         directory = _ATLAS_ROOT / directory_name
         for py_file in directory.rglob("*.py"):
-            offending = {name for name in _atlas_imports(py_file) if name.startswith("atlas.market_context")}
-            assert not offending, f"{py_file} imports atlas.market_context (circular): {offending}"
+            offending = {
+                name
+                for name in _atlas_imports(py_file)
+                if name.startswith("atlas.market_context")
+            }
+            assert not offending, (
+                f"{py_file} imports atlas.market_context (circular): {offending}"
+            )
 
 
 def test_nothing_outside_market_context_or_its_approved_downstream_consumers_imports_it():
     """Scans the whole atlas package tree, excluding market_context itself
-    and its approved, one-way downstream consumers: atlas.replay_engine
+    and its approved, one-way downstream consumers: atlas.replay_engine,
+    atlas.trader_now
     (Phase N2, see ADR-0002), atlas.strategy_engine (Phase N3 - a concrete
     StrategyPlugin reading frame.market_context.quality directly, per that
     package's own dependency ceiling), and atlas.research.replay_bridge
@@ -181,12 +223,26 @@ def test_nothing_outside_market_context_or_its_approved_downstream_consumers_imp
     exact file, not by directory - every other file under atlas.research
     must still fail this check. Nothing else may import
     atlas.market_context."""
-    exempt_dirs = {_MARKET_CONTEXT_DIR, _REPLAY_ENGINE_DIR, _STRATEGY_ENGINE_DIR}
+    exempt_dirs = {
+        _MARKET_CONTEXT_DIR,
+        _REPLAY_ENGINE_DIR,
+        _STRATEGY_ENGINE_DIR,
+        _TRADER_NOW_DIR,
+    }
     exempt_files = {_ATLAS_ROOT / "research" / "replay_bridge.py"}
     for py_file in _ATLAS_ROOT.rglob("*.py"):
-        if any(exempt == py_file.parent or exempt in py_file.parents for exempt in exempt_dirs):
+        if any(
+            exempt == py_file.parent or exempt in py_file.parents
+            for exempt in exempt_dirs
+        ):
             continue
         if py_file in exempt_files:
             continue
-        offending = {name for name in _atlas_imports(py_file) if name.startswith("atlas.market_context")}
-        assert not offending, f"{py_file} imports atlas.market_context unexpectedly: {offending}"
+        offending = {
+            name
+            for name in _atlas_imports(py_file)
+            if name.startswith("atlas.market_context")
+        }
+        assert not offending, (
+            f"{py_file} imports atlas.market_context unexpectedly: {offending}"
+        )
