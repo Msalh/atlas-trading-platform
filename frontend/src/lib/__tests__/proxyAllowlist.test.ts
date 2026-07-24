@@ -43,6 +43,14 @@ describe("isAllowedProxyPath", () => {
     expect(filterAllowedParams("risk", new URLSearchParams({ foo: "bar" })).toString()).toBe("");
   });
 
+  it("allows activity with only limit forwarded - Sprint 11A Group 5's Activity reads", () => {
+    expect(isAllowedProxyPath("activity")).toBe(true);
+    expect(isAllowedProxyMethod("activity", "GET")).toBe(true);
+    expect(
+      filterAllowedParams("activity", new URLSearchParams({ limit: "150", extra: "drop-me" })).toString(),
+    ).toBe("limit=150");
+  });
+
   it("allows analytics/summary, analytics/equity-curve, and analytics/breakdown - Sprint 11A Group 4's Analytics reads", () => {
     expect(isAllowedProxyPath("analytics/summary")).toBe(true);
     expect(isAllowedProxyMethod("analytics/summary", "GET")).toBe(true);

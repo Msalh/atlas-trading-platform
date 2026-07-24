@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { ActivityCategory, ActivityEvent, ActivitySeverity, api } from "@/lib/api";
+import { ActivityCategory, ActivityEvent, ActivitySeverity, fetchActivity } from "@/lib/activityApi";
 import { formatClock } from "@/lib/format";
 import { pollInterval } from "@/lib/intervals";
 import { useLiveUpdatesConnected } from "@/lib/live-updates";
@@ -46,7 +46,7 @@ export function ActivityTimeline() {
   const sseConnected = useLiveUpdatesConnected();
   const { data, isLoading, isError } = useQuery({
     queryKey: ["activity"],
-    queryFn: () => api.activity({ limit: 150 }),
+    queryFn: () => fetchActivity({ limit: 150 }),
     refetchInterval: pollInterval(sseConnected, 10_000),
   });
 
