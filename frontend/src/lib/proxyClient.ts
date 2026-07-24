@@ -2,8 +2,7 @@
 // researchApi.ts) - always calls the same-origin BFF proxy
 // (src/app/api/proxy/[...path]/route.ts), never the Atlas API directly, so
 // no API key ever needs to reach the browser for these endpoints
-// (implementation plan §5.2/§5.3 - a deliberate departure from
-// src/lib/api.ts and src/lib/ruleEngineApi.ts's older patterns).
+// (implementation plan §5.2/§5.3).
 //
 // Also the one place lightweight runtime validation happens: every response
 // body is checked against a caller-supplied type guard before being trusted

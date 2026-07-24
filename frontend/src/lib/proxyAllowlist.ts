@@ -25,10 +25,7 @@
 //
 // Sprint 10 Slice B added `status` - the one operational health endpoint on
 // this list (Dataset Health, above, is scoped to the frozen research
-// baseline, never live system health; the legacy pages still read /status
-// through lib/api.ts's insecure NEXT_PUBLIC_API_KEY pattern - Research
-// Overview deliberately does not extend that pattern, per the Sprint 10
-// review's own §10 security requirement, and reads it through here instead).
+// baseline, never live system health).
 // Every other unlisted path remains unreachable through this proxy.
 
 export interface AllowedGetConfig {

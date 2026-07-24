@@ -39,7 +39,7 @@ describe("isAllowedProxyPath", () => {
     expect(isAllowedProxyPath("health")).toBe(false);
   });
 
-  it("allows status - Sprint 10 Slice B's Research Overview reads it through the secure proxy, never lib/api.ts", () => {
+  it("allows status through the secure proxy", () => {
     expect(isAllowedProxyPath("status")).toBe(true);
     expect(isAllowedProxyMethod("status", "GET")).toBe(true);
   });

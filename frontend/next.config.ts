@@ -14,7 +14,6 @@ const nextConfig: NextConfig = {
       { key: "X-Content-Type-Options", value: "nosniff" },
       { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
     ];
-    const apiOrigin = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
     const productionHeaders = isProduction
       ? [
           {
@@ -33,7 +32,9 @@ const nextConfig: NextConfig = {
               "script-src 'self' 'unsafe-inline'",
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data:",
-              `connect-src 'self' ${apiOrigin}`.trim(),
+              // Browser API traffic is same-origin; only server-side route
+              // handlers connect to the configured backend origin.
+              "connect-src 'self'",
               "frame-ancestors 'none'",
               "base-uri 'self'",
             ].join("; "),

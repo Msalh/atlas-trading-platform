@@ -1,7 +1,6 @@
 // Sprint 11A Group 4. Typed client for GET /analytics/summary, GET
 // /analytics/equity-curve, and GET /analytics/breakdown, reached through the
-// same-origin BFF proxy (src/lib/proxyClient.ts) instead of lib/api.ts's
-// legacy NEXT_PUBLIC_API_KEY pattern. Each shape is scoped to exactly the
+// same-origin BFF proxy (src/lib/proxyClient.ts). Each shape is scoped to exactly the
 // fields the Analytics page's four consumers (AnalyticsSummaryCards,
 // EquityCurveChart, DrawdownChart, BreakdownChart via BreakdownSection)
 // read - not atlas/analytics.py's full SummaryMetrics/EquityPoint/

@@ -4,10 +4,7 @@
 // -> this route (same-origin, no key needed) -> Atlas API with a
 // server-only ATLAS_API_KEY attached. This file never runs in the browser
 // bundle (Next.js Route Handlers are server-only), so ATLAS_API_KEY is
-// never shipped to the client - unlike the rest of this app's existing
-// pages, which still use NEXT_PUBLIC_API_KEY directly from the browser (a
-// disclosed, deliberately-deferred inconsistency - implementation plan
-// §5.3/§5.4, not fixed here).
+// never shipped to the client.
 //
 // GET and POST only, an explicit method-aware path allowlist
 // (src/lib/proxyAllowlist.ts) checked before anything else runs, declared-

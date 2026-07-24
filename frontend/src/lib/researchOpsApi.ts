@@ -15,12 +15,7 @@
 // Sprint 10 architecture review §1 for why conflating the two would be a
 // real modeling mistake, not just a style choice.
 //
-// GET /status is read here, through the secure proxy, deliberately NOT
-// through lib/api.ts's `api.status` (which uses the legacy, browser-
-// exposed NEXT_PUBLIC_API_KEY pattern) - the Sprint 10 review's own §10
-// security requirement: no new call site may extend the insecure pattern,
-// even though existing ones (ConnectionStatusPanel, HeaderStatusDot) are
-// left as disclosed, pre-existing debt.
+// GET /status is read through the same secure proxy boundary.
 
 import { ApiFetchError, proxyGet } from "@/lib/proxyClient";
 

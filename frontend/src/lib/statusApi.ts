@@ -1,6 +1,5 @@
 // Sprint 11A Group 0A. Typed client for GET /status, reached through the
-// same-origin BFF proxy (src/lib/proxyClient.ts) instead of lib/api.ts's
-// legacy NEXT_PUBLIC_API_KEY pattern. Scoped to exactly the fields
+// same-origin BFF proxy (src/lib/proxyClient.ts). Scoped to exactly the fields
 // HeaderStatusDot and ConnectionStatusPanel actually read (database,
 // tradingview, pickmytrade, claude) - research_snapshots/research_ledger
 // are researchOpsApi.ts's own concern (fetchOpsStatus), not duplicated here.

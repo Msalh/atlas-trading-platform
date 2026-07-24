@@ -1,7 +1,6 @@
 // Sprint 11A Groups 2 and 6. Typed clients for GET /trades/current, GET
 // /trades, and GET /trades/{id}, reached through the same-origin BFF proxy
-// (src/lib/proxyClient.ts) instead of lib/api.ts's legacy
-// NEXT_PUBLIC_API_KEY pattern. `Trade` covers every field any consumer of
+// (src/lib/proxyClient.ts). `Trade` covers every field any consumer of
 // this file reads across all three endpoints (they return the same
 // underlying repository row) - Dashboard's two consumers (CurrentPositionCard,
 // TradeHistoryTable) only read a subset; Trade Detail (TradeDetailView) is
@@ -64,8 +63,8 @@ export interface TradeListResponse {
 }
 
 // Sprint 6 timeline shapes - deliberately loose (an index signature, not a
-// per-variant discriminated union), matching lib/api.ts's own prior
-// TimelineEvent/Factor and atlas/api/v1/trades.py::build_timeline, which
+// per-variant discriminated union), matching
+// atlas/api/v1/trades.py::build_timeline, which
 // returns differently-shaped plain dicts per event type. TradeTimeline.tsx
 // already reads each variant's extra fields via its own `as` casts against
 // this same looseness - not narrowing it further here.
@@ -203,7 +202,7 @@ export function fetchTradeList(params?: { limit?: number; status?: string }): Pr
   return proxyGet("trades", query, isTradeListResponse);
 }
 
-// Mirrors lib/api.ts's old api.tradeDetail: resolves to null on a 404
+// Resolves to null on a 404
 // (no trade found for this ID) rather than throwing, so TradeDetailView's
 // existing "no trade found" empty state keeps working unchanged - the only
 // place in this migration that catches a specific ApiFetchError kind rather

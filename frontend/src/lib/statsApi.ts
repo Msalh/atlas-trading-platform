@@ -1,6 +1,5 @@
 // Sprint 11A Group 2. Typed client for GET /stats/today, reached through the
-// same-origin BFF proxy (src/lib/proxyClient.ts) instead of lib/api.ts's
-// legacy NEXT_PUBLIC_API_KEY pattern. Shape mirrored from
+// same-origin BFF proxy (src/lib/proxyClient.ts). Shape mirrored from
 // atlas/api/v1/stats.py's stats_today() response.
 //
 // "stats/today" is a new proxy allowlist entry, added alongside this client.

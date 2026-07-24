@@ -1,6 +1,5 @@
 // Sprint 11A Group 5. Typed client for GET /activity, reached through the
-// same-origin BFF proxy (src/lib/proxyClient.ts) instead of lib/api.ts's
-// legacy NEXT_PUBLIC_API_KEY pattern. Shape mirrored from
+// same-origin BFF proxy (src/lib/proxyClient.ts). Shape mirrored from
 // atlas/activity.py's ActivityEvent dataclass (the backend response is
 // `asdict(e)` per event) - see atlas/api/v1/activity.py.
 //

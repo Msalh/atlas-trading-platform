@@ -19,10 +19,7 @@ export function useLiveUpdatesConnected(): boolean {
 // /api/stream route (app/api/stream/route.ts), which proxies to the backend's
 // /api/v1/stream server-side, attaching a server-only ATLAS_API_KEY as a normal
 // Authorization header. No key of any kind travels in this URL or reaches the
-// browser - previously this connected directly, cross-origin, to
-// `${NEXT_PUBLIC_API_BASE_URL}/api/v1/stream?api_key=${NEXT_PUBLIC_API_KEY}`, which
-// put the shared API key in Railway's own access logs, browser history, and any
-// request-level monitoring on every single page load.
+// browser.
 const STREAM_URL = "/api/stream";
 
 // Every event type from atlas/events/types.py that should cause a refetch. Kept as a

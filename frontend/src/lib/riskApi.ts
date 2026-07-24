@@ -1,6 +1,5 @@
 // Sprint 11A Group 0B. Typed client for GET /risk, reached through the
-// same-origin BFF proxy (src/lib/proxyClient.ts) instead of lib/api.ts's
-// legacy NEXT_PUBLIC_API_KEY pattern. Shape mirrored from atlas/risk.py's
+// same-origin BFF proxy (src/lib/proxyClient.ts). Shape mirrored from atlas/risk.py's
 // RiskSnapshot/OpenPositionRisk/KillSwitchStatus dataclasses (the backend
 // response is `asdict(compute_risk_snapshot(...))`) - see
 // atlas/api/v1/risk.py.
