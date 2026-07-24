@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { fetchStatus } from "@/lib/statusApi";
 import { pollInterval } from "@/lib/intervals";
 import { useLiveUpdatesConnected } from "@/lib/live-updates";
 
@@ -9,7 +9,7 @@ export function HeaderStatusDot() {
   const sseConnected = useLiveUpdatesConnected();
   const { data, isError } = useQuery({
     queryKey: ["status"],
-    queryFn: api.status,
+    queryFn: fetchStatus,
     refetchInterval: pollInterval(sseConnected, 10_000),
   });
 
