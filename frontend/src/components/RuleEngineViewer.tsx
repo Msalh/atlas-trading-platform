@@ -4,10 +4,10 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { formatClock, formatTimeAgo } from "@/lib/format";
 import {
-  RuleEngineFetchError,
+  ApiFetchError,
   RuleEngineLatestResponse,
   TIMEFRAMES,
-  fetchLatestRuleEngineOutput,
+  fetchLatestRuleEngineOutputViaProxy,
   isStale,
 } from "@/lib/ruleEngineApi";
 
@@ -53,48 +53,27 @@ function FactRow({ fact }: { fact: Fact }) {
 }
 
 export function RuleEngineViewer() {
-  const [apiKeyInput, setApiKeyInput] = useState("");
-  // Only set once the user explicitly submits the form below - never derived
-  // from a keystroke, and never written anywhere but this component's own
-  // memory (no localStorage/sessionStorage, no console/log output).
-  const [activeApiKey, setActiveApiKey] = useState<string | null>(null);
   const [symbol, setSymbol] = useState("MNQU6");
   const [timeframe, setTimeframe] = useState<string>("5m");
   const [autoRefresh, setAutoRefresh] = useState(false);
 
-  const hasKey = activeApiKey !== null && activeApiKey.length > 0;
-
-  // fetchLatestRuleEngineOutput THROWS RuleEngineFetchError on any non-success
-  // outcome (see that module's docstring for why) - this is what makes
-  // `data` below "the last successful response" for free, react-query's own
-  // native behavior: a failed refetch populates `error`/`isError` without
-  // clearing `data`. No hand-rolled "last good" state, no effects, no refs -
-  // both of which this repo's lint config forbids using for this purpose.
+  // Sprint 11A Group 1: reads through the same-origin BFF proxy
+  // (fetchLatestRuleEngineOutputViaProxy, already allowlisted since Sprint
+  // 16/UI v2 - RuleEngineFactsPanel has used the identical call on Market
+  // View since then) instead of the old manually-entered-key path. No
+  // connect/disconnect gate needed anymore - data loads as soon as a
+  // symbol is present, same as every other BFF-backed page.
   const { data, error, isError, isFetching, dataUpdatedAt, refetch } = useQuery<
     RuleEngineLatestResponse,
-    RuleEngineFetchError
+    ApiFetchError
   >({
-    queryKey: ["rule-engine-latest", symbol, timeframe, activeApiKey],
-    queryFn: () => fetchLatestRuleEngineOutput(activeApiKey as string, symbol, timeframe),
-    enabled: hasKey && symbol.trim().length > 0,
-    refetchInterval: autoRefresh && hasKey ? AUTO_REFRESH_INTERVAL_MS : false,
+    queryKey: ["rule-engine-latest", symbol, timeframe],
+    queryFn: () => fetchLatestRuleEngineOutputViaProxy(symbol, timeframe),
+    enabled: symbol.trim().length > 0,
+    refetchInterval: autoRefresh ? AUTO_REFRESH_INTERVAL_MS : false,
     refetchOnWindowFocus: false,
-    // A 401/422 will fail identically every time - retrying just delays
-    // showing the user what's actually wrong. Each refresh (manual or
-    // polled) is one explicit attempt.
     retry: false,
   });
-
-  function handleConnect(e: React.FormEvent) {
-    e.preventDefault();
-    if (apiKeyInput.trim().length === 0) return;
-    setActiveApiKey(apiKeyInput);
-  }
-
-  function handleDisconnect() {
-    setActiveApiKey(null);
-    setApiKeyInput("");
-  }
 
   const output = data?.data ?? null;
   const stale = output ? isStale(output.occurred_at, output.timeframe) : false;
@@ -106,118 +85,80 @@ export function RuleEngineViewer() {
           Rule Engine Viewer
         </h2>
 
-        {!hasKey ? (
-          <form onSubmit={handleConnect} className="flex flex-wrap items-end gap-3">
-            <div className="flex flex-col gap-1">
-              <label className="text-xs text-muted" htmlFor="rule-engine-api-key">
-                API key
-              </label>
-              <input
-                id="rule-engine-api-key"
-                type="password"
-                autoComplete="off"
-                value={apiKeyInput}
-                onChange={(e) => setApiKeyInput(e.target.value)}
-                className="rounded border border-border bg-surface-raised px-2 py-1 text-sm"
-                placeholder="Paste your API key"
-              />
-            </div>
-            <button
-              type="submit"
-              className="rounded border border-open bg-open/10 px-3 py-1 text-sm text-open hover:bg-open/20"
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted" htmlFor="rule-engine-symbol">
+              Symbol
+            </label>
+            <input
+              id="rule-engine-symbol"
+              value={symbol}
+              onChange={(e) => setSymbol(e.target.value.trim())}
+              className="w-32 rounded border border-border bg-surface-raised px-2 py-1 text-sm"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted" htmlFor="rule-engine-timeframe">
+              Timeframe
+            </label>
+            <select
+              id="rule-engine-timeframe"
+              value={timeframe}
+              onChange={(e) => setTimeframe(e.target.value)}
+              className="rounded border border-border bg-surface-raised px-2 py-1 text-sm"
             >
-              Connect
-            </button>
-            <span className="text-xs text-muted">
-              Held only in this page&apos;s memory for this session — never stored, never sent
-              anywhere except the Authorization header of requests to the Rule Engine endpoint.
-            </span>
-          </form>
-        ) : (
-          <>
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-muted" htmlFor="rule-engine-symbol">
-                  Symbol
-                </label>
-                <input
-                  id="rule-engine-symbol"
-                  value={symbol}
-                  onChange={(e) => setSymbol(e.target.value.trim())}
-                  className="w-32 rounded border border-border bg-surface-raised px-2 py-1 text-sm"
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-muted" htmlFor="rule-engine-timeframe">
-                  Timeframe
-                </label>
-                <select
-                  id="rule-engine-timeframe"
-                  value={timeframe}
-                  onChange={(e) => setTimeframe(e.target.value)}
-                  className="rounded border border-border bg-surface-raised px-2 py-1 text-sm"
-                >
-                  {TIMEFRAMES.map((tf) => (
-                    <option key={tf} value={tf}>
-                      {tf}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <button
-                type="button"
-                onClick={() => refetch()}
-                disabled={isFetching}
-                className="rounded border border-open bg-open/10 px-3 py-1 text-sm text-open hover:bg-open/20 disabled:opacity-50"
-              >
-                {isFetching ? "Refreshing…" : "Refresh"}
-              </button>
-              <label className="flex items-center gap-2 text-xs text-muted">
-                <input
-                  type="checkbox"
-                  checked={autoRefresh}
-                  onChange={(e) => setAutoRefresh(e.target.checked)}
-                />
-                Auto-refresh every 30s (polling)
-              </label>
-              <button
-                type="button"
-                onClick={handleDisconnect}
-                className="ml-auto text-xs text-muted hover:text-foreground"
-              >
-                Disconnect
-              </button>
-            </div>
+              {TIMEFRAMES.map((tf) => (
+                <option key={tf} value={tf}>
+                  {tf}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="button"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="rounded border border-open bg-open/10 px-3 py-1 text-sm text-open hover:bg-open/20 disabled:opacity-50"
+          >
+            {isFetching ? "Refreshing…" : "Refresh"}
+          </button>
+          <label className="flex items-center gap-2 text-xs text-muted">
+            <input
+              type="checkbox"
+              checked={autoRefresh}
+              onChange={(e) => setAutoRefresh(e.target.checked)}
+            />
+            Auto-refresh every 30s (polling)
+          </label>
+        </div>
 
-            <div className="mt-2 text-xs text-muted">
-              {dataUpdatedAt > 0
-                ? `Last successful refresh: ${formatTimeAgo(new Date(dataUpdatedAt).toISOString())}`
-                : isFetching
-                  ? "Loading…"
-                  : "No successful refresh yet."}
-            </div>
-          </>
-        )}
+        <div className="mt-2 text-xs text-muted">
+          {dataUpdatedAt > 0
+            ? `Last successful refresh: ${formatTimeAgo(new Date(dataUpdatedAt).toISOString())}`
+            : isFetching
+              ? "Loading…"
+              : "No successful refresh yet."}
+        </div>
       </div>
 
-      {hasKey && isError && (
+      {isError && (
         <div className="rounded-lg border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
           {error.message}
           {data && " Showing the last successful result below."}
         </div>
       )}
 
-      {hasKey && isFetching && !data && (
+      {isFetching && !data && (
         <p className="text-sm text-muted">Loading…</p>
       )}
 
-      {hasKey && data && !data.found && (
+      {data && !data.found && (
         <div className="rounded-lg border border-border bg-surface p-4 text-sm text-muted">
           No MarketState has been ingested yet for {symbol} / {timeframe}.
         </div>
       )}
 
-      {hasKey && output && (
+      {output && (
         <div className="rounded-lg border border-border bg-surface p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div className="text-sm">
