@@ -1,4 +1,4 @@
-import type { Factor, TimelineEvent } from "@/lib/api";
+import type { Factor, TimelineEvent } from "@/lib/tradesApi";
 import { formatClock, formatPnl, formatPrice } from "@/lib/format";
 
 function FactorChips({ factors }: { factors: Factor[] }) {

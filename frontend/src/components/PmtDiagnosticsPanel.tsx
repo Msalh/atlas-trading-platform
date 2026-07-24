@@ -1,4 +1,4 @@
-import type { PmtRelayDiagnostics } from "@/lib/api";
+import type { PmtRelayDiagnostics } from "@/lib/tradesApi";
 import { formatClock } from "@/lib/format";
 
 // Debug-only panel showing the latest PickMyTrade relay attempt in full - added

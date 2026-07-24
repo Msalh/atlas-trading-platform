@@ -61,7 +61,13 @@ describe("GET /api/proxy/[...path]", () => {
     const fetchSpy = vi.fn();
     global.fetch = fetchSpy as unknown as typeof fetch;
 
-    const res = await GET(makeRequest("trades/detail"), ctx("trades/detail"));
+    // Not "trades/detail" - Sprint 11A Group 6's dynamic trade-detail
+    // mechanism now correctly accepts any non-empty "trades/<id>" shape as
+    // a candidate trade ID (including the literal string "detail"), so
+    // that path is no longer unconditionally rejected. "not-a-real-path"
+    // fails both the static table and the dynamic parser (wrong first
+    // segment for the latter).
+    const res = await GET(makeRequest("not-a-real-path"), ctx("not-a-real-path"));
     expect(res.status).toBe(404);
     expect(fetchSpy).not.toHaveBeenCalled();
     const body = await res.json();
@@ -174,6 +180,143 @@ describe("GET /api/proxy/[...path]", () => {
     const res = await GET(makeRequest("research/promotion/decide"), ctx("research/promotion/decide"));
     expect(res.status).toBe(404);
     expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/proxy/[...path] - dynamic trade-detail path (Sprint 11A Group 6)", () => {
+  const originalFetch = global.fetch;
+  const originalKey = process.env.ATLAS_API_KEY;
+
+  beforeEach(() => {
+    process.env.ATLAS_API_KEY = "the-real-secret-key";
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    process.env.ATLAS_API_KEY = originalKey;
+    vi.restoreAllMocks();
+  });
+
+  // A direct { params } context built from an explicit segments array,
+  // bypassing ctx()'s path.split("/") - needed to construct the one case
+  // ctx() itself cannot express: a single raw segment that already
+  // contains a literal "/" character (what an inbound "%2F" decodes to).
+  function ctxSegments(segments: string[]) {
+    return { params: Promise.resolve({ path: segments }) };
+  }
+
+  it("forwards a valid GET /trades/{id} to the correct, re-encoded upstream URL", async () => {
+    let capturedUrl = "";
+    global.fetch = vi.fn(async (url: string | URL) => {
+      capturedUrl = String(url);
+      return new Response(JSON.stringify({ trade: { correlation_id: "abc123" }, timeline: [] }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const res = await GET(makeRequest("trades/abc123"), ctx("trades/abc123"));
+    expect(res.status).toBe(200);
+    expect(capturedUrl).toBe("http://localhost:8000/api/v1/trades/abc123");
+  });
+
+  it("forwards a real production id shape (containing '!') unchanged - JS's encodeURIComponent leaves it as-is", async () => {
+    let capturedUrl = "";
+    global.fetch = vi.fn(async (url: string | URL) => {
+      capturedUrl = String(url);
+      return new Response(JSON.stringify({ trade: {}, timeline: [] }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const id = "E2E-MNQ1!-1783579500000";
+    await GET(makeRequest(`trades/${id}`), ctx(`trades/${id}`));
+    expect(capturedUrl).toBe(`http://localhost:8000/api/v1/trades/${id}`);
+  });
+
+  it("re-encodes a character that genuinely needs escaping (space) before forwarding upstream", async () => {
+    let capturedUrl = "";
+    global.fetch = vi.fn(async (url: string | URL) => {
+      capturedUrl = String(url);
+      return new Response(JSON.stringify({ trade: {}, timeline: [] }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    // Proves route.ts's own encodeURIComponent call (requirement 5:
+    // "safely encode the trade ID before constructing the proxy request")
+    // does its job on whatever string parseTradeDetailPath hands back,
+    // independent of what the client sent - the request URL's own content
+    // is irrelevant here since the GET handler takes the path exclusively
+    // from `params`, not from re-parsing the request URL.
+    const res = await GET(makeRequest("trades/placeholder"), {
+      params: Promise.resolve({ path: ["trades", "id with space"] }),
+    });
+    expect(res.status).toBe(200);
+    expect(capturedUrl).toBe("http://localhost:8000/api/v1/trades/id%20with%20space");
+  });
+
+  it("rejects extra trailing path segments without calling fetch", async () => {
+    const fetchSpy = vi.fn();
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    const res = await GET(makeRequest("trades/abc123/extra"), ctx("trades/abc123/extra"));
+    expect(res.status).toBe(404);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects /trades/detail/test - not a real trade id, just an extra segment", async () => {
+    const fetchSpy = vi.fn();
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    const res = await GET(makeRequest("trades/detail/test"), ctx("trades/detail/test"));
+    expect(res.status).toBe(404);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects a raw segment with an embedded slash (decoded-%2F smuggling attempt) without calling fetch", async () => {
+    const fetchSpy = vi.fn();
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    const req = new NextRequest("http://localhost:3000/api/proxy/trades/abc%2Fdef");
+    const res = await GET(req, ctxSegments(["trades", "abc/def"]));
+    expect(res.status).toBe(404);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects an empty id segment without calling fetch", async () => {
+    const fetchSpy = vi.fn();
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    const req = new NextRequest("http://localhost:3000/api/proxy/trades/");
+    const res = await GET(req, ctxSegments(["trades", ""]));
+    expect(res.status).toBe(404);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects POST to the dynamic trade-detail shape - GET only", async () => {
+    const fetchSpy = vi.fn();
+    global.fetch = fetchSpy as unknown as typeof fetch;
+
+    const res = await POST(makePostRequest("trades/abc123", {}), ctx("trades/abc123"));
+    expect(res.status).toBe(404);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("still resolves trades/current and trades (list) through the static table, never the dynamic parser", async () => {
+    const capturedUrls: string[] = [];
+    global.fetch = vi.fn(async (url: string | URL) => {
+      capturedUrls.push(String(url));
+      return new Response(JSON.stringify({ open: false, trade: null }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await GET(makeRequest("trades/current"), ctx("trades/current"));
+    await GET(makeRequest("trades", "limit=50"), ctx("trades"));
+
+    expect(capturedUrls[0]).toBe("http://localhost:8000/api/v1/trades/current");
+    expect(capturedUrls[1]).toBe("http://localhost:8000/api/v1/trades?limit=50");
+  });
+
+  it("propagates the upstream's 404 (trade not found) without altering the shape", async () => {
+    global.fetch = vi.fn(
+      async () => new Response(JSON.stringify({ detail: "no trade found for correlation_id abc123" }), { status: 404 }),
+    ) as unknown as typeof fetch;
+
+    const res = await GET(makeRequest("trades/abc123"), ctx("trades/abc123"));
+    expect(res.status).toBe(404);
   });
 });
 
@@ -451,7 +594,8 @@ describe("access logging", () => {
     global.fetch = fetchSpy as unknown as typeof fetch;
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-    await GET(makeRequest("trades/detail"), ctx("trades/detail"));
+    // See the equivalent GET test above for why this isn't "trades/detail".
+    await GET(makeRequest("not-a-real-path"), ctx("not-a-real-path"));
 
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(logSpy).toHaveBeenCalledTimes(1);

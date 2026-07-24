@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { fetchTradeDetail } from "@/lib/tradesApi";
 import { formatPnl, formatPrice } from "@/lib/format";
 import { pollInterval } from "@/lib/intervals";
 import { useLiveUpdatesConnected } from "@/lib/live-updates";
@@ -14,7 +14,7 @@ export function TradeDetailView({ correlationId }: { correlationId: string }) {
   const sseConnected = useLiveUpdatesConnected();
   const { data, isLoading, isError } = useQuery({
     queryKey: ["trades", "detail", correlationId],
-    queryFn: () => api.tradeDetail(correlationId),
+    queryFn: () => fetchTradeDetail(correlationId),
     refetchInterval: pollInterval(sseConnected, 5_000),
   });
 

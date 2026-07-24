@@ -4,6 +4,7 @@ import {
   filterAllowedParams,
   isAllowedProxyMethod,
   isAllowedProxyPath,
+  parseTradeDetailPath,
   ProxyRouteConfig,
   projectAllowedBody,
 } from "@/lib/proxyAllowlist";
@@ -27,6 +28,11 @@ describe("isAllowedProxyPath", () => {
   });
 
   it("rejects a path not on the allowlist", () => {
+    // "trades/detail" is not, and never was, a static table entry - it's
+    // correctly false here. Since Sprint 11A Group 6, route.ts separately
+    // ALSO accepts it through parseTradeDetailPath (as trade id "detail") -
+    // that's a different mechanism this function has no knowledge of and
+    // never will; see the parseTradeDetailPath describe block below.
     expect(isAllowedProxyPath("trades/detail")).toBe(false);
     expect(isAllowedProxyPath("market-state/export")).toBe(false);
     expect(isAllowedProxyPath("health")).toBe(false);
@@ -120,6 +126,10 @@ describe("isAllowedProxyMethod", () => {
   });
 
   it("rejects both methods for a path not on the allowlist at all", () => {
+    // Same caveat as isAllowedProxyPath's own test above: this function
+    // only ever consults the static table, so "trades/detail" is correctly
+    // false here regardless of what parseTradeDetailPath separately does
+    // with it.
     expect(isAllowedProxyMethod("trades/detail", "GET")).toBe(false);
     expect(isAllowedProxyMethod("trades/detail", "POST")).toBe(false);
   });
@@ -226,5 +236,55 @@ describe("projectAllowedBody", () => {
 
   it("defaults to the real production table when no route table is injected", () => {
     expect(projectAllowedBody("research/dataset-health", { anything: "x" })).toEqual({});
+  });
+});
+
+describe("parseTradeDetailPath", () => {
+  it("accepts the exact shape: trades/<non-empty id>", () => {
+    expect(parseTradeDetailPath(["trades", "abc123"])).toBe("abc123");
+  });
+
+  it("accepts an id containing special characters (real correlation_id shapes seen in production)", () => {
+    expect(parseTradeDetailPath(["trades", "E2E-MNQ1!-1783579500000"])).toBe("E2E-MNQ1!-1783579500000");
+    expect(parseTradeDetailPath(["trades", "1784016900000"])).toBe("1784016900000");
+  });
+
+  it("rejects a bare trades path with no id (1 segment)", () => {
+    expect(parseTradeDetailPath(["trades"])).toBeNull();
+  });
+
+  it("rejects an id with a trailing extra segment - /trades/{id}/anything", () => {
+    expect(parseTradeDetailPath(["trades", "abc123", "anything"])).toBeNull();
+  });
+
+  it("rejects /trades/detail/test - not a real trade id, just an extra segment", () => {
+    expect(parseTradeDetailPath(["trades", "detail", "test"])).toBeNull();
+  });
+
+  it("rejects an empty id segment", () => {
+    expect(parseTradeDetailPath(["trades", ""])).toBeNull();
+  });
+
+  it("rejects a wrong first segment", () => {
+    expect(parseTradeDetailPath(["other", "abc123"])).toBeNull();
+    expect(parseTradeDetailPath(["Trades", "abc123"])).toBeNull(); // case-sensitive, matching every other exact-match check in this file
+  });
+
+  it("rejects an id segment with an embedded slash (a decoded-%2F smuggling attempt)", () => {
+    // Simulates the case where Next.js has already decoded an inbound "%2F"
+    // into a literal "/" character within a single raw path segment - the
+    // array element itself carries the slash, not a genuinely-separate
+    // third segment. parseTradeDetailPath must reject this explicitly, not
+    // rely on an implicit join/resplit collapse to catch it.
+    expect(parseTradeDetailPath(["trades", "abc/def"])).toBeNull();
+  });
+
+  it("rejects an implausibly long id (defensive bound)", () => {
+    expect(parseTradeDetailPath(["trades", "x".repeat(257)])).toBeNull();
+    expect(parseTradeDetailPath(["trades", "x".repeat(256)])).toBe("x".repeat(256));
+  });
+
+  it("rejects zero segments", () => {
+    expect(parseTradeDetailPath([])).toBeNull();
   });
 });

@@ -34,6 +34,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   filterAllowedParams,
   isAllowedProxyMethod,
+  parseTradeDetailPath,
   projectAllowedBody,
 } from "@/lib/proxyAllowlist";
 import { logProxyAccess } from "@/lib/proxyAccessLog";
@@ -112,15 +113,29 @@ export async function GET(
   const path = pathSegments.join("/");
 
   let response: NextResponse;
-  if (!isAllowedProxyMethod(path, "GET")) {
-    // No indication of what WOULD have been allowed (including whether this
-    // path exists at all for a different method) - avoid enumeration.
-    response = NextResponse.json({ ok: false, error: "not found" }, { status: 404 });
-  } else {
+  if (isAllowedProxyMethod(path, "GET")) {
     const filteredParams = filterAllowedParams(path, request.nextUrl.searchParams);
     const query = filteredParams.toString();
     const upstreamUrl = `${atlasApiBaseUrl()}/api/v1/${path}${query ? `?${query}` : ""}`;
     response = await forwardToUpstream("GET", upstreamUrl, undefined);
+  } else {
+    // Sprint 11A Group 6: the one dynamic-ID shape this proxy supports,
+    // checked only after the static table above finds no match - a real
+    // static entry (e.g. "trades" or "trades/current") is always resolved
+    // there first and never reaches this parser. See parseTradeDetailPath's
+    // own header comment (proxyAllowlist.ts) for why this isn't a wildcard.
+    // Re-encoded fresh from the validated, trusted `tradeId` string right
+    // before building the upstream URL - the client's own encoding is
+    // never trusted as-is.
+    const tradeId = parseTradeDetailPath(pathSegments);
+    if (tradeId !== null) {
+      const upstreamUrl = `${atlasApiBaseUrl()}/api/v1/trades/${encodeURIComponent(tradeId)}`;
+      response = await forwardToUpstream("GET", upstreamUrl, undefined);
+    } else {
+      // No indication of what WOULD have been allowed (including whether
+      // this path exists at all for a different method) - avoid enumeration.
+      response = NextResponse.json({ ok: false, error: "not found" }, { status: 404 });
+    }
   }
 
   logProxyAccess({ method: "GET", path, status: response.status, durationMs: Date.now() - startedAt });

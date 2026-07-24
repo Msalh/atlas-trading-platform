@@ -172,3 +172,40 @@ export function projectAllowedBody(
   }
   return projected;
 }
+
+// Sprint 11A Group 6 - the one dynamic-ID path this proxy supports:
+// GET /trades/{tradeId} (tradesApi.ts's fetchTradeDetail). This is
+// deliberately NOT a second entry in ALLOWED_PROXY_ROUTES, and NOT a
+// wildcard/prefix rule like "trades/**" - the table above stays a closed,
+// exact-string map exactly as documented at the top of this file. This is
+// a separate, single-purpose structural parser for exactly one shape:
+// GET only, exactly two path segments, the first literally "trades", the
+// second a non-empty trade ID with no embedded "/" - functionally
+// equivalent to the backend's own typed path parameter
+// (`@router.get("/trades/{correlation_id}")`, atlas/api/v1/trades.py),
+// just re-declared here so the proxy can validate it before forwarding
+// anything. route.ts only consults this after the static table above has
+// already been checked and found no match, so a real static entry (e.g.
+// "trades" or "trades/current") is always resolved by the table first and
+// never reaches this parser.
+//
+// Deliberately operates on the raw pathSegments ARRAY Next.js already
+// split for us (route.ts's `params.path`), not a rejoined/resplit string -
+// this sidesteps any ambiguity about what a decoded "%2F" inside one raw
+// URL segment would look like after a join+split round trip. If Next.js
+// ever decodes an inbound "%2F" into a literal "/" character embedded
+// within a single array element (a known routing edge case across many
+// frameworks), that element still fails the exact-two-segments shape as
+// far as THIS function's caller is concerned once re-examined - and the
+// `id.includes("/")` check below rejects it explicitly and directly,
+// rather than relying on that implicit collapse.
+const TRADE_DETAIL_ID_MAX_LENGTH = 256; // generous - real correlation_ids are well under 40 chars
+
+export function parseTradeDetailPath(pathSegments: readonly string[]): string | null {
+  if (pathSegments.length !== 2) return null;
+  const [first, id] = pathSegments;
+  if (first !== "trades") return null;
+  if (id.length === 0 || id.length > TRADE_DETAIL_ID_MAX_LENGTH) return null;
+  if (id.includes("/")) return null;
+  return id;
+}
