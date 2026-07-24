@@ -3,7 +3,8 @@
 // persisted, purely a client-side read of numbers the backend already computed. This
 // never suggests an action to take (no "close this trade" / "reduce size" buttons) -
 // only observations, matching "advisory only, never affects order execution."
-import { IntelligenceSnapshot, RiskResponse } from "@/lib/api";
+import type { IntelligenceSnapshot } from "@/lib/aiApi";
+import type { RiskResponse } from "@/lib/riskApi";
 
 export interface ManagementNote {
   severity: "info" | "warning";

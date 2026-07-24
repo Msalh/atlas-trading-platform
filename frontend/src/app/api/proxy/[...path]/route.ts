@@ -33,7 +33,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   filterAllowedParams,
+  isBodylessProxyPost,
   isAllowedProxyMethod,
+  parseAiIntelligencePath,
   parseTradeDetailPath,
   projectAllowedBody,
 } from "@/lib/proxyAllowlist";
@@ -132,9 +134,15 @@ export async function GET(
       const upstreamUrl = `${atlasApiBaseUrl()}/api/v1/trades/${encodeURIComponent(tradeId)}`;
       response = await forwardToUpstream("GET", upstreamUrl, undefined);
     } else {
-      // No indication of what WOULD have been allowed (including whether
-      // this path exists at all for a different method) - avoid enumeration.
-      response = NextResponse.json({ ok: false, error: "not found" }, { status: 404 });
+      const correlationId = parseAiIntelligencePath(pathSegments);
+      if (correlationId !== null) {
+        const upstreamUrl = `${atlasApiBaseUrl()}/api/v1/ai/intelligence/${encodeURIComponent(correlationId)}`;
+        response = await forwardToUpstream("GET", upstreamUrl, undefined);
+      } else {
+        // No indication of what WOULD have been allowed (including whether
+        // this path exists at all for a different method) - avoid enumeration.
+        response = NextResponse.json({ ok: false, error: "not found" }, { status: 404 });
+      }
     }
   }
 
@@ -154,21 +162,26 @@ export async function POST(
   if (!isAllowedProxyMethod(path, "POST")) {
     response = NextResponse.json({ ok: false, error: "not found" }, { status: 404 });
   } else {
-    let parsedBody: unknown;
-    try {
-      parsedBody = await request.json();
-    } catch {
-      parsedBody = undefined;
-    }
+    if (isBodylessProxyPost(path)) {
+      const upstreamUrl = `${atlasApiBaseUrl()}/api/v1/${path}`;
+      response = await forwardToUpstream("POST", upstreamUrl, undefined);
+    } else {
+      let parsedBody: unknown;
+      try {
+        parsedBody = await request.json();
+      } catch {
+        parsedBody = undefined;
+      }
 
-    if (!isPlainObject(parsedBody)) {
+      if (!isPlainObject(parsedBody)) {
       // A client-side shape problem (malformed/absent JSON body) - distinct
       // from 502 (an upstream problem), and never forwarded upstream at all.
-      response = NextResponse.json({ ok: false, error: "request body must be a JSON object" }, { status: 400 });
-    } else {
-      const projected = projectAllowedBody(path, parsedBody);
-      const upstreamUrl = `${atlasApiBaseUrl()}/api/v1/${path}`;
-      response = await forwardToUpstream("POST", upstreamUrl, projected);
+        response = NextResponse.json({ ok: false, error: "request body must be a JSON object" }, { status: 400 });
+      } else {
+        const projected = projectAllowedBody(path, parsedBody);
+        const upstreamUrl = `${atlasApiBaseUrl()}/api/v1/${path}`;
+        response = await forwardToUpstream("POST", upstreamUrl, projected);
+      }
     }
   }
 

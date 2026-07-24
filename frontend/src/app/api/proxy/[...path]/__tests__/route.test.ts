@@ -320,6 +320,73 @@ describe("GET /api/proxy/[...path] - dynamic trade-detail path (Sprint 11A Group
   });
 });
 
+describe("GET /api/proxy/ai/intelligence/{correlationId}", () => {
+  const originalFetch = global.fetch;
+
+  afterEach(() => {
+    global.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it("forwards a valid ID to the dedicated upstream path", async () => {
+    let capturedUrl = "";
+    global.fetch = vi.fn(async (url: string | URL) => {
+      capturedUrl = String(url);
+      return new Response(JSON.stringify({ correlation_id: "corr-1" }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const res = await GET(makeRequest("ai/intelligence/corr-1"), ctx("ai/intelligence/corr-1"));
+    expect(res.status).toBe(200);
+    expect(capturedUrl).toBe("http://localhost:8000/api/v1/ai/intelligence/corr-1");
+  });
+
+  it("freshly encodes a validated ID before forwarding", async () => {
+    let capturedUrl = "";
+    global.fetch = vi.fn(async (url: string | URL) => {
+      capturedUrl = String(url);
+      return new Response(JSON.stringify({ correlation_id: "id with space" }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await GET(makeRequest("ai/intelligence/placeholder"), {
+      params: Promise.resolve({ path: ["ai", "intelligence", "id with space"] }),
+    });
+    expect(capturedUrl).toBe("http://localhost:8000/api/v1/ai/intelligence/id%20with%20space");
+  });
+
+  it.each([
+    ["missing id", ["ai", "intelligence"]],
+    ["extra segment", ["ai", "intelligence", "corr-1", "extra"]],
+    ["embedded slash", ["ai", "intelligence", "corr/1"]],
+    ["empty id", ["ai", "intelligence", ""]],
+    ["overlong id", ["ai", "intelligence", "x".repeat(257)]],
+  ] as const)("rejects %s without calling fetch", async (_name, segments) => {
+    const fetchSpy = vi.fn();
+    global.fetch = fetchSpy as unknown as typeof fetch;
+    const res = await GET(makeRequest("ai/intelligence/placeholder"), {
+      params: Promise.resolve({ path: [...segments] }),
+    });
+    expect(res.status).toBe(404);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("rejects POST to the dynamic intelligence path", async () => {
+    const fetchSpy = vi.fn();
+    global.fetch = fetchSpy as unknown as typeof fetch;
+    const res = await POST(makePostRequest("ai/intelligence/corr-1", {}), ctx("ai/intelligence/corr-1"));
+    expect(res.status).toBe(404);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("passes through the backend 404 unchanged", async () => {
+    global.fetch = vi.fn(async () => new Response(
+      JSON.stringify({ ok: false, error: "no trade found" }),
+      { status: 404 },
+    )) as unknown as typeof fetch;
+    const res = await GET(makeRequest("ai/intelligence/missing"), ctx("ai/intelligence/missing"));
+    expect(res.status).toBe(404);
+  });
+});
+
 describe("POST /api/proxy/[...path]", () => {
   const originalFetch = global.fetch;
   const originalKey = process.env.ATLAS_API_KEY;
@@ -360,6 +427,37 @@ describe("POST /api/proxy/[...path]", () => {
     global.fetch = fetchSpy as unknown as typeof fetch;
 
     const res = await POST(makePostRequest("trades", {}), ctx("trades"));
+    expect(res.status).toBe(404);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it.each(["daily", "weekly"])("forwards the exact %s report trigger without a request body", async (period) => {
+    let capturedUrl = "";
+    let capturedInit: RequestInit | undefined;
+    global.fetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      capturedUrl = String(url);
+      capturedInit = init;
+      return new Response(JSON.stringify({ ok: true, status: "generating", period }), { status: 202 });
+    }) as unknown as typeof fetch;
+
+    const request = new NextRequest(`http://localhost:3000/api/proxy/ai/reports/${period}`, {
+      method: "POST",
+    });
+    const res = await POST(request, ctx(`ai/reports/${period}`));
+
+    expect(res.status).toBe(202);
+    expect(capturedUrl).toBe(`http://localhost:8000/api/v1/ai/reports/${period}`);
+    expect(capturedInit?.body).toBeUndefined();
+    expect(new Headers(capturedInit?.headers).has("Content-Type")).toBe(false);
+  });
+
+  it("rejects an unapproved report period without calling fetch", async () => {
+    const fetchSpy = vi.fn();
+    global.fetch = fetchSpy as unknown as typeof fetch;
+    const request = new NextRequest("http://localhost:3000/api/proxy/ai/reports/monthly", {
+      method: "POST",
+    });
+    const res = await POST(request, ctx("ai/reports/monthly"));
     expect(res.status).toBe(404);
     expect(fetchSpy).not.toHaveBeenCalled();
   });

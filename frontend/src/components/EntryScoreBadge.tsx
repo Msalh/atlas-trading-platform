@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { fetchAiNotes } from "@/lib/aiApi";
 import { pollInterval } from "@/lib/intervals";
 import { useLiveUpdatesConnected } from "@/lib/live-updates";
 
@@ -20,7 +20,7 @@ export function EntryScoreBadge({ correlationId }: { correlationId: string }) {
   const sseConnected = useLiveUpdatesConnected();
   const { data } = useQuery({
     queryKey: ["ai", "notes", correlationId, "entry_score"],
-    queryFn: () => api.aiNotes({ tradeCorrelationId: correlationId, noteType: "entry_score", limit: 1 }),
+    queryFn: () => fetchAiNotes({ tradeCorrelationId: correlationId, noteType: "entry_score", limit: 1 }),
     refetchInterval: pollInterval(sseConnected, 5_000),
   });
 

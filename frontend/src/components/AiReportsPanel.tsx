@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { api, type ReportPeriod } from "@/lib/api";
+import { fetchAiReports, triggerReport, type ReportPeriod } from "@/lib/aiApi";
 import { formatClock } from "@/lib/format";
 import { pollInterval } from "@/lib/intervals";
 import { useLiveUpdatesConnected } from "@/lib/live-updates";
@@ -14,12 +14,12 @@ export function AiReportsPanel() {
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["ai", "reports"],
-    queryFn: () => api.aiReports({ limit: 10 }),
+    queryFn: () => fetchAiReports({ limit: 10 }),
     refetchInterval: pollInterval(sseConnected, 10_000),
   });
 
   const trigger = useMutation({
-    mutationFn: (period: ReportPeriod) => api.triggerReport(period),
+    mutationFn: triggerReport,
     onSuccess: (_data, period) => {
       setJustTriggered(period);
       // Generation happens in a background task on the server - refetch shortly

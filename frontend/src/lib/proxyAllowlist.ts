@@ -90,6 +90,12 @@ export const ALLOWED_PROXY_ROUTES: Readonly<Record<string, ProxyRouteConfig>> = 
   // Sprint 11A Group 5 - Activity-page reads (activityApi.ts). Only "limit",
   // matching atlas/api/v1/activity.py's own single query param.
   "activity": { GET: { params: ["limit"] } },
+  // Sprint 11A Group 7 - AI reads and the two explicitly enumerated
+  // report-generation actions. The triggers accept no request body.
+  "ai/notes": { GET: { params: ["trade_correlation_id", "note_type", "limit"] } },
+  "ai/reports": { GET: { params: ["period", "limit"] } },
+  "ai/reports/daily": { POST: { bodyFields: [] } },
+  "ai/reports/weekly": { POST: { bodyFields: [] } },
   // Sprint 10 Slice E - Promotion Queue reads. read_promotion_candidates()
   // itself has existed since Sprint 9 (atlas/api/v1/promotion.py); this is
   // the first slice with a consuming page, exactly like research/lineage's
@@ -111,6 +117,11 @@ export const ALLOWED_PROXY_ROUTES: Readonly<Record<string, ProxyRouteConfig>> = 
 
 export function isAllowedProxyPath(path: string): path is keyof typeof ALLOWED_PROXY_ROUTES {
   return Object.prototype.hasOwnProperty.call(ALLOWED_PROXY_ROUTES, path);
+}
+
+export function isBodylessProxyPost(path: string): boolean {
+  const post = ALLOWED_PROXY_ROUTES[path]?.POST;
+  return post != null && post.bodyFields.length === 0;
 }
 
 // Sprint 10 Slice A.1: every lookup function below takes an optional `routes`
@@ -206,6 +217,23 @@ export function parseTradeDetailPath(pathSegments: readonly string[]): string | 
   const [first, id] = pathSegments;
   if (first !== "trades") return null;
   if (id.length === 0 || id.length > TRADE_DETAIL_ID_MAX_LENGTH) return null;
+  if (id.includes("/")) return null;
+  return id;
+}
+
+const AI_INTELLIGENCE_ID_MAX_LENGTH = 256;
+
+/** The only dynamic AI route: exactly GET ai/intelligence/{correlationId}.
+ * This parser is intentionally separate from trade detail and from the
+ * static table; it is not a prefix rule or a generic AI wildcard. */
+export function parseAiIntelligencePath(pathSegments: readonly string[]): string | null {
+  if (
+    pathSegments.length !== 3 ||
+    pathSegments[0] !== "ai" ||
+    pathSegments[1] !== "intelligence"
+  ) return null;
+  const id = pathSegments[2];
+  if (id.length === 0 || id.length > AI_INTELLIGENCE_ID_MAX_LENGTH) return null;
   if (id.includes("/")) return null;
   return id;
 }

@@ -2,7 +2,10 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { api, Factor } from "@/lib/api";
+import { fetchIntelligence, type Factor } from "@/lib/aiApi";
+import { fetchAnalyticsSummary } from "@/lib/analyticsApi";
+import { fetchRisk } from "@/lib/riskApi";
+import { fetchCurrentTrade } from "@/lib/tradesApi";
 import { formatPct, formatPnl, formatRatio } from "@/lib/format";
 import { pollInterval } from "@/lib/intervals";
 import { useLiveUpdatesConnected } from "@/lib/live-updates";
@@ -41,7 +44,7 @@ export function AICopilotPanel() {
 
   const { data: currentTrade, isLoading: tradeLoading, isError: tradeError } = useQuery({
     queryKey: ["trades", "current"],
-    queryFn: api.currentTrade,
+    queryFn: fetchCurrentTrade,
     refetchInterval: pollInterval(sseConnected, 5_000),
   });
 
@@ -49,20 +52,20 @@ export function AICopilotPanel() {
 
   const { data: intelligence, isLoading: intelligenceLoading } = useQuery({
     queryKey: ["ai", "intelligence", correlationId],
-    queryFn: () => api.intelligence(correlationId!),
+    queryFn: () => fetchIntelligence(correlationId!),
     enabled: !!correlationId,
   });
 
   const { data: risk } = useQuery({
     queryKey: ["risk"],
-    queryFn: api.risk,
+    queryFn: fetchRisk,
     refetchInterval: pollInterval(sseConnected, 5_000),
     enabled: !!correlationId,
   });
 
   const { data: analyticsSummary } = useQuery({
     queryKey: ["analytics", "summary"],
-    queryFn: api.analyticsSummary,
+    queryFn: fetchAnalyticsSummary,
     enabled: !!correlationId,
   });
 

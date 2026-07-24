@@ -4,6 +4,7 @@ import {
   filterAllowedParams,
   isAllowedProxyMethod,
   isAllowedProxyPath,
+  parseAiIntelligencePath,
   parseTradeDetailPath,
   ProxyRouteConfig,
   projectAllowedBody,
@@ -90,14 +91,28 @@ describe("isAllowedProxyPath", () => {
     expect(isAllowedProxyPath("Research/Re1/Summary")).toBe(false);
   });
 
-  it("no path in the real production table declares a POST config (Slice A.1 regression)", () => {
-    // research/promotion/decide (or any other write path) must not reappear
-    // in production config outside its own slice's own review - this is the
-    // direct, mechanical proof that Slice A.1's removal actually holds.
+  it("only the two approved Group 7 report triggers declare POST", () => {
     const pathsWithPost = Object.entries(ALLOWED_PROXY_ROUTES)
       .filter(([, config]) => config.POST != null)
       .map(([path]) => path);
-    expect(pathsWithPost).toEqual([]);
+    expect(pathsWithPost).toEqual(["ai/reports/daily", "ai/reports/weekly"]);
+  });
+
+  it("allows only the exact AI paths and methods with declared query params", () => {
+    expect(isAllowedProxyMethod("ai/notes", "GET")).toBe(true);
+    expect(isAllowedProxyMethod("ai/notes", "POST")).toBe(false);
+    expect(isAllowedProxyMethod("ai/reports", "GET")).toBe(true);
+    expect(isAllowedProxyMethod("ai/reports", "POST")).toBe(false);
+    expect(isAllowedProxyMethod("ai/reports/daily", "POST")).toBe(true);
+    expect(isAllowedProxyMethod("ai/reports/daily", "GET")).toBe(false);
+    expect(isAllowedProxyMethod("ai/reports/weekly", "POST")).toBe(true);
+    expect(isAllowedProxyMethod("ai/reports/monthly", "POST")).toBe(false);
+    expect(
+      filterAllowedParams(
+        "ai/notes",
+        new URLSearchParams({ trade_correlation_id: "c1", note_type: "entry_score", limit: "1", extra: "drop" }),
+      ).toString(),
+    ).toBe("trade_correlation_id=c1&note_type=entry_score&limit=1");
   });
 });
 
@@ -286,5 +301,24 @@ describe("parseTradeDetailPath", () => {
 
   it("rejects zero segments", () => {
     expect(parseTradeDetailPath([])).toBeNull();
+  });
+});
+
+describe("parseAiIntelligencePath", () => {
+  it("accepts exactly ai/intelligence/<non-empty id>", () => {
+    expect(parseAiIntelligencePath(["ai", "intelligence", "corr-1"])).toBe("corr-1");
+    expect(parseAiIntelligencePath(["ai", "intelligence", "E2E-MNQ1!-1783579500000"]))
+      .toBe("E2E-MNQ1!-1783579500000");
+  });
+
+  it("rejects missing, extra, wrong, empty, embedded-slash, and overlong shapes", () => {
+    expect(parseAiIntelligencePath(["ai", "intelligence"])).toBeNull();
+    expect(parseAiIntelligencePath(["ai", "intelligence", "corr-1", "extra"])).toBeNull();
+    expect(parseAiIntelligencePath(["ai", "other", "corr-1"])).toBeNull();
+    expect(parseAiIntelligencePath(["AI", "intelligence", "corr-1"])).toBeNull();
+    expect(parseAiIntelligencePath(["ai", "intelligence", ""])).toBeNull();
+    expect(parseAiIntelligencePath(["ai", "intelligence", "a/b"])).toBeNull();
+    expect(parseAiIntelligencePath(["ai", "intelligence", "x".repeat(257)])).toBeNull();
+    expect(parseAiIntelligencePath(["ai", "intelligence", "x".repeat(256)])).toBe("x".repeat(256));
   });
 });

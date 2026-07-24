@@ -88,15 +88,15 @@ export async function proxyGet<T>(
 
 export async function proxyPost<T>(
   path: string,
-  body: Record<string, unknown>,
+  body: Record<string, unknown> | undefined,
   isValid: (body: unknown) => body is T,
 ): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`/api/proxy/${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
       cache: "no-store",
     });
   } catch {

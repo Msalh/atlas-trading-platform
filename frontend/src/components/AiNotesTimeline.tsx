@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { fetchAiNotes } from "@/lib/aiApi";
 import { formatClock } from "@/lib/format";
 import { pollInterval } from "@/lib/intervals";
 import { useLiveUpdatesConnected } from "@/lib/live-updates";
@@ -16,7 +16,7 @@ export function AiNotesTimeline() {
   const sseConnected = useLiveUpdatesConnected();
   const { data, isLoading, isError } = useQuery({
     queryKey: ["ai", "notes", "timeline"],
-    queryFn: () => api.aiNotes({ limit: 30 }),
+    queryFn: () => fetchAiNotes({ limit: 30 }),
     refetchInterval: pollInterval(sseConnected, 10_000),
   });
 
