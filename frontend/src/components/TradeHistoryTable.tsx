@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
-import { api } from "@/lib/api";
+import { fetchTradeList } from "@/lib/tradesApi";
 import { formatClock, formatPnl, formatPrice } from "@/lib/format";
 import { pollInterval } from "@/lib/intervals";
 import { useLiveUpdatesConnected } from "@/lib/live-updates";
@@ -22,7 +22,7 @@ export function TradeHistoryTable() {
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ["trades", "list", status],
-    queryFn: () => api.tradeList({ limit: 50, status }),
+    queryFn: () => fetchTradeList({ limit: 50, status }),
     refetchInterval: pollInterval(sseConnected, 15_000),
   });
 

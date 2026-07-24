@@ -27,7 +27,7 @@ describe("isAllowedProxyPath", () => {
   });
 
   it("rejects a path not on the allowlist", () => {
-    expect(isAllowedProxyPath("trades")).toBe(false);
+    expect(isAllowedProxyPath("trades/detail")).toBe(false);
     expect(isAllowedProxyPath("market-state/export")).toBe(false);
     expect(isAllowedProxyPath("health")).toBe(false);
   });
@@ -41,6 +41,20 @@ describe("isAllowedProxyPath", () => {
     expect(isAllowedProxyPath("risk")).toBe(true);
     expect(isAllowedProxyMethod("risk", "GET")).toBe(true);
     expect(filterAllowedParams("risk", new URLSearchParams({ foo: "bar" })).toString()).toBe("");
+  });
+
+  it("allows trades/current, trades, and stats/today - Sprint 11A Group 2's Dashboard reads", () => {
+    expect(isAllowedProxyPath("trades/current")).toBe(true);
+    expect(isAllowedProxyMethod("trades/current", "GET")).toBe(true);
+
+    expect(isAllowedProxyPath("trades")).toBe(true);
+    expect(isAllowedProxyMethod("trades", "GET")).toBe(true);
+    expect(
+      filterAllowedParams("trades", new URLSearchParams({ limit: "50", status: "open", extra: "drop-me" })).toString(),
+    ).toBe("limit=50&status=open");
+
+    expect(isAllowedProxyPath("stats/today")).toBe(true);
+    expect(isAllowedProxyMethod("stats/today", "GET")).toBe(true);
   });
 
   it("rejects a near-miss of an allowed path (no prefix matching)", () => {
@@ -89,8 +103,8 @@ describe("isAllowedProxyMethod", () => {
   });
 
   it("rejects both methods for a path not on the allowlist at all", () => {
-    expect(isAllowedProxyMethod("trades", "GET")).toBe(false);
-    expect(isAllowedProxyMethod("trades", "POST")).toBe(false);
+    expect(isAllowedProxyMethod("trades/detail", "GET")).toBe(false);
+    expect(isAllowedProxyMethod("trades/detail", "POST")).toBe(false);
   });
 
   it("allows POST for a path with a POST config, using an injected route table", () => {

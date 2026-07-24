@@ -61,7 +61,7 @@ describe("GET /api/proxy/[...path]", () => {
     const fetchSpy = vi.fn();
     global.fetch = fetchSpy as unknown as typeof fetch;
 
-    const res = await GET(makeRequest("trades"), ctx("trades"));
+    const res = await GET(makeRequest("trades/detail"), ctx("trades/detail"));
     expect(res.status).toBe(404);
     expect(fetchSpy).not.toHaveBeenCalled();
     const body = await res.json();
@@ -451,7 +451,7 @@ describe("access logging", () => {
     global.fetch = fetchSpy as unknown as typeof fetch;
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-    await GET(makeRequest("trades"), ctx("trades"));
+    await GET(makeRequest("trades/detail"), ctx("trades/detail"));
 
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(logSpy).toHaveBeenCalledTimes(1);

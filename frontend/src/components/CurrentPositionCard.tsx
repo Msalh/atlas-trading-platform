@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { fetchCurrentTrade } from "@/lib/tradesApi";
 import { formatPnl, formatPrice, formatTimeAgo } from "@/lib/format";
 import { pollInterval } from "@/lib/intervals";
 import { useLiveUpdatesConnected } from "@/lib/live-updates";
@@ -13,7 +13,7 @@ export function CurrentPositionCard() {
   const sseConnected = useLiveUpdatesConnected();
   const { data, isLoading, isError } = useQuery({
     queryKey: ["trades", "current"],
-    queryFn: api.currentTrade,
+    queryFn: fetchCurrentTrade,
     refetchInterval: pollInterval(sseConnected, 5_000),
   });
 

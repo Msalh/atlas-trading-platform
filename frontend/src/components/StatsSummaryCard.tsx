@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { fetchStatsToday } from "@/lib/statsApi";
 import { formatPnl, formatPoints } from "@/lib/format";
 import { pollInterval } from "@/lib/intervals";
 import { useLiveUpdatesConnected } from "@/lib/live-updates";
@@ -19,7 +19,7 @@ export function StatsSummaryCard() {
   const sseConnected = useLiveUpdatesConnected();
   const { data, isLoading, isError } = useQuery({
     queryKey: ["stats", "today"],
-    queryFn: api.statsToday,
+    queryFn: fetchStatsToday,
     refetchInterval: pollInterval(sseConnected, 20_000),
   });
 

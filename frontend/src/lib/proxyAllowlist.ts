@@ -76,6 +76,12 @@ export const ALLOWED_PROXY_ROUTES: Readonly<Record<string, ProxyRouteConfig>> = 
   // Sprint 11A Group 0B - account risk snapshot (riskApi.ts). No params -
   // atlas/api/v1/risk.py always scopes to the single configured account.
   "risk": { GET: { params: [] } },
+  // Sprint 11A Group 2 - Dashboard reads (tradesApi.ts, statsApi.ts).
+  // "trades" forwards the same two query params atlas/api/v1/trades.py's
+  // list_trades() itself accepts (limit, status) - nothing else.
+  "trades/current": { GET: { params: [] } },
+  "trades": { GET: { params: ["limit", "status"] } },
+  "stats/today": { GET: { params: [] } },
   // Sprint 10 Slice E - Promotion Queue reads. read_promotion_candidates()
   // itself has existed since Sprint 9 (atlas/api/v1/promotion.py); this is
   // the first slice with a consuming page, exactly like research/lineage's
