@@ -11,11 +11,15 @@ import {
 } from "@/features/evidence/__fixtures__/snapshotApi";
 import type { SnapshotListResponse } from "@/features/evidence/contract";
 
-function response(body: unknown, status = 200) {
+function response(
+  body: unknown,
+  status = 200,
+  headers: Record<string, string> = {},
+) {
   return Promise.resolve(
     new Response(JSON.stringify(body), {
       status,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...headers },
     }),
   );
 }
@@ -190,6 +194,73 @@ describe("Evidence list", () => {
       screen.queryByText(/postgres|bearer|private-database/i),
     ).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects malformed error envelopes and success/error hybrids", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockReturnValueOnce(
+        response(
+          {
+            ok: false,
+            code: "snapshot_service_unavailable",
+            correlation_id: "synthetic",
+            message: "unexpected private detail",
+          },
+          503,
+        ),
+      )
+      .mockReturnValueOnce(
+        response({
+          ...snapshotListFixture,
+          ok: false,
+          code: "snapshot_integrity_failed",
+        }),
+      );
+    const first = render(<EvidenceList />);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "temporarily unavailable",
+    );
+    first.unmount();
+
+    render(<EvidenceList />);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "unsupported response",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects oversized, malformed, and unexpected-content responses", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockReturnValueOnce(
+        response(snapshotListFixture, 200, {
+          "Content-Length": String(512 * 1024 + 1),
+        }),
+      )
+      .mockReturnValueOnce(
+        Promise.resolve(
+          new Response("{", {
+            headers: { "Content-Type": "application/json" },
+          }),
+        ),
+      )
+      .mockReturnValueOnce(
+        Promise.resolve(
+          new Response("private upstream body", {
+            headers: { "Content-Type": "text/plain" },
+          }),
+        ),
+      );
+    for (let index = 0; index < 3; index += 1) {
+      const view = render(<EvidenceList />);
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "temporarily unavailable",
+      );
+      expect(screen.queryByText("private upstream body")).not.toBeInTheDocument();
+      view.unmount();
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("prevents stale out-of-order responses from replacing Latest", async () => {

@@ -2,10 +2,19 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  SNAPSHOT_API_SCHEMA_VERSION,
   SNAPSHOT_DEFAULT_PAGE_SIZE,
+  SNAPSHOT_MAX_CURSOR_LENGTH,
+  isSnapshotId,
   type SnapshotListResponse,
   type SnapshotMetadata,
 } from "./contract";
+import {
+  LOCAL_RESPONSE_LIMITS,
+  hasErrorEnvelopeMarkers,
+  readBoundedJson,
+  safeErrorCode,
+} from "./clientTransport";
 
 export type EvidenceListState =
   | { readonly status: "loading"; readonly items: readonly SnapshotMetadata[] }
@@ -31,33 +40,60 @@ interface EvidenceListController {
 }
 
 function isSnapshotListResponse(value: unknown): value is SnapshotListResponse {
-  if (typeof value !== "object" || value === null) return false;
-  const response = value as Partial<SnapshotListResponse>;
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    Array.isArray(value) ||
+    hasErrorEnvelopeMarkers(value)
+  ) {
+    return false;
+  }
+  const response = value as Record<string, unknown>;
+  const keys = Object.keys(response);
   return (
-    response.schema_version === "snapshot_private_api.v1" &&
+    keys.length === 3 &&
+    ["schema_version", "items", "next_cursor"].every((key) =>
+      keys.includes(key),
+    ) &&
+    response.schema_version === SNAPSHOT_API_SCHEMA_VERSION &&
     Array.isArray(response.items) &&
+    response.items.every(isSnapshotMetadata) &&
     (response.next_cursor === null ||
-      typeof response.next_cursor === "string")
+      (typeof response.next_cursor === "string" &&
+        response.next_cursor.length > 0 &&
+        response.next_cursor.length <= SNAPSHOT_MAX_CURSOR_LENGTH))
   );
 }
 
-async function errorCode(response: Response): Promise<string> {
-  try {
-    const body: unknown = await response.json();
-    if (
-      typeof body === "object" &&
-      body !== null &&
-      "code" in body &&
-      typeof body.code === "string"
-    ) {
-      return body.code;
-    }
-  } catch {
-    // The dashboard boundary may return a non-JSON authentication response.
+function nullableString(value: unknown): boolean {
+  return value === null || typeof value === "string";
+}
+
+function isSnapshotMetadata(value: unknown): value is SnapshotMetadata {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
   }
-  return response.status === 401
-    ? "dashboard_authentication_required"
-    : "evidence_list_unavailable";
+  const item = value as Record<string, unknown>;
+  return (
+    Object.keys(item).length === 15 &&
+    item.schema_version === SNAPSHOT_API_SCHEMA_VERSION &&
+    typeof item.snapshot_id === "string" &&
+    isSnapshotId(item.snapshot_id) &&
+    typeof item.evidence_digest === "string" &&
+    /^[0-9a-f]{64}$/.test(item.evidence_digest) &&
+    typeof item.created_at === "string" &&
+    nullableString(item.evaluated_at) &&
+    nullableString(item.latest_closed_at) &&
+    nullableString(item.economic_instrument) &&
+    nullableString(item.market_data_provider) &&
+    nullableString(item.market_data_series_symbol) &&
+    nullableString(item.market_data_series_type) &&
+    typeof item.timeframe === "string" &&
+    typeof item.strategy_id === "string" &&
+    typeof item.strategy_version === "string" &&
+    typeof item.trust_status === "string" &&
+    nullableString(item.supersedes_snapshot_id)
+  );
 }
 
 export function useEvidenceList(): EvidenceListController {
@@ -99,7 +135,10 @@ export function useEvidenceList(): EvidenceListController {
         });
         if (sequence !== requestSequence.current) return;
         if (!response.ok) {
-          const code = await errorCode(response);
+          const code = await safeErrorCode(
+            response,
+            "evidence_list_unavailable",
+          );
           if (sequence !== requestSequence.current) return;
           currentResponse.current = null;
           setHasNext(false);
@@ -110,7 +149,10 @@ export function useEvidenceList(): EvidenceListController {
           });
           return;
         }
-        const body: unknown = await response.json();
+        const body = await readBoundedJson(
+          response,
+          LOCAL_RESPONSE_LIMITS.list,
+        );
         if (sequence !== requestSequence.current) return;
         if (!isSnapshotListResponse(body)) {
           currentResponse.current = null;

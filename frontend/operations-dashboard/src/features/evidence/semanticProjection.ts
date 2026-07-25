@@ -479,7 +479,15 @@ export function projectSemanticSnapshot(
 ): SemanticSnapshotProjection {
   enforceBounds(response);
   const envelope = object(response);
-  if (envelope.schema_version !== SNAPSHOT_API_SCHEMA_VERSION) fail();
+  if (
+    envelope.schema_version !== SNAPSHOT_API_SCHEMA_VERSION ||
+    !hasExactKeys(
+      envelope,
+      new Set(["schema_version", "snapshot"]),
+    )
+  ) {
+    fail();
+  }
   const snapshot = object(envelope.snapshot);
   if (!hasExactKeys(snapshot, SNAPSHOT_KEYS)) fail();
   if (snapshot.snapshot_id !== expectedSnapshotId) fail();

@@ -46,16 +46,24 @@ describe("reader-only Snapshot API boundary", () => {
     delete process.env.SNAPSHOT_READER_API_TOKEN;
   });
 
-  it("fails closed while disabled without making an upstream request", async () => {
+  it("fails closed for every route and repeated retry while disabled", async () => {
     process.env.EVIDENCE_BROWSER_ENABLED = "false";
     const fetchMock = vi.spyOn(globalThis, "fetch");
-    const response = await readSnapshotList(request("/api/evidence/snapshots"));
-    expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({
-      ok: false,
-      code: "evidence_browser_disabled",
-      correlation_id: SYNTHETIC_CORRELATION_ID,
-    });
+    const responses = [
+      await readSnapshotList(request("/api/evidence/snapshots")),
+      await readSnapshotList(request("/api/evidence/snapshots")),
+      await readSnapshotDetail(request("/detail"), SYNTHETIC_SNAPSHOT_ID),
+      await readSnapshotMetadata(request("/metadata"), SYNTHETIC_SNAPSHOT_ID),
+      await readSnapshotIntegrity(request("/integrity"), SYNTHETIC_SNAPSHOT_ID),
+    ];
+    for (const response of responses) {
+      expect(response.status).toBe(404);
+      expect(await response.json()).toEqual({
+        ok: false,
+        code: "evidence_browser_disabled",
+        correlation_id: SYNTHETIC_CORRELATION_ID,
+      });
+    }
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -68,6 +76,18 @@ describe("reader-only Snapshot API boundary", () => {
     process.env.SNAPSHOT_READER_API_TOKEN = "synthetic-reader-token";
     process.env.SNAPSHOT_API_INTERNAL_URL =
       "http://username:password@snapshot-api.internal/path";
+    expect(
+      (await readSnapshotList(request("/api/evidence/snapshots"))).status,
+    ).toBe(503);
+    process.env.SNAPSHOT_API_INTERNAL_URL = "http://snapshot-api.internal";
+    for (const token of ["short", "synthetic token with spaces", "x\nunsafe"]) {
+      process.env.SNAPSHOT_READER_API_TOKEN = token;
+      expect(
+        (await readSnapshotList(request("/api/evidence/snapshots"))).status,
+      ).toBe(503);
+    }
+    process.env.SNAPSHOT_READER_API_TOKEN = "synthetic-reader-token";
+    process.env.SNAPSHOT_API_INTERNAL_URL = " http://snapshot-api.internal";
     expect(
       (await readSnapshotList(request("/api/evidence/snapshots"))).status,
     ).toBe(503);
@@ -106,6 +126,33 @@ describe("reader-only Snapshot API boundary", () => {
       }),
     );
     expect(await response.json()).toEqual(snapshotListFixture);
+  });
+
+  it("forwards only fixed headers and never arbitrary client headers", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse(snapshotListFixture));
+    await readSnapshotList(
+      new Request("http://dashboard.local/api/evidence/snapshots", {
+        headers: {
+          "X-Correlation-ID": SYNTHETIC_CORRELATION_ID,
+          Authorization: "Bearer client-controlled",
+          Cookie: "private-cookie",
+          "X-Arbitrary": "must-not-forward",
+        },
+      }),
+    );
+    const forwarded = new Headers(fetchMock.mock.calls[0][1]?.headers);
+    expect([...forwarded.keys()].sort()).toEqual([
+      "accept",
+      "authorization",
+      "x-correlation-id",
+    ]);
+    expect(forwarded.get("authorization")).toBe(
+      "Bearer synthetic-reader-token",
+    );
+    expect(forwarded.get("cookie")).toBeNull();
+    expect(forwarded.get("x-arbitrary")).toBeNull();
   });
 
   it("calls only fixed detail, metadata, and integrity routes", async () => {
@@ -237,6 +284,116 @@ describe("reader-only Snapshot API boundary", () => {
     expect((await oversized.json()).code).toBe(
       "snapshot_response_too_large",
     );
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        ...snapshotListFixture,
+        ok: false,
+        code: "snapshot_integrity_failed",
+      }),
+    );
+    const hybrid = await readSnapshotList(
+      request("/api/evidence/snapshots"),
+    );
+    expect(hybrid.status).toBe(502);
+    expect((await hybrid.json()).code).toBe("unexpected_snapshot_response");
+
+    fetchMock.mockResolvedValueOnce(
+      new Response("{", {
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    const malformedJson = await readSnapshotList(
+      request("/api/evidence/snapshots"),
+    );
+    expect(malformedJson.status).toBe(502);
+    expect((await malformedJson.json()).code).toBe(
+      "unexpected_snapshot_response",
+    );
+  });
+
+  it.each([
+    ["detail", 5 * 1024 * 1024 + 1, readSnapshotDetail],
+    ["metadata", 256 * 1024 + 1, readSnapshotMetadata],
+    ["integrity", 64 * 1024 + 1, readSnapshotIntegrity],
+  ])("enforces the %s response-size policy", async (
+    _kind,
+    contentLength,
+    reader,
+  ) => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("{}", {
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": String(contentLength),
+        },
+      }),
+    );
+    const response = await reader(request("/reader"), SYNTHETIC_SNAPSHOT_ID);
+    expect(response.status).toBe(502);
+    expect((await response.json()).code).toBe("snapshot_response_too_large");
+  });
+
+  it("cleans up the upstream timeout and parent abort listener after success", async () => {
+    vi.useFakeTimers();
+    try {
+      const dashboardRequest = request("/api/evidence/snapshots");
+      const removeListener = vi.spyOn(
+        dashboardRequest.signal,
+        "removeEventListener",
+      );
+      let upstreamSignal: AbortSignal | undefined;
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+        upstreamSignal = init?.signal ?? undefined;
+        return jsonResponse(snapshotListFixture);
+      });
+
+      expect((await readSnapshotList(dashboardRequest)).status).toBe(200);
+      vi.advanceTimersByTime(10_000);
+      expect(upstreamSignal?.aborted).toBe(false);
+      expect(removeListener).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("distinguishes bounded timeout from caller cancellation", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.spyOn(globalThis, "fetch").mockImplementation(
+        (_url, init) =>
+          new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener(
+              "abort",
+              () => reject(init.signal?.reason),
+              { once: true },
+            );
+          }),
+      );
+      const timedOut = readSnapshotList(request("/api/evidence/snapshots"));
+      await vi.advanceTimersByTimeAsync(3_001);
+      const timeoutResponse = await timedOut;
+      expect(timeoutResponse.status).toBe(504);
+      expect((await timeoutResponse.json()).code).toBe(
+        "snapshot_upstream_timeout",
+      );
+
+      const controller = new AbortController();
+      const cancelled = readSnapshotList(
+        new Request("http://dashboard.local/api/evidence/snapshots", {
+          signal: controller.signal,
+          headers: { "X-Correlation-ID": SYNTHETIC_CORRELATION_ID },
+        }),
+      );
+      controller.abort();
+      const cancelledResponse = await cancelled;
+      expect(cancelledResponse.status).toBe(499);
+      expect((await cancelledResponse.json()).code).toBe(
+        "snapshot_request_cancelled",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("rejects a successful response for a different snapshot identity", async () => {

@@ -18,11 +18,15 @@ import {
 
 const THIRD_SNAPSHOT_ID = "019b1111-2222-7333-8444-777777777777";
 
-function response(body: unknown, status = 200) {
+function response(
+  body: unknown,
+  status = 200,
+  headers: Record<string, string> = {},
+) {
   return Promise.resolve(
     new Response(JSON.stringify(body), {
       status,
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...headers },
     }),
   );
 }
@@ -210,6 +214,7 @@ describe("Snapshot detail integrity gate", () => {
 
       expect(await screen.findByRole("alert")).toHaveTextContent(title);
       expectNoEvidence();
+      expect(fetch).toHaveBeenCalledTimes(3);
     },
   );
 
@@ -359,6 +364,108 @@ describe("Snapshot detail integrity gate", () => {
       "Integrity verification failed",
     );
     expectNoEvidence();
+  });
+
+  it("allows one explicit user retry after timeout without automatic retry", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockReturnValueOnce(response(snapshotDetailFixture))
+      .mockReturnValueOnce(response(snapshotMetadataFixture))
+      .mockReturnValueOnce(
+        response(safeError("snapshot_upstream_timeout"), 504),
+      )
+      .mockReturnValueOnce(response(snapshotDetailFixture))
+      .mockReturnValueOnce(response(snapshotMetadataFixture))
+      .mockReturnValueOnce(response(snapshotIntegrityFixture));
+    render(<SnapshotDetail snapshotId={SYNTHETIC_SNAPSHOT_ID} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Integrity verification timed out",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Retry integrity verification" }),
+    );
+    expectNoEvidence();
+    expect(
+      await screen.findByRole("region", {
+        name: "Verified canonical evidence",
+      }),
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+  });
+
+  it.each([
+    ["detail", 0, 5 * 1024 * 1024 + 1],
+    ["metadata", 1, 256 * 1024 + 1],
+    ["integrity", 2, 64 * 1024 + 1],
+  ])("rejects oversized %s response without partial evidence", async (
+    _name,
+    oversizedIndex,
+    declaredLength,
+  ) => {
+    const bodies = [
+      snapshotDetailFixture,
+      snapshotMetadataFixture,
+      snapshotIntegrityFixture,
+    ];
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    bodies.forEach((body, index) => {
+      fetchMock.mockReturnValueOnce(
+        response(
+          body,
+          200,
+          index === oversizedIndex
+            ? { "Content-Length": String(declaredLength) }
+            : {},
+        ),
+      );
+    });
+    render(<SnapshotDetail snapshotId={SYNTHETIC_SNAPSHOT_ID} />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Malformed verification response",
+    );
+    expectNoEvidence();
+  });
+
+  it("rejects unexpected content type and malformed JSON without leaking bodies", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    fetchMock
+      .mockReturnValueOnce(
+        Promise.resolve(
+          new Response("private-host.internal stack trace", {
+            headers: { "Content-Type": "text/plain" },
+          }),
+        ),
+      )
+      .mockReturnValueOnce(
+        Promise.resolve(
+          new Response("{", {
+            headers: { "Content-Type": "application/json" },
+          }),
+        ),
+      )
+      .mockReturnValueOnce(response(snapshotIntegrityFixture));
+    render(<SnapshotDetail snapshotId={SYNTHETIC_SNAPSHOT_ID} />);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Malformed verification response");
+    expect(alert).not.toHaveTextContent("private-host");
+    expectNoEvidence();
+  });
+
+  it("keeps safe failure text layout-bounded", async () => {
+    vi.spyOn(globalThis, "fetch")
+      .mockReturnValueOnce(response(snapshotDetailFixture))
+      .mockReturnValueOnce(response(snapshotMetadataFixture))
+      .mockReturnValueOnce(
+        response(safeError("snapshot_service_unavailable"), 503),
+      );
+    render(<SnapshotDetail snapshotId={SYNTHETIC_SNAPSHOT_ID} />);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert.querySelector("p")).toHaveClass("break-words");
   });
 
   it.each(["late_success", "late_failure"])(

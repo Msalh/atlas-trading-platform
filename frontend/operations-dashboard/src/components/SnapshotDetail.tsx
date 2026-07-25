@@ -124,7 +124,9 @@ export function SnapshotDetail({ snapshotId }: { snapshotId: string }) {
           <h2 id="snapshot-error-title" className="font-semibold">
             {error.title}
           </h2>
-          <p className="mt-2 text-sm text-[var(--muted)]">{error.message}</p>
+          <p className="mt-2 break-words text-sm text-[var(--muted)]">
+            {error.message}
+          </p>
           <button
             className="mt-4 rounded border border-[var(--border)] px-3 py-2 text-sm font-medium focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-[var(--healthy)]"
             onClick={refresh}

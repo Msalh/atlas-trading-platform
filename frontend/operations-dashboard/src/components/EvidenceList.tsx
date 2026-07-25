@@ -39,7 +39,7 @@ export function EvidenceList() {
         </p>
         <h1 className="mt-1 text-2xl font-semibold">Snapshot Evidence</h1>
         <p className="mt-2 max-w-3xl text-sm text-[var(--muted)]">
-          Immutable analysis snapshots available through the private reader
+          Read-only analysis snapshots available through the private reader
           boundary. Indexed fields shown here are non-authoritative metadata.
         </p>
       </header>
@@ -122,7 +122,7 @@ export function EvidenceList() {
             role="status"
           >
             <h3 className="font-semibold">No snapshots available</h3>
-            <p className="mt-2 text-sm text-[var(--muted)]">
+            <p className="mt-2 break-words text-sm text-[var(--muted)]">
               The reader returned an empty evidence page.
             </p>
           </div>

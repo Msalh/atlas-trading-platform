@@ -14,8 +14,26 @@ import {
 } from "../contract";
 
 const CORRELATION_ID = /^[A-Za-z0-9._:-]{1,128}$/;
+const READER_TOKEN = /^[\x21-\x7e]{16,4096}$/;
 const ALLOWED_LIST_PARAMETERS = new Set(["limit", "cursor"]);
 const PAGE_SIZES = new Set<number>(SNAPSHOT_PAGE_SIZES);
+const METADATA_KEYS = new Set([
+  "schema_version",
+  "snapshot_id",
+  "evidence_digest",
+  "created_at",
+  "evaluated_at",
+  "latest_closed_at",
+  "economic_instrument",
+  "market_data_provider",
+  "market_data_series_symbol",
+  "market_data_series_type",
+  "timeframe",
+  "strategy_id",
+  "strategy_version",
+  "trust_status",
+  "supersedes_snapshot_id",
+]);
 
 type ReaderOperation =
   | { readonly kind: "list"; readonly limit: number; readonly cursor: string | null }
@@ -74,7 +92,15 @@ function snapshotApiConfiguration():
   | null {
   const configuredUrl = process.env.SNAPSHOT_API_INTERNAL_URL;
   const token = process.env.SNAPSHOT_READER_API_TOKEN;
-  if (!configuredUrl || !token) return null;
+  if (
+    !configuredUrl ||
+    configuredUrl.length > 2048 ||
+    configuredUrl !== configuredUrl.trim() ||
+    !token ||
+    !READER_TOKEN.test(token)
+  ) {
+    return null;
+  }
   try {
     const url = new URL(configuredUrl);
     if (
@@ -125,6 +151,8 @@ function isNullableString(value: unknown): boolean {
 function isMetadata(value: unknown): value is SnapshotMetadata {
   if (!isObject(value) || !hasApiSchema(value)) return false;
   return (
+    Object.keys(value).length === METADATA_KEYS.size &&
+    Object.keys(value).every((key) => METADATA_KEYS.has(key)) &&
     typeof value.snapshot_id === "string" &&
     isSnapshotId(value.snapshot_id) &&
     typeof value.evidence_digest === "string" &&
@@ -153,10 +181,17 @@ function isExpectedResponse(
   | SnapshotMetadata
   | SnapshotIntegrityResponse {
   if (!isObject(value) || !hasApiSchema(value)) return false;
+  if (
+    ["ok", "code", "message", "correlation_id"].some((key) => key in value)
+  ) {
+    return false;
+  }
   switch (operation.kind) {
     case "list": {
       const nextCursor = value.next_cursor;
       return (
+        Object.keys(value).length === 3 &&
+        ["schema_version", "items", "next_cursor"].every((key) => key in value) &&
         Array.isArray(value.items) &&
         value.items.every(isMetadata) &&
         (nextCursor === null ||
@@ -166,6 +201,9 @@ function isExpectedResponse(
     }
     case "detail":
       return (
+        Object.keys(value).length === 2 &&
+        "schema_version" in value &&
+        "snapshot" in value &&
         isObject(value.snapshot) &&
         typeof value.snapshot.snapshot_schema_version === "string" &&
         value.snapshot.snapshot_id === operation.snapshotId
@@ -174,12 +212,45 @@ function isExpectedResponse(
       return isMetadata(value) && value.snapshot_id === operation.snapshotId;
     case "integrity":
       return (
+        Object.keys(value).length === 4 &&
+        ["schema_version", "snapshot_id", "evidence_digest", "valid"].every(
+          (key) => key in value,
+        ) &&
         value.snapshot_id === operation.snapshotId &&
         typeof value.evidence_digest === "string" &&
         /^[0-9a-f]{64}$/.test(value.evidence_digest) &&
         value.valid === true
       );
   }
+}
+
+function boundedUpstreamSignal(parent: AbortSignal, timeoutMs: number): {
+  readonly signal: AbortSignal;
+  readonly didTimeout: () => boolean;
+  readonly cleanup: () => void;
+} {
+  const controller = new AbortController();
+  let timedOut = false;
+  const abortFromParent = () => {
+    controller.abort(new DOMException("Request cancelled", "AbortError"));
+  };
+  if (parent.aborted) {
+    abortFromParent();
+  } else {
+    parent.addEventListener("abort", abortFromParent, { once: true });
+  }
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort(new DOMException("Upstream timeout", "TimeoutError"));
+  }, timeoutMs);
+  return {
+    signal: controller.signal,
+    didTimeout: () => timedOut,
+    cleanup: () => {
+      clearTimeout(timer);
+      parent.removeEventListener("abort", abortFromParent);
+    },
+  };
 }
 
 function translatedUpstreamError(
@@ -259,6 +330,7 @@ async function readSnapshotApi(
     );
   }
   const policy = POLICIES[operation.kind];
+  const boundedSignal = boundedUpstreamSignal(request.signal, policy.timeoutMs);
   try {
     const response = await fetch(
       `${configuration.baseUrl}${operationPath(operation)}`,
@@ -271,7 +343,7 @@ async function readSnapshotApi(
         },
         cache: "no-store",
         redirect: "error",
-        signal: AbortSignal.timeout(policy.timeoutMs),
+        signal: boundedSignal.signal,
       },
     );
     const upstreamCorrelation =
@@ -306,12 +378,18 @@ async function readSnapshotApi(
       return errorResponse(502, "unexpected_snapshot_response", correlationId);
     }
     if (
-      error instanceof DOMException &&
-      (error.name === "TimeoutError" || error.name === "AbortError")
+      boundedSignal.didTimeout() ||
+      (error instanceof DOMException &&
+        (error.name === "TimeoutError" || error.name === "AbortError"))
     ) {
+      if (request.signal.aborted && !boundedSignal.didTimeout()) {
+        return errorResponse(499, "snapshot_request_cancelled", correlationId);
+      }
       return errorResponse(504, "snapshot_upstream_timeout", correlationId);
     }
     return errorResponse(503, "snapshot_service_unavailable", correlationId);
+  } finally {
+    boundedSignal.cleanup();
   }
 }
 

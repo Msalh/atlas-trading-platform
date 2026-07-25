@@ -8,6 +8,13 @@ import {
   type SnapshotMetadata,
 } from "./contract";
 import {
+  LOCAL_RESPONSE_LIMITS,
+  LocalResponseError,
+  hasErrorEnvelopeMarkers,
+  readBoundedJson,
+  safeErrorCode,
+} from "./clientTransport";
+import {
   projectSemanticSnapshot,
   SemanticProjectionError,
   type SemanticEvidenceProjection,
@@ -55,7 +62,13 @@ function isNullableString(value: unknown): boolean {
 }
 
 function metadataFrom(value: unknown, snapshotId: string): SnapshotMetadata | null {
-  if (!isObject(value)) return null;
+  if (
+    !isObject(value) ||
+    hasErrorEnvelopeMarkers(value) ||
+    Object.keys(value).length !== 15
+  ) {
+    return null;
+  }
   if (
     value.schema_version !== SNAPSHOT_API_SCHEMA_VERSION ||
     value.snapshot_id !== snapshotId ||
@@ -133,25 +146,6 @@ function detailDigest(value: unknown): string | null {
     /^[0-9a-f]{64}$/.test(integrity.evidence_digest)
     ? integrity.evidence_digest
     : null;
-}
-
-async function responseErrorCode(response: Response): Promise<string> {
-  try {
-    const body: unknown = await response.json();
-    if (
-      isObject(body) &&
-      typeof body.code === "string"
-    ) {
-      return body.code;
-    }
-  } catch {
-    // Dashboard authentication can return a non-JSON response.
-  }
-  if (response.status === 401) return "dashboard_authentication_required";
-  if (response.status === 403) return "snapshot_access_forbidden";
-  if (response.status === 404) return "snapshot_not_found";
-  if (response.status === 409) return "snapshot_integrity_failed";
-  return "snapshot_detail_unavailable";
 }
 
 function integrityErrorState(
@@ -242,9 +236,9 @@ export function useSnapshotDetail(snapshotId: string): {
           !integrityResponse.ok
         ) {
           const [detailCode, metadataCode, integrityCode] = await Promise.all([
-            responseErrorCode(detailResponse),
-            responseErrorCode(metadataResponse),
-            responseErrorCode(integrityResponse),
+            safeErrorCode(detailResponse, "snapshot_detail_unavailable"),
+            safeErrorCode(metadataResponse, "snapshot_detail_unavailable"),
+            safeErrorCode(integrityResponse, "snapshot_detail_unavailable"),
           ]);
           if (!current) return;
           const failedResponse = !integrityResponse.ok
@@ -269,9 +263,9 @@ export function useSnapshotDetail(snapshotId: string): {
           unknown,
           unknown,
         ] = await Promise.all([
-          detailResponse.json(),
-          metadataResponse.json(),
-          integrityResponse.json(),
+          readBoundedJson(detailResponse, LOCAL_RESPONSE_LIMITS.detail),
+          readBoundedJson(metadataResponse, LOCAL_RESPONSE_LIMITS.metadata),
+          readBoundedJson(integrityResponse, LOCAL_RESPONSE_LIMITS.integrity),
         ]);
         if (!current) return;
         if (
@@ -361,7 +355,10 @@ export function useSnapshotDetail(snapshotId: string): {
         setState({
           status: "integrity_error",
           snapshotId,
-          integrityState: "unavailable",
+          integrityState:
+            error instanceof LocalResponseError
+              ? "malformed_response"
+              : "unavailable",
         });
       }
     };

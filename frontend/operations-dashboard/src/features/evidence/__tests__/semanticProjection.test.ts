@@ -81,6 +81,11 @@ describe("semantic evidence projection", () => {
     const unknown = fixture();
     snapshot(unknown).unapproved = "field";
     expectProjectionError(unknown, "invalid_semantic_response");
+
+    const hybrid = fixture();
+    hybrid.ok = false;
+    hybrid.code = "snapshot_integrity_failed";
+    expectProjectionError(hybrid, "invalid_semantic_response");
   });
 
   it("preserves null and unavailable states explicitly", () => {
