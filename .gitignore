@@ -13,3 +13,15 @@
 # a Sprint 15 deployment incident) not previously excluded, meaning a
 # repo-root `railway up` would have uploaded it wholesale.
 /tools/
+
+# Local test, type-check, and deployment artifacts are never release inputs.
+/.tmp/
+/live/.tmp/
+**/__pycache__/
+**/*.py[cod]
+/.pytest_cache/
+/.mypy_cache/
+/.ruff_cache/
+/live/.pytest_cache/
+/live/.mypy_cache/
+/live/.ruff_cache/

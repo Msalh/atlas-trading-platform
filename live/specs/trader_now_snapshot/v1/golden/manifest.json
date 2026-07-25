@@ -1,0 +1,28 @@
+{
+  "snapshot_schema_version": "trader_now_snapshot.v1",
+  "evidence_profile": "trader_now_complete.v1",
+  "canonicalization_profile": "atlas-jcs.v1",
+  "digest_algorithm": "sha256",
+  "vectors": [
+    {
+      "file": "complete-current-candidate.canonical.json",
+      "sha256": "28bf3b99c953c94eaa5ca5b9f8d48c83b495445cd327f0be61ee5c60eee81c6c",
+      "covers": ["complete", "current", "listed_instrument_absent", "risk_absent", "candidate"]
+    },
+    {
+      "file": "no-data.canonical.json",
+      "sha256": "a3a992c400e2aa998721e0ac99cc4f3d4329dde3edf9f8f927867be843bab9ad",
+      "covers": ["no_data", "unavailable", "listed_instrument_absent", "risk_absent"]
+    },
+    {
+      "file": "delayed-insufficient-rejected.canonical.json",
+      "sha256": "27c2f6077bfcc2f033480c967117a767b0aab50ab863fc9044685852158d074f",
+      "covers": ["delayed", "insufficient_history", "rejected"]
+    },
+    {
+      "file": "stale-unavailable-no-signal-with-risk.canonical.json",
+      "sha256": "5812763f13238fe7258a5a8eaeda96da13ecbf87d7ee4d1f644929fdbb3d87d1",
+      "covers": ["stale", "unavailable_derived_stage", "listed_instrument_present", "risk_present", "no_signal", "supersession"]
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "source_schema_version": "trader_now_response.v2",
+  "evidence_profile": "trader_now_complete.v1",
+  "paths": [
+    "domain_schema_version",
+    "evaluated_at",
+    "input_snapshot_at",
+    "identity",
+    "trust",
+    "availability",
+    "market.availability",
+    "market.history_availability",
+    "market.economic_instrument",
+    "market.market_data_series",
+    "market.listed_instrument",
+    "market.observed_at",
+    "market.latest_closed_at",
+    "market.bar_count",
+    "market.source_schema_versions",
+    "market.latest_bar",
+    "source_trust",
+    "rules",
+    "setups",
+    "context",
+    "interpretations",
+    "strategy",
+    "risk",
+    "decision"
+  ],
+  "requirements": {
+    "explicit_unavailable_sections": true,
+    "listed_instrument_may_be_null": true,
+    "risk_may_be_null": true,
+    "market_window_history_included": false
+  }
+}

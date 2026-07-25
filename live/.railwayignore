@@ -1,0 +1,19 @@
+# Snapshot API release packaging excludes development and certification material.
+.tmp/
+**/.tmp/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+tests/
+coverage.xml
+.coverage
+htmlcov/
+*.log
+*.zip
+
+# Repository-local deployment bundles and operator scratch files.
+deployment/
+artifacts/

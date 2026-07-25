@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlas.internal/schemas/trader_now_snapshot.v1.json",
+  "title": "TraderNow immutable evidence snapshot v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "snapshot_schema_version",
+    "evidence_profile",
+    "canonicalization_profile",
+    "snapshot_id",
+    "idempotency_key",
+    "supersedes_snapshot_id",
+    "created_at",
+    "source",
+    "evidence",
+    "integrity"
+  ],
+  "properties": {
+    "snapshot_schema_version": {"const": "trader_now_snapshot.v1"},
+    "evidence_profile": {"const": "trader_now_complete.v1"},
+    "canonicalization_profile": {"const": "atlas-jcs.v1"},
+    "snapshot_id": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "pattern": "^tns1:[0-9a-f]{64}$"
+    },
+    "supersedes_snapshot_id": {
+      "oneOf": [
+        {"type": "null"},
+        {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"}
+      ]
+    },
+    "created_at": {"$ref": "#/$defs/timestamp"},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trader_now_response_schema_version", "trader_now_domain_schema_version"],
+      "properties": {
+        "trader_now_response_schema_version": {"const": "trader_now_response.v2"},
+        "trader_now_domain_schema_version": {"const": "trader_now.v2"}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evaluated_at",
+        "input_snapshot_at",
+        "identity",
+        "trust",
+        "availability",
+        "market",
+        "source_trust",
+        "rules",
+        "setups",
+        "context",
+        "interpretations",
+        "strategy",
+        "risk",
+        "decision"
+      ],
+      "properties": {
+        "evaluated_at": {"oneOf": [{"$ref": "#/$defs/timestamp"}, {"type": "null"}]},
+        "input_snapshot_at": {"oneOf": [{"$ref": "#/$defs/timestamp"}, {"type": "null"}]},
+        "identity": {"$ref": "#/$defs/object"},
+        "trust": {"$ref": "#/$defs/object"},
+        "availability": {"$ref": "#/$defs/object"},
+        "market": {"$ref": "#/$defs/object"},
+        "source_trust": {"oneOf": [{"$ref": "#/$defs/object"}, {"type": "null"}]},
+        "rules": {"$ref": "#/$defs/object"},
+        "setups": {"$ref": "#/$defs/object"},
+        "context": {"$ref": "#/$defs/object"},
+        "interpretations": {"$ref": "#/$defs/object"},
+        "strategy": {"$ref": "#/$defs/object"},
+        "risk": {"oneOf": [{"$ref": "#/$defs/object"}, {"type": "null"}]},
+        "decision": {"$ref": "#/$defs/object"}
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "evidence_digest"],
+      "properties": {
+        "algorithm": {"const": "sha256"},
+        "evidence_digest": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+          ]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{6}Z$"
+    },
+    "object": {
+      "type": "object"
+    }
+  }
+}

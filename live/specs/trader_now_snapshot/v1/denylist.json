@@ -1,0 +1,43 @@
+{
+  "categories": {
+    "runtime": [
+      "repository objects",
+      "dependency injection objects",
+      "application and infrastructure services",
+      "mutable domain references"
+    ],
+    "secrets": [
+      "credentials",
+      "API keys",
+      "authorization headers",
+      "database DSNs",
+      "database hosts and usernames",
+      "webhook and broker details"
+    ],
+    "internal_domain": [
+      "AccountSnapshot",
+      "PositionSnapshot",
+      "CandidateTradeInput",
+      "RiskPolicy",
+      "MarketState repository history",
+      "MarketWindowArtifact"
+    ],
+    "transport_and_operations": [
+      "HTTP request and response headers",
+      "client addresses",
+      "raw exceptions and stack traces",
+      "health and pool metrics",
+      "deployment environment",
+      "request correlation IDs",
+      "logs"
+    ],
+    "probabilistic_and_execution": [
+      "AI input",
+      "AI output",
+      "prompts",
+      "provider or model configuration",
+      "orders",
+      "execution capability"
+    ]
+  }
+}

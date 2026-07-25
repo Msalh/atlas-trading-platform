@@ -1,0 +1,21 @@
+{
+  "profile": "atlas-jcs.v1",
+  "base_standard": "RFC 8785 JSON Canonicalization Scheme",
+  "encoding": "UTF-8",
+  "object_keys": "lexicographic Unicode code-point order",
+  "whitespace": "none",
+  "arrays": "preserve semantic source order",
+  "timestamps": "UTC RFC3339, six fractional digits, uppercase Z",
+  "decimal_values": "JSON strings in fixed notation; no exponent, plus sign, leading zeroes, negative zero, or insignificant trailing zeroes; zero is 0",
+  "integers": "JSON integers in the I-JSON interoperable range",
+  "enums": "stable lowercase contract value",
+  "uuid": "lowercase canonical RFC 9562 text",
+  "tuples": "JSON arrays preserving order",
+  "immutable_mappings": "JSON objects with string keys",
+  "null": "explicit JSON null where the schema permits absence",
+  "unicode": "valid Unicode preserved; invalid surrogate code points rejected",
+  "non_finite_numbers": "rejected",
+  "digest_algorithm": "SHA-256",
+  "digest_encoding": "lowercase hexadecimal",
+  "digest_preimage_rule": "serialize exactly snapshot_schema_version, evidence_profile, canonicalization_profile, source, and evidence"
+}
