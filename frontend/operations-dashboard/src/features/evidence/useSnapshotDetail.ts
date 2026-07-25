@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   SNAPSHOT_API_SCHEMA_VERSION,
   isSnapshotId,
+  type SnapshotIntegrityResponse,
   type SnapshotMetadata,
 } from "./contract";
 import {
@@ -17,16 +18,33 @@ export interface SnapshotDetailHeader {
   readonly snapshotSchemaVersion: string;
 }
 
+export type IntegrityFailureState =
+  | "failed"
+  | "metadata_disagreement"
+  | "unsupported_schema"
+  | "unavailable"
+  | "timeout"
+  | "malformed_response"
+  | "unauthorized"
+  | "forbidden"
+  | "not_found";
+
 export type SnapshotDetailState =
-  | { readonly status: "loading" }
+  | { readonly status: "integrity_loading"; readonly snapshotId: string }
   | {
-      readonly status: "ready";
+      readonly status: "verified";
+      readonly snapshotId: string;
       readonly header: SnapshotDetailHeader;
       readonly metadata: SnapshotMetadata;
+      readonly integrity: SnapshotIntegrityResponse;
       readonly semanticEvidence: SemanticEvidenceProjection;
       readonly formattedJson: string;
     }
-  | { readonly status: "error"; readonly code: string };
+  | {
+      readonly status: "integrity_error";
+      readonly snapshotId: string;
+      readonly integrityState: IntegrityFailureState;
+    };
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -79,6 +97,44 @@ function metadataMatchesEvidence(
   );
 }
 
+function integrityFrom(
+  value: unknown,
+  snapshotId: string,
+): SnapshotIntegrityResponse | null {
+  if (!isObject(value)) return null;
+  const keys = Object.keys(value);
+  if (
+    keys.length !== 4 ||
+    !["schema_version", "snapshot_id", "evidence_digest", "valid"].every(
+      (key) => keys.includes(key),
+    ) ||
+    value.schema_version !== SNAPSHOT_API_SCHEMA_VERSION ||
+    value.snapshot_id !== snapshotId ||
+    typeof value.evidence_digest !== "string" ||
+    !/^[0-9a-f]{64}$/.test(value.evidence_digest) ||
+    value.valid !== true
+  ) {
+    return null;
+  }
+  return value as unknown as SnapshotIntegrityResponse;
+}
+
+function detailDigest(value: unknown): string | null {
+  if (!isObject(value) || !isObject(value.snapshot)) return null;
+  const integrity = value.snapshot.integrity;
+  if (
+    !isObject(integrity) ||
+    integrity.algorithm !== "sha256" ||
+    Object.keys(integrity).length !== 2
+  ) {
+    return null;
+  }
+  return typeof integrity.evidence_digest === "string" &&
+    /^[0-9a-f]{64}$/.test(integrity.evidence_digest)
+    ? integrity.evidence_digest
+    : null;
+}
+
 async function responseErrorCode(response: Response): Promise<string> {
   try {
     const body: unknown = await response.json();
@@ -98,76 +154,145 @@ async function responseErrorCode(response: Response): Promise<string> {
   return "snapshot_detail_unavailable";
 }
 
-function preferredError(
-  detail: { response: Response; code: string },
-  metadata: { response: Response; code: string },
-): string {
-  const codes = [detail, metadata];
-  return (
-    codes.find(({ response }) => response.status === 409)?.code ??
-    codes.find(({ response }) => response.status === 401)?.code ??
-    codes.find(({ response }) => response.status === 403)?.code ??
-    codes.find(({ response }) => response.status === 404)?.code ??
-    codes.find(({ response }) => !response.ok)?.code ??
-    "snapshot_detail_unavailable"
-  );
+function integrityErrorState(
+  response: Response,
+  code: string,
+): IntegrityFailureState {
+  if (response.status === 409 || code === "snapshot_integrity_failed") {
+    return "failed";
+  }
+  if (response.status === 401 || code === "dashboard_authentication_required") {
+    return "unauthorized";
+  }
+  if (
+    response.status === 403 ||
+    code === "snapshot_upstream_authorization_failed"
+  ) {
+    return "forbidden";
+  }
+  if (response.status === 404 || code === "snapshot_not_found") {
+    return "not_found";
+  }
+  if (response.status === 504 || code === "snapshot_upstream_timeout") {
+    return "timeout";
+  }
+  if (
+    code === "unexpected_snapshot_response" ||
+    code === "snapshot_response_too_large"
+  ) {
+    return "malformed_response";
+  }
+  return "unavailable";
 }
 
-export function useSnapshotDetail(snapshotId: string): SnapshotDetailState {
+export function useSnapshotDetail(snapshotId: string): {
+  readonly state: SnapshotDetailState;
+  readonly refresh: () => void;
+} {
   const [state, setState] = useState<SnapshotDetailState>({
-    status: "loading",
+    status: "integrity_loading",
+    snapshotId,
   });
+  const [revision, setRevision] = useState(0);
+
+  const refresh = useCallback(() => {
+    setState({ status: "integrity_loading", snapshotId });
+    setRevision((current) => current + 1);
+  }, [snapshotId]);
 
   useEffect(() => {
     const controller = new AbortController();
     let current = true;
     const load = async () => {
       if (!isSnapshotId(snapshotId)) {
-        setState({ status: "error", code: "invalid_snapshot_id" });
+        setState({
+          status: "integrity_error",
+          snapshotId,
+          integrityState: "malformed_response",
+        });
         return;
       }
-      setState({ status: "loading" });
+      setState({ status: "integrity_loading", snapshotId });
       try {
-        const [detailResponse, metadataResponse] = await Promise.all([
-          fetch(`/api/evidence/snapshots/${snapshotId}`, {
-            method: "GET",
-            headers: { Accept: "application/json" },
-            cache: "no-store",
-            signal: controller.signal,
-          }),
-          fetch(`/api/evidence/snapshots/${snapshotId}/metadata`, {
-            method: "GET",
-            headers: { Accept: "application/json" },
-            cache: "no-store",
-            signal: controller.signal,
-          }),
-        ]);
+        const [detailResponse, metadataResponse, integrityResponse] =
+          await Promise.all([
+            fetch(`/api/evidence/snapshots/${snapshotId}`, {
+              method: "GET",
+              headers: { Accept: "application/json" },
+              cache: "no-store",
+              signal: controller.signal,
+            }),
+            fetch(`/api/evidence/snapshots/${snapshotId}/metadata`, {
+              method: "GET",
+              headers: { Accept: "application/json" },
+              cache: "no-store",
+              signal: controller.signal,
+            }),
+            fetch(`/api/evidence/snapshots/${snapshotId}/integrity`, {
+              method: "GET",
+              headers: { Accept: "application/json" },
+              cache: "no-store",
+              signal: controller.signal,
+            }),
+          ]);
         if (!current) return;
-        if (!detailResponse.ok || !metadataResponse.ok) {
-          const [detailCode, metadataCode] = await Promise.all([
+        if (
+          !detailResponse.ok ||
+          !metadataResponse.ok ||
+          !integrityResponse.ok
+        ) {
+          const [detailCode, metadataCode, integrityCode] = await Promise.all([
             responseErrorCode(detailResponse),
             responseErrorCode(metadataResponse),
+            responseErrorCode(integrityResponse),
           ]);
           if (!current) return;
+          const failedResponse = !integrityResponse.ok
+            ? integrityResponse
+            : !detailResponse.ok
+              ? detailResponse
+              : metadataResponse;
+          const failedCode = !integrityResponse.ok
+            ? integrityCode
+            : !detailResponse.ok
+              ? detailCode
+              : metadataCode;
           setState({
-            status: "error",
-            code: preferredError(
-              { response: detailResponse, code: detailCode },
-              { response: metadataResponse, code: metadataCode },
-            ),
+            status: "integrity_error",
+            snapshotId,
+            integrityState: integrityErrorState(failedResponse, failedCode),
           });
           return;
         }
-        const [detailBody, metadataBody]: [unknown, unknown] = await Promise.all([
+        const [detailBody, metadataBody, integrityBody]: [
+          unknown,
+          unknown,
+          unknown,
+        ] = await Promise.all([
           detailResponse.json(),
           metadataResponse.json(),
+          integrityResponse.json(),
         ]);
         if (!current) return;
-        const metadata = metadataFrom(metadataBody, snapshotId);
-        if (!metadata) {
+        if (
+          isObject(metadataBody) &&
+          typeof metadataBody.snapshot_id === "string" &&
+          metadataBody.snapshot_id !== snapshotId
+        ) {
           setState({
-            status: "error",
-            code: "unexpected_snapshot_response",
+            status: "integrity_error",
+            snapshotId,
+            integrityState: "metadata_disagreement",
+          });
+          return;
+        }
+        const metadata = metadataFrom(metadataBody, snapshotId);
+        const integrity = integrityFrom(integrityBody, snapshotId);
+        if (!metadata || !integrity) {
+          setState({
+            status: "integrity_error",
+            snapshotId,
+            integrityState: "malformed_response",
           });
           return;
         }
@@ -180,25 +305,49 @@ export function useSnapshotDetail(snapshotId: string): SnapshotDetailState {
               ? error.code
               : "invalid_semantic_response";
           setState({
-            status: "error",
-            code,
+            status: "integrity_error",
+            snapshotId,
+            integrityState:
+              code === "unsupported_snapshot_schema"
+                ? "unsupported_schema"
+                : "malformed_response",
           });
           return;
         }
         if (!metadataMatchesEvidence(metadata, semantic.evidence)) {
           setState({
-            status: "error",
-            code: "unexpected_snapshot_response",
+            status: "integrity_error",
+            snapshotId,
+            integrityState: "metadata_disagreement",
+          });
+          return;
+        }
+        const semanticDigest = detailDigest(detailBody);
+        if (!semanticDigest || semanticDigest !== integrity.evidence_digest) {
+          setState({
+            status: "integrity_error",
+            snapshotId,
+            integrityState: "failed",
+          });
+          return;
+        }
+        if (metadata.evidence_digest !== integrity.evidence_digest) {
+          setState({
+            status: "integrity_error",
+            snapshotId,
+            integrityState: "metadata_disagreement",
           });
           return;
         }
         setState({
-          status: "ready",
+          status: "verified",
+          snapshotId,
           header: {
             snapshotId: semantic.snapshotId,
             snapshotSchemaVersion: semantic.snapshotSchemaVersion,
           },
           metadata,
+          integrity,
           semanticEvidence: semantic.evidence,
           formattedJson: semantic.formattedJson,
         });
@@ -209,7 +358,11 @@ export function useSnapshotDetail(snapshotId: string): SnapshotDetailState {
         ) {
           return;
         }
-        setState({ status: "error", code: "snapshot_detail_unavailable" });
+        setState({
+          status: "integrity_error",
+          snapshotId,
+          integrityState: "unavailable",
+        });
       }
     };
     const initialLoad = window.setTimeout(() => void load(), 0);
@@ -218,7 +371,13 @@ export function useSnapshotDetail(snapshotId: string): SnapshotDetailState {
       window.clearTimeout(initialLoad);
       controller.abort();
     };
-  }, [snapshotId]);
+  }, [revision, snapshotId]);
 
-  return state;
+  return {
+    state:
+      state.snapshotId === snapshotId
+        ? state
+        : { status: "integrity_loading", snapshotId },
+    refresh,
+  };
 }
