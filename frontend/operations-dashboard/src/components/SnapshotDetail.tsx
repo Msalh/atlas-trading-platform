@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useRef } from "react";
+import { SemanticEvidence } from "@/components/SemanticEvidence";
+import { SemanticJson } from "@/components/SemanticJson";
 import { useSnapshotDetail } from "@/features/evidence/useSnapshotDetail";
 
 function timestamp(value: string | null): string {
@@ -45,9 +47,16 @@ function safeError(code: string): { title: string; message: string } {
         message: "This snapshot version is not supported by the Evidence Browser.",
       };
     case "unexpected_snapshot_response":
+    case "invalid_semantic_response":
       return {
         title: "Unexpected response",
         message: "The snapshot service returned an unexpected response.",
+      };
+    case "semantic_content_limit_exceeded":
+      return {
+        title: "Semantic content unavailable",
+        message:
+          "The semantic response exceeds the Evidence Browser display limits.",
       };
     default:
       return {
@@ -115,39 +124,40 @@ export function SnapshotDetail({ snapshotId }: { snapshotId: string }) {
       )}
 
       {state.status === "ready" && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <section
-            aria-labelledby="detail-header-title"
-            className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4"
-          >
-            <h2
-              id="detail-header-title"
-              className="mb-4 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]"
+        <>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <section
+              aria-labelledby="detail-header-title"
+              className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4"
             >
-              Snapshot header
-            </h2>
-            <dl className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <dt className="text-xs text-[var(--muted)]">Snapshot ID</dt>
-                <dd className="mt-1 break-all font-mono text-sm">
-                  {state.header.snapshotId}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs text-[var(--muted)]">
-                  Snapshot schema
-                </dt>
-                <dd className="mt-1 font-mono text-sm">
-                  {state.header.snapshotSchemaVersion}
-                </dd>
-              </div>
-            </dl>
-          </section>
+              <h2
+                id="detail-header-title"
+                className="mb-4 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]"
+              >
+                Snapshot header
+              </h2>
+              <dl className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <dt className="text-xs text-[var(--muted)]">Snapshot ID</dt>
+                  <dd className="mt-1 break-all font-mono text-sm">
+                    {state.header.snapshotId}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-[var(--muted)]">
+                    Snapshot schema
+                  </dt>
+                  <dd className="mt-1 font-mono text-sm">
+                    {state.header.snapshotSchemaVersion}
+                  </dd>
+                </div>
+              </dl>
+            </section>
 
-          <section
-            aria-labelledby="indexed-metadata-title"
-            className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4"
-          >
+            <section
+              aria-labelledby="indexed-metadata-title"
+              className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4"
+            >
             <h2
               id="indexed-metadata-title"
               className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--muted)]"
@@ -204,8 +214,11 @@ export function SnapshotDetail({ snapshotId }: { snapshotId: string }) {
                 {state.metadata.supersedes_snapshot_id ?? "None"}
               </Metadata>
             </dl>
-          </section>
-        </div>
+            </section>
+          </div>
+          <SemanticEvidence evidence={state.semanticEvidence} />
+          <SemanticJson formattedJson={state.formattedJson} />
+        </>
       )}
     </main>
   );

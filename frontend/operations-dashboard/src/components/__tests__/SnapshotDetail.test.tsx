@@ -137,13 +137,13 @@ describe("Snapshot detail header and indexed metadata", () => {
     expect(
       screen.getByText(/A metadata disagreement is never silently normalized/),
     ).toBeInTheDocument();
-    expect(screen.queryByText("synthetic_fact")).not.toBeInTheDocument();
+    expect(screen.getByText("synthetic_fact")).toBeInTheDocument();
     expect(
-      screen.queryByText("Semantic snapshot JSON"),
-    ).not.toBeInTheDocument();
+      screen.getByText("Semantic snapshot JSON"),
+    ).toBeInTheDocument();
     expect(
-      screen.queryByText(/canonical bytes|stored payload/i),
-    ).not.toBeInTheDocument();
+      screen.getByText("Semantic snapshot JSON is not canonical bytes."),
+    ).toBeInTheDocument();
   });
 
   it("provides keyboard-safe return navigation and responsive metadata grids", async () => {
@@ -299,19 +299,22 @@ describe("Snapshot detail header and indexed metadata", () => {
         await response(detailFor(SYNTHETIC_SECOND_SNAPSHOT_ID)),
       );
       secondMetadata.resolve(
-        await response(
-          metadataFor(SYNTHETIC_SECOND_SNAPSHOT_ID, "NEW SELECTION"),
-        ),
+        await response(metadataFor(SYNTHETIC_SECOND_SNAPSHOT_ID)),
       );
     });
-    expect(await screen.findByText("NEW SELECTION")).toBeInTheDocument();
+    await screen.findByRole("region", { name: "Snapshot header" });
+    expect(
+      screen.getAllByText(SYNTHETIC_SECOND_SNAPSHOT_ID).length,
+    ).toBeGreaterThan(0);
 
     await act(async () => {
       firstDetail.resolve(await response(snapshotDetailFixture));
       firstMetadata.resolve(await response(snapshotMetadataFixture));
     });
-    expect(screen.getByText("NEW SELECTION")).toBeInTheDocument();
-    expect(screen.queryByText("MNQ")).not.toBeInTheDocument();
+    expect(
+      screen.getAllByText(SYNTHETIC_SECOND_SNAPSHOT_ID).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText(SYNTHETIC_SNAPSHOT_ID)).not.toBeInTheDocument();
   });
 
   it("suppresses an older error after a newer selection succeeds", async () => {
@@ -337,12 +340,13 @@ describe("Snapshot detail header and indexed metadata", () => {
         await response(detailFor(SYNTHETIC_SECOND_SNAPSHOT_ID)),
       );
       secondMetadata.resolve(
-        await response(
-          metadataFor(SYNTHETIC_SECOND_SNAPSHOT_ID, "CURRENT SNAPSHOT"),
-        ),
+        await response(metadataFor(SYNTHETIC_SECOND_SNAPSHOT_ID)),
       );
     });
-    expect(await screen.findByText("CURRENT SNAPSHOT")).toBeInTheDocument();
+    await screen.findByRole("region", { name: "Snapshot header" });
+    expect(
+      screen.getAllByText(SYNTHETIC_SECOND_SNAPSHOT_ID).length,
+    ).toBeGreaterThan(0);
 
     await act(async () => {
       firstDetail.resolve(
@@ -357,7 +361,9 @@ describe("Snapshot detail header and indexed metadata", () => {
       );
       firstMetadata.resolve(await response(snapshotMetadataFixture));
     });
-    expect(screen.getByText("CURRENT SNAPSHOT")).toBeInTheDocument();
+    expect(
+      screen.getAllByText(SYNTHETIC_SECOND_SNAPSHOT_ID).length,
+    ).toBeGreaterThan(0);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

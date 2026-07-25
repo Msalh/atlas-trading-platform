@@ -3,10 +3,14 @@
 import { useEffect, useState } from "react";
 import {
   SNAPSHOT_API_SCHEMA_VERSION,
-  SNAPSHOT_SCHEMA_VERSION,
   isSnapshotId,
   type SnapshotMetadata,
 } from "./contract";
+import {
+  projectSemanticSnapshot,
+  SemanticProjectionError,
+  type SemanticEvidenceProjection,
+} from "./semanticProjection";
 
 export interface SnapshotDetailHeader {
   readonly snapshotId: string;
@@ -19,6 +23,8 @@ export type SnapshotDetailState =
       readonly status: "ready";
       readonly header: SnapshotDetailHeader;
       readonly metadata: SnapshotMetadata;
+      readonly semanticEvidence: SemanticEvidenceProjection;
+      readonly formattedJson: string;
     }
   | { readonly status: "error"; readonly code: string };
 
@@ -55,23 +61,22 @@ function metadataFrom(value: unknown, snapshotId: string): SnapshotMetadata | nu
   return value as unknown as SnapshotMetadata;
 }
 
-function headerFrom(
-  value: unknown,
-  snapshotId: string,
-): SnapshotDetailHeader | null {
-  if (
-    !isObject(value) ||
-    value.schema_version !== SNAPSHOT_API_SCHEMA_VERSION ||
-    !isObject(value.snapshot) ||
-    value.snapshot.snapshot_id !== snapshotId ||
-    typeof value.snapshot.snapshot_schema_version !== "string"
-  ) {
-    return null;
-  }
-  return {
-    snapshotId,
-    snapshotSchemaVersion: value.snapshot.snapshot_schema_version,
-  };
+function metadataMatchesEvidence(
+  metadata: SnapshotMetadata,
+  evidence: SemanticEvidenceProjection,
+): boolean {
+  return (
+    metadata.economic_instrument === evidence.identity.product &&
+    metadata.market_data_provider === evidence.market.provider &&
+    metadata.market_data_series_symbol === evidence.market.seriesSymbol &&
+    metadata.market_data_series_type === evidence.market.seriesType &&
+    metadata.timeframe === evidence.identity.timeframe &&
+    metadata.strategy_id === evidence.identity.strategyId &&
+    metadata.strategy_version === evidence.identity.strategyVersion &&
+    metadata.trust_status === evidence.trust.status &&
+    metadata.evaluated_at === evidence.evaluatedAt &&
+    metadata.latest_closed_at === evidence.market.latestClosedAt
+  );
 }
 
 async function responseErrorCode(response: Response): Promise<string> {
@@ -158,23 +163,45 @@ export function useSnapshotDetail(snapshotId: string): SnapshotDetailState {
           metadataResponse.json(),
         ]);
         if (!current) return;
-        const header = headerFrom(detailBody, snapshotId);
         const metadata = metadataFrom(metadataBody, snapshotId);
-        if (!header || !metadata) {
+        if (!metadata) {
           setState({
             status: "error",
             code: "unexpected_snapshot_response",
           });
           return;
         }
-        if (header.snapshotSchemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
+        let semantic;
+        try {
+          semantic = projectSemanticSnapshot(detailBody, snapshotId);
+        } catch (error) {
+          const code =
+            error instanceof SemanticProjectionError
+              ? error.code
+              : "invalid_semantic_response";
           setState({
             status: "error",
-            code: "unsupported_snapshot_schema",
+            code,
           });
           return;
         }
-        setState({ status: "ready", header, metadata });
+        if (!metadataMatchesEvidence(metadata, semantic.evidence)) {
+          setState({
+            status: "error",
+            code: "unexpected_snapshot_response",
+          });
+          return;
+        }
+        setState({
+          status: "ready",
+          header: {
+            snapshotId: semantic.snapshotId,
+            snapshotSchemaVersion: semantic.snapshotSchemaVersion,
+          },
+          metadata,
+          semanticEvidence: semantic.evidence,
+          formattedJson: semantic.formattedJson,
+        });
       } catch (error) {
         if (
           !current ||
