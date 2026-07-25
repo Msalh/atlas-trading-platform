@@ -3,6 +3,7 @@ import {
   SNAPSHOT_API_SCHEMA_VERSION,
   SNAPSHOT_CORRELATION_HEADER,
   SNAPSHOT_DEFAULT_PAGE_SIZE,
+  isSnapshotId,
   SNAPSHOT_MAX_CURSOR_LENGTH,
   SNAPSHOT_PAGE_SIZES,
   SNAPSHOT_READER_ROUTES,
@@ -12,8 +13,6 @@ import {
   type SnapshotMetadata,
 } from "../contract";
 
-const UUID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CORRELATION_ID = /^[A-Za-z0-9._:-]{1,128}$/;
 const ALLOWED_LIST_PARAMETERS = new Set(["limit", "cursor"]);
 const PAGE_SIZES = new Set<number>(SNAPSHOT_PAGE_SIZES);
@@ -127,7 +126,7 @@ function isMetadata(value: unknown): value is SnapshotMetadata {
   if (!isObject(value) || !hasApiSchema(value)) return false;
   return (
     typeof value.snapshot_id === "string" &&
-    UUID.test(value.snapshot_id) &&
+    isSnapshotId(value.snapshot_id) &&
     typeof value.evidence_digest === "string" &&
     /^[0-9a-f]{64}$/.test(value.evidence_digest) &&
     typeof value.created_at === "string" &&
@@ -346,15 +345,11 @@ export async function readSnapshotList(request: Request): Promise<NextResponse> 
   });
 }
 
-function validSnapshotId(snapshotId: string): boolean {
-  return UUID.test(snapshotId);
-}
-
 export async function readSnapshotDetail(
   request: Request,
   snapshotId: string,
 ): Promise<NextResponse> {
-  if (!validSnapshotId(snapshotId)) {
+  if (!isSnapshotId(snapshotId)) {
     return errorResponse(
       400,
       "invalid_snapshot_id",
@@ -368,7 +363,7 @@ export async function readSnapshotMetadata(
   request: Request,
   snapshotId: string,
 ): Promise<NextResponse> {
-  if (!validSnapshotId(snapshotId)) {
+  if (!isSnapshotId(snapshotId)) {
     return errorResponse(
       400,
       "invalid_snapshot_id",
@@ -382,7 +377,7 @@ export async function readSnapshotIntegrity(
   request: Request,
   snapshotId: string,
 ): Promise<NextResponse> {
-  if (!validSnapshotId(snapshotId)) {
+  if (!isSnapshotId(snapshotId)) {
     return errorResponse(
       400,
       "invalid_snapshot_id",

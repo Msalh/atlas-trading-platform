@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { DashboardNavigation } from "@/components/DashboardNavigation";
 import { EvidenceList } from "@/components/EvidenceList";
 import {
   SYNTHETIC_DIGEST,
@@ -73,7 +74,10 @@ describe("Evidence list", () => {
     expect(screen.getByLabelText("Page size")).toHaveValue("50");
     expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Next" })).toBeEnabled();
-    expect(screen.queryByRole("link", { name: /snapshot/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View snapshot" })).toHaveAttribute(
+      "href",
+      `/evidence/${snapshotMetadataFixture.snapshot_id}`,
+    );
     expect(
       screen.getByRole("region", { name: "Snapshots" }),
     ).toHaveAttribute("aria-busy", "false");
@@ -295,5 +299,99 @@ describe("Evidence list", () => {
     expect(screen.getByText("RESIZED RESULT")).toBeInTheDocument();
     expect(screen.getByText("Page 1")).toBeInTheDocument();
     expect(screen.getByLabelText("Page size")).toHaveValue("100");
+  });
+
+  it("remounts safely across Dashboard and Evidence navigation", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockReturnValueOnce(
+        response(
+          page("FIRST VISIT", snapshotMetadataFixture.snapshot_id, "opaque-one"),
+        ),
+      )
+      .mockReturnValueOnce(
+        response(
+          page(
+            "SECOND VISIT",
+            SYNTHETIC_SECOND_SNAPSHOT_ID,
+            "opaque-two",
+          ),
+        ),
+      );
+
+    const firstVisit = render(<EvidenceList />);
+    expect(await screen.findByText("FIRST VISIT")).toBeInTheDocument();
+    firstVisit.unmount();
+    const dashboard = render(<DashboardNavigation evidenceEnabled />);
+    expect(screen.getByRole("link", { name: "Evidence" })).toHaveAttribute(
+      "href",
+      "/evidence",
+    );
+    dashboard.unmount();
+    render(<EvidenceList />);
+
+    expect(await screen.findByText("SECOND VISIT")).toBeInTheDocument();
+    expect(screen.queryByText("FIRST VISIT")).not.toBeInTheDocument();
+    expect(screen.getByText("Page 1")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    for (const [url] of fetchMock.mock.calls) {
+      expect(url).toBe("/api/evidence/snapshots?limit=50");
+      expect(String(url)).not.toMatch(/https?:|cursor=/);
+    }
+  });
+
+  it("keeps refresh and history consistent across the approved sequence", async () => {
+    const first = page(
+      "INITIAL",
+      snapshotMetadataFixture.snapshot_id,
+      SYNTHETIC_OPAQUE_CURSOR,
+    );
+    const refreshed = page(
+      "REFRESHED",
+      snapshotMetadataFixture.snapshot_id,
+      SYNTHETIC_OPAQUE_CURSOR,
+    );
+    const second = page(
+      "SECOND",
+      SYNTHETIC_SECOND_SNAPSHOT_ID,
+      "opaque-page-three",
+    );
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockReturnValueOnce(response(first))
+      .mockReturnValueOnce(response(first))
+      .mockReturnValueOnce(response(refreshed))
+      .mockReturnValueOnce(response(second))
+      .mockReturnValueOnce(response(refreshed))
+      .mockReturnValueOnce(response(refreshed));
+    render(<EvidenceList />);
+    await screen.findByText("INITIAL");
+
+    fireEvent.click(screen.getByRole("button", { name: "Latest" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(await screen.findByText("REFRESHED")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(await screen.findByText("SECOND")).toBeInTheDocument();
+    expect(screen.getByText("Page 2")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Previous" }));
+    expect(await screen.findByText("REFRESHED")).toBeInTheDocument();
+    expect(screen.getByText("Page 1")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(6));
+
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/evidence/snapshots?limit=50",
+      "/api/evidence/snapshots?limit=50",
+      "/api/evidence/snapshots?limit=50",
+      `/api/evidence/snapshots?limit=50&cursor=${encodeURIComponent(SYNTHETIC_OPAQUE_CURSOR)}`,
+      "/api/evidence/snapshots?limit=50",
+      "/api/evidence/snapshots?limit=50",
+    ]);
+    expect(screen.getByText("REFRESHED")).toBeInTheDocument();
+    expect(screen.queryByText("SECOND")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Next" })).toBeEnabled();
   });
 });

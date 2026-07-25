@@ -11,6 +11,8 @@ export const SNAPSHOT_PAGE_SIZES = [25, 50, 100] as const;
 export const SNAPSHOT_DEFAULT_PAGE_SIZE = 50;
 export const SNAPSHOT_MAX_CURSOR_LENGTH = 1024;
 export const SNAPSHOT_CORRELATION_HEADER = "X-Correlation-ID" as const;
+export const SNAPSHOT_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export const SNAPSHOT_READER_ROUTES = {
   list: "/api/v1/snapshots",
@@ -73,4 +75,8 @@ export interface SnapshotErrorResponse {
   readonly code: string;
   readonly message: string;
   readonly correlation_id: string;
+}
+
+export function isSnapshotId(value: string): boolean {
+  return SNAPSHOT_ID_PATTERN.test(value);
 }

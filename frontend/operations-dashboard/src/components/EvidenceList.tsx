@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEvidenceList } from "@/features/evidence/useEvidenceList";
 
 function formatTimestamp(value: string | null): string {
@@ -152,6 +153,13 @@ export function EvidenceList() {
                       <p className="mt-1 break-all font-mono text-xs text-[var(--muted)]">
                         {snapshot.snapshot_id}
                       </p>
+                      <Link
+                        className="mt-3 inline-flex rounded border border-[var(--border)] px-3 py-2 text-sm font-medium"
+                        href={`/evidence/${snapshot.snapshot_id}`}
+                        prefetch={false}
+                      >
+                        View snapshot
+                      </Link>
                     </div>
                     <dl className="grid gap-2 text-sm">
                       <div>
