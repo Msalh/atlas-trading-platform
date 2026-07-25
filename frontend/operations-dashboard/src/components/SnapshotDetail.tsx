@@ -69,19 +69,12 @@ export function SnapshotDetail({ snapshotId }: { snapshotId: string }) {
 
   return (
     <main className="mx-auto min-h-screen max-w-7xl p-4 sm:p-6">
-      <Link
-        className="inline-flex rounded border border-[var(--border)] px-3 py-2 text-sm font-medium"
-        href="/evidence"
-        prefetch={false}
-      >
-        Back to Evidence
-      </Link>
-      <header className="my-6 border-b border-[var(--border)] pb-5">
+      <header className="mb-4 border-b border-[var(--border)] pb-5">
         <p className="text-xs uppercase tracking-[0.2em] text-[var(--muted)]">
           Internal · Read only
         </p>
         <h1
-          className="mt-1 text-2xl font-semibold outline-none"
+          className="mt-1 text-2xl font-semibold focus:outline focus:outline-2 focus:outline-offset-4 focus:outline-[var(--healthy)]"
           ref={heading}
           tabIndex={-1}
         >
@@ -91,6 +84,13 @@ export function SnapshotDetail({ snapshotId }: { snapshotId: string }) {
           {snapshotId}
         </p>
       </header>
+      <Link
+        className="mb-6 inline-flex rounded border border-[var(--border)] px-3 py-2 text-sm font-medium focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-[var(--healthy)]"
+        href="/evidence"
+        prefetch={false}
+      >
+        Back to Evidence
+      </Link>
 
       {state.status === "loading" && (
         <div
@@ -134,36 +134,11 @@ export function SnapshotDetail({ snapshotId }: { snapshotId: string }) {
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-[var(--muted)]">Captured</dt>
-                <dd className="mt-1 text-sm">
-                  <time dateTime={state.metadata.created_at}>
-                    {timestamp(state.metadata.created_at)}
-                  </time>
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs text-[var(--muted)]">
-                  Source identity
-                </dt>
-                <dd className="mt-1 break-all font-mono text-sm">
-                  {state.metadata.market_data_provider ?? "Unavailable"}:
-                  {state.metadata.market_data_series_symbol ?? "Unavailable"}
-                </dd>
-              </div>
-              <div>
                 <dt className="text-xs text-[var(--muted)]">
                   Snapshot schema
                 </dt>
                 <dd className="mt-1 font-mono text-sm">
                   {state.header.snapshotSchemaVersion}
-                </dd>
-              </div>
-              <div className="sm:col-span-2">
-                <dt className="text-xs text-[var(--muted)]">
-                  Evidence digest
-                </dt>
-                <dd className="mt-1 break-all font-mono text-sm">
-                  {state.metadata.evidence_digest}
                 </dd>
               </div>
             </dl>
@@ -191,6 +166,14 @@ export function SnapshotDetail({ snapshotId }: { snapshotId: string }) {
               </p>
             </div>
             <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+              <Metadata label="Captured">
+                {timestamp(state.metadata.created_at)}
+              </Metadata>
+              <Metadata label="Evidence digest">
+                <span className="font-mono">
+                  {state.metadata.evidence_digest}
+                </span>
+              </Metadata>
               <Metadata label="Economic instrument">
                 {state.metadata.economic_instrument ?? "Unavailable"}
               </Metadata>

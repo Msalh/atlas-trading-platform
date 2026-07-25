@@ -1,4 +1,11 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { SnapshotDetail } from "@/components/SnapshotDetail";
 import {
   SYNTHETIC_SECOND_SNAPSHOT_ID,
@@ -41,6 +48,20 @@ function metadataFor(snapshotId: string, instrument = "MNQ") {
     snapshot_id: snapshotId,
     economic_instrument: instrument,
   };
+}
+
+function pressTabFrom(element: HTMLElement) {
+  fireEvent.keyDown(element, { key: "Tab" });
+  const next = [...document.querySelectorAll<HTMLElement>("a[href],button")]
+    .filter((candidate) => !candidate.hasAttribute("disabled"))
+    .find(
+      (candidate) =>
+        (element.compareDocumentPosition(candidate) &
+          Node.DOCUMENT_POSITION_FOLLOWING) !==
+        0,
+    );
+  next?.focus();
+  fireEvent.keyUp(element, { key: "Tab" });
 }
 
 describe("Snapshot detail header and indexed metadata", () => {
@@ -87,11 +108,23 @@ describe("Snapshot detail header and indexed metadata", () => {
       .mockReturnValueOnce(response(snapshotMetadataFixture));
     render(<SnapshotDetail snapshotId={SYNTHETIC_SNAPSHOT_ID} />);
 
-    await screen.findByRole("region", { name: "Indexed metadata" });
+    const indexedMetadata = await screen.findByRole("region", {
+      name: "Indexed metadata",
+    });
+    const snapshotHeader = screen.getByRole("region", {
+      name: "Snapshot header",
+    });
     expect(screen.getAllByText(SYNTHETIC_SNAPSHOT_ID).length).toBeGreaterThan(0);
     expect(screen.getByText("trader_now_snapshot.v1")).toBeInTheDocument();
+    expect(screen.getByText("synthetic-provider")).toBeInTheDocument();
+    expect(screen.getByText("SYNTHETIC:MNQ-CONTINUOUS")).toBeInTheDocument();
+    expect(within(snapshotHeader).queryByText("Captured")).not.toBeInTheDocument();
     expect(
-      screen.getByText("synthetic-provider:SYNTHETIC:MNQ-CONTINUOUS"),
+      within(snapshotHeader).queryByText("Evidence digest"),
+    ).not.toBeInTheDocument();
+    expect(within(indexedMetadata).getByText("Captured")).toBeInTheDocument();
+    expect(
+      within(indexedMetadata).getByText("Evidence digest"),
     ).toBeInTheDocument();
     expect(
       screen.getByText("Indexed metadata is for lookup and display."),
@@ -122,7 +155,16 @@ describe("Snapshot detail header and indexed metadata", () => {
     );
     const back = screen.getByRole("link", { name: "Back to Evidence" });
     expect(back).toHaveAttribute("href", "/evidence");
-    back.focus();
+    const heading = screen.getByRole("heading", {
+      name: "Snapshot Detail",
+      level: 1,
+    });
+    expect(heading).toHaveFocus();
+    expect(
+      heading.compareDocumentPosition(back) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).not.toBe(0);
+    expect(heading.className).not.toContain("outline-none");
+    pressTabFrom(heading);
     expect(back).toHaveFocus();
     await screen.findByRole("region", { name: "Indexed metadata" });
     expect(
@@ -216,6 +258,21 @@ describe("Snapshot detail header and indexed metadata", () => {
     expect(screen.queryByText("Indexed metadata")).not.toBeInTheDocument();
   });
 
+  it("rejects metadata identity mismatch without combining selections", async () => {
+    vi.spyOn(globalThis, "fetch")
+      .mockReturnValueOnce(response(snapshotDetailFixture))
+      .mockReturnValueOnce(
+        response(metadataFor(SYNTHETIC_SECOND_SNAPSHOT_ID, "WRONG SNAPSHOT")),
+      );
+    render(<SnapshotDetail snapshotId={SYNTHETIC_SNAPSHOT_ID} />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Unexpected response",
+    );
+    expect(screen.queryByText("WRONG SNAPSHOT")).not.toBeInTheDocument();
+    expect(screen.queryByText("Indexed metadata")).not.toBeInTheDocument();
+  });
+
   it("prevents an older selection from replacing a newer snapshot", async () => {
     const firstDetail = deferred<Response>();
     const firstMetadata = deferred<Response>();
@@ -255,5 +312,52 @@ describe("Snapshot detail header and indexed metadata", () => {
     });
     expect(screen.getByText("NEW SELECTION")).toBeInTheDocument();
     expect(screen.queryByText("MNQ")).not.toBeInTheDocument();
+  });
+
+  it("suppresses an older error after a newer selection succeeds", async () => {
+    const firstDetail = deferred<Response>();
+    const firstMetadata = deferred<Response>();
+    const secondDetail = deferred<Response>();
+    const secondMetadata = deferred<Response>();
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockReturnValueOnce(firstDetail.promise)
+      .mockReturnValueOnce(firstMetadata.promise)
+      .mockReturnValueOnce(secondDetail.promise)
+      .mockReturnValueOnce(secondMetadata.promise);
+    const { rerender } = render(
+      <SnapshotDetail snapshotId={SYNTHETIC_SNAPSHOT_ID} />,
+    );
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    rerender(<SnapshotDetail snapshotId={SYNTHETIC_SECOND_SNAPSHOT_ID} />);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+
+    await act(async () => {
+      secondDetail.resolve(
+        await response(detailFor(SYNTHETIC_SECOND_SNAPSHOT_ID)),
+      );
+      secondMetadata.resolve(
+        await response(
+          metadataFor(SYNTHETIC_SECOND_SNAPSHOT_ID, "CURRENT SNAPSHOT"),
+        ),
+      );
+    });
+    expect(await screen.findByText("CURRENT SNAPSHOT")).toBeInTheDocument();
+
+    await act(async () => {
+      firstDetail.resolve(
+        await response(
+          {
+            ok: false,
+            code: "snapshot_service_unavailable",
+            correlation_id: "stale-synthetic-correlation",
+          },
+          503,
+        ),
+      );
+      firstMetadata.resolve(await response(snapshotMetadataFixture));
+    });
+    expect(screen.getByText("CURRENT SNAPSHOT")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
