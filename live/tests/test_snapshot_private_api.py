@@ -9,8 +9,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
-
 from atlas_snapshot import SnapshotMetadata, digest, parse, serialize
 from atlas_snapshot_api import (
     FixedWindowRateLimiter,
@@ -26,6 +24,7 @@ from atlas_snapshot_capture import (
     ReadinessStatus,
 )
 from atlas_snapshot_store import SnapshotNotFoundError, SnapshotPage
+from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).parents[1]
 GOLDEN = (
@@ -331,7 +330,7 @@ def test_phase_17e_dependency_boundary_and_no_automation():
     assert not any(
         any(name.startswith("psycopg") for name in names)
         for filename, names in infrastructure_imports.items()
-        if filename != "runtime.py"
+        if filename not in {"conninfo.py", "runtime.py"}
     )
     assert "scheduler" not in text
     assert "backgroundtasks" not in text

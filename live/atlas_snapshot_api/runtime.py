@@ -4,17 +4,17 @@ from __future__ import annotations
 
 import os
 
-from psycopg_pool import AsyncConnectionPool
-
 from atlas_snapshot_capture import (
     CaptureServiceConfig,
     HttpTraderNowClient,
     SnapshotCaptureService,
 )
 from atlas_snapshot_store import PostgresSnapshotRepository
+from psycopg_pool import AsyncConnectionPool
 
 from .app import create_snapshot_app
 from .auth import SnapshotAuthConfig
+from .conninfo import build_reader_conninfo
 
 
 def _required(name: str) -> str:
@@ -38,11 +38,10 @@ writer_pool = AsyncConnectionPool(
     open=False,
 )
 reader_pool = AsyncConnectionPool(
-    _required("SNAPSHOT_READER_DATABASE_URL"),
+    build_reader_conninfo(_required("SNAPSHOT_READER_DATABASE_URL")),
     min_size=1,
     max_size=4,
     open=False,
-    kwargs={"options": "-c default_transaction_read_only=on"},
 )
 writer_repository = PostgresSnapshotRepository(writer_pool)
 reader_repository = PostgresSnapshotRepository(reader_pool)

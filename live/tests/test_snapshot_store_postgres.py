@@ -17,11 +17,8 @@ from pathlib import Path
 
 import psycopg
 import pytest
-from psycopg import sql
-from psycopg.conninfo import conninfo_to_dict, make_conninfo
-from psycopg_pool import AsyncConnectionPool
-
 from atlas_snapshot import SnapshotRecordIdentity, project, serialize
+from atlas_snapshot_api.conninfo import build_reader_conninfo
 from atlas_snapshot_store import (
     PostgresSnapshotRepository,
     SnapshotCorruptionError,
@@ -31,6 +28,9 @@ from atlas_snapshot_store import (
     SnapshotStoreError,
     UnsupportedStoredSnapshotError,
 )
+from psycopg import sql
+from psycopg.conninfo import conninfo_to_dict, make_conninfo
+from psycopg_pool import AsyncConnectionPool
 from snapshot_migrations import run_snapshot_migrations
 
 ADMIN_URL = os.environ.get("SNAPSHOT_STORE_TEST_ADMIN_URL", "")
@@ -229,11 +229,13 @@ async def test_real_postgres_snapshot_store_certification():
             open=False,
         )
         reader_pool = AsyncConnectionPool(
-            _role_url(
-                ADMIN_URL,
-                reader_login,
-                reader_password,
-                "atlas_snapshot_reader",
+            build_reader_conninfo(
+                _role_url(
+                    ADMIN_URL,
+                    reader_login,
+                    reader_password,
+                    "atlas_snapshot_reader",
+                )
             ),
             min_size=1,
             max_size=2,
@@ -379,6 +381,10 @@ async def test_real_postgres_snapshot_store_certification():
                 await connection.rollback()
 
         async with reader_pool.connection() as connection:
+            role = await connection.execute("SELECT current_user")
+            assert await role.fetchone() == ("atlas_snapshot_reader",)
+            read_only = await connection.execute("SHOW transaction_read_only")
+            assert await read_only.fetchone() == ("on",)
             for statement in (
                 "INSERT INTO atlas_snapshot.snapshots DEFAULT VALUES",
                 "UPDATE atlas_snapshot.snapshots SET trust_status = trust_status",
