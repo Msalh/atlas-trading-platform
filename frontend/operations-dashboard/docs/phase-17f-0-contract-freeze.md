@@ -73,3 +73,31 @@ contract and explicitly confirm:
 
 Any difference must update the contract tests through review; it must not be
 silently normalized.
+
+## Contract-freeze checklist
+
+The following assumptions are frozen for local Slice 17F-1 development:
+
+- [x] Private API transport version is `snapshot_private_api.v1`.
+- [x] Snapshot envelope schema version is `trader_now_snapshot.v1`.
+- [x] Snapshot path identity is a syntactically valid UUID; approved snapshot
+  fixtures use UUIDv7.
+- [x] Evidence digest is lowercase, 64-character SHA-256 hexadecimal.
+- [x] List cursors are optional, server-issued opaque strings with a maximum
+  inbound length of 1024 characters. The browser and BFF never decode them.
+- [x] Correlation identity is returned through `X-Correlation-ID`.
+- [x] Successful reader routes return `200`.
+- [x] Invalid cursors return `400`.
+- [x] Missing or invalid bearer authentication returns `401`.
+- [x] An authenticated principal without required authority returns `403`.
+- [x] A missing snapshot returns `404`.
+- [x] Snapshot integrity failure returns `409`.
+- [x] Rate limiting returns `429`.
+- [x] Snapshot-store unavailability returns `503`.
+- [x] FastAPI request-shape validation may return `422`.
+- [x] Sanitized domain errors use the `snapshot_private_api.v1` error envelope:
+  `schema_version`, `code`, `message`, and `correlation_id`.
+- [x] Framework-generated `400`, `401`, `403`, `422`, and `429` responses are
+  not assumed to use the domain error envelope; the BFF must translate them
+  into its own sanitized, stable error contract.
+- [x] Operational equivalence remains unverified until Phase 17E receives GO.
