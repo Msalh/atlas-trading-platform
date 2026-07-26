@@ -1,0 +1,30 @@
+{
+  "schema_version": "product_p2a_vectors.v1",
+  "golden": [
+    "exact_candidate_and_listed_contract",
+    "independent_continuous_series_and_listed_contract",
+    "lossless_candidate_trade_input_projection"
+  ],
+  "negative": [
+    "missing_target_when_policy_requires_target",
+    "unresolved_quantity",
+    "stale_proposal",
+    "future_proposal",
+    "unreconciled_source",
+    "non_authoritative_source",
+    "missing_authoritative_account",
+    "missing_instrument_specification",
+    "missing_risk_policy"
+  ],
+  "adversarial": [
+    "continuous_mnq1_bang_used_as_listed_contract",
+    "proposal_bound_to_different_candidate",
+    "proposal_bound_to_rejected_strategy",
+    "cross_candidate_context_fingerprint",
+    "cross_instrument_specification",
+    "cross_contract_position",
+    "conflicting_strategy_direction",
+    "received_before_observed",
+    "duplicate_setup_identity"
+  ]
+}

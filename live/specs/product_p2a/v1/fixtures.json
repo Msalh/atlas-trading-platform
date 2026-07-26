@@ -1,0 +1,61 @@
+{
+  "schema_version": "product_p2a_fixtures.v1",
+  "identity": {
+    "economic_instrument": "MNQ",
+    "analysis_series": {
+      "provider": "tradingview",
+      "symbol": "MNQ1!",
+      "series_type": "continuous"
+    },
+    "listed_instrument": {
+      "venue": "CME",
+      "contract_symbol": "MNQU6",
+      "expiry": "2026-09"
+    }
+  },
+  "golden": {
+    "candidate": {
+      "strategy_id": "displacement_volume_context",
+      "strategy_version": "1.0.0",
+      "setup_ids": ["setup-1"],
+      "context_fingerprint": "context-1",
+      "direction": "long"
+    },
+    "proposal": {
+      "proposal_id": "proposal-1",
+      "entry_type": "limit",
+      "entry": "20000",
+      "stop": "19990",
+      "target": "20020",
+      "quantity_resolution": "resolved",
+      "requested_quantity": 1,
+      "rule_id": "proposal-rule",
+      "rule_version": "1.0.0"
+    },
+    "expected_alignment": "accepted"
+  },
+  "negative": [
+    {"case": "stale_proposal", "expected_reason": "proposal.freshness.stale"},
+    {"case": "future_proposal", "expected_reason": "proposal.freshness.future"},
+    {"case": "unresolved_quantity", "expected_reason": "proposal.quantity.unresolved"},
+    {"case": "required_target_absent", "expected_reason": "proposal.geometry.target_required"},
+    {"case": "unreconciled_source", "expected_reason": "proposal.source.unreconciled"}
+  ],
+  "adversarial": [
+    {
+      "case": "continuous_series_as_contract",
+      "input_contract_symbol": "MNQ1!",
+      "expected_reason": "proposal.identity.continuous_series_as_contract"
+    },
+    {
+      "case": "cross_candidate",
+      "input_context_fingerprint": "other-context",
+      "expected_reason": "proposal.strategy.identity_mismatch"
+    },
+    {
+      "case": "cross_contract",
+      "input_contract_symbol": "MNQZ6",
+      "expected_reason": "proposal.identity.listed_instrument_mismatch"
+    }
+  ]
+}
