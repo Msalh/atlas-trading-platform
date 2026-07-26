@@ -18,7 +18,7 @@ export function HeaderStatusDot() {
   const label = isError ? "backend unreachable" : dbOk ? "database ok" : "database error";
 
   return (
-    <div className="flex items-center gap-3 text-xs text-muted">
+    <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs text-muted">
       <span title={sseConnected ? "live updates connected" : "live updates unavailable - falling back to polling"}>
         {sseConnected ? "● live" : "○ polling"}
       </span>

@@ -20,7 +20,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Atlas — MNQU6 ICT_Funded_v1",
+  title: "Atlas — Live Market Analysis",
   description: "Live trade lifecycle for the Atlas AI trading platform.",
 };
 
@@ -39,15 +39,15 @@ export default function RootLayout({
           <LiveUpdatesProvider>
             <LiveSelectorProvider>
               <header className="border-b border-border bg-surface">
-                <div className="mx-auto max-w-6xl px-6 pt-4">
-                  <div className="flex items-center justify-between gap-4 pb-3">
-                    <Link href="/" className="flex items-center gap-2">
+                <div className="mx-auto min-w-0 max-w-6xl px-4 pt-4 sm:px-6">
+                  <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 pb-3">
+                    <Link href="/" className="flex min-w-0 items-center gap-2">
                       <span className="text-lg font-semibold tracking-tight">Atlas</span>
                       <span className="rounded border border-border bg-surface-raised px-1.5 py-0.5 text-[11px] leading-none text-muted">
-                        MNQU6 · ICT_Funded_v1
+                        Live analysis
                       </span>
                     </Link>
-                    <div className="flex items-center gap-4">
+                    <div className="flex min-w-0 flex-wrap items-center justify-end gap-3">
                       <HeaderKillSwitchDot />
                       <HeaderStatusDot />
                     </div>
@@ -55,8 +55,8 @@ export default function RootLayout({
                   <AppNav />
                 </div>
               </header>
-              <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">{children}</main>
-              <footer className="border-t border-border px-6 py-4 text-center text-xs text-muted">
+              <main className="mx-auto w-full min-w-0 max-w-6xl flex-1 px-4 py-6 sm:px-6 sm:py-8">{children}</main>
+              <footer className="border-t border-border px-4 py-4 text-center text-xs text-muted sm:px-6">
                 Atlas AI Trading Platform — Sprint 7
               </footer>
             </LiveSelectorProvider>

@@ -64,7 +64,7 @@ function isExact(pathname: string, href: string): boolean {
 }
 
 function linkClass(active: boolean): string {
-  return `hover:text-foreground ${active ? "text-foreground font-medium" : "text-muted"}`;
+  return `break-words hover:text-foreground ${active ? "text-foreground font-medium" : "text-muted"}`;
 }
 
 function NavLinkItem({ href, label, active }: { href: string; label: string; active: boolean }) {
@@ -82,18 +82,18 @@ export function AppNav() {
   const isMore = MORE_PATHS.includes(pathname);
 
   return (
-    <div className="pb-4">
+    <div className="min-w-0 pb-4">
       <AppNavMenus key={pathname} pathname={pathname} isTrading={isTrading} isResearch={isResearch} isMore={isMore} />
 
       {isTrading && (
-        <nav className="mt-3 flex flex-wrap items-baseline gap-4 border-t border-border pt-3 text-xs" aria-label="Trading">
+        <nav className="mt-3 flex min-w-0 flex-wrap items-baseline gap-x-4 gap-y-2 border-t border-border pt-3 text-xs" aria-label="Trading">
           {TRADING_SECTION_LINKS.map((link) => (
             <NavLinkItem key={link.href} href={link.href} label={link.label} active={isExact(pathname, link.href)} />
           ))}
         </nav>
       )}
       {isResearch && (
-        <nav className="mt-3 flex flex-wrap items-baseline gap-4 border-t border-border pt-3 text-xs" aria-label="Research">
+        <nav className="mt-3 flex min-w-0 flex-wrap items-baseline gap-x-4 gap-y-2 border-t border-border pt-3 text-xs" aria-label="Research">
           {RESEARCH_SECTION_LINKS.map((link) => (
             <NavLinkItem key={link.href} href={link.href} label={link.label} active={isExact(pathname, link.href)} />
           ))}
@@ -142,7 +142,7 @@ function AppNavMenus({
 
   return (
     <>
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex min-w-0 items-center justify-between gap-4">
         <nav className="hidden md:flex items-baseline gap-5 text-sm" aria-label="Primary">
           <NavLinkItem href="/" label="Dashboard" active={isExact(pathname, "/")} />
           <NavLinkItem href="/market-view" label="Trading" active={isTrading} />

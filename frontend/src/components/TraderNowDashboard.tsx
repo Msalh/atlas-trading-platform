@@ -25,12 +25,43 @@ function Grid({ children }: { children: React.ReactNode }) {
   return <dl className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{children}</dl>;
 }
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div className="min-w-0"><dt className="text-xs uppercase tracking-wide text-muted">{label}</dt>
+  return <div className="min-w-0"><dt className="text-xs font-medium uppercase tracking-wide text-foreground/70">{label}</dt>
     <dd className="mt-1 break-words text-sm">{children}</dd></div>;
 }
 function AvailabilityView({ value }: { value: Availability }) {
   return <div className="flex flex-wrap items-center gap-2"><StatusBadge status={value.status} />
     {value.reason_codes.length > 0 && <span className="text-xs text-muted">{join(value.reason_codes)}</span>}</div>;
+}
+
+function OperationalSummary({ value }: { value: TraderNowResponse }) {
+  const strategy = value.strategy.decisions[0] ?? null;
+  return <section className="rounded-lg border border-open/30 bg-open/5 p-4" aria-labelledby="operational-summary">
+    <header className="mb-3">
+      <h2 id="operational-summary" className="font-semibold">Operational summary</h2>
+      <p className="mt-1 text-xs text-foreground/70">Read-only summary of Strategy, Risk, and Decision; detailed authority sections remain below.</p>
+    </header>
+    <div className="grid gap-3 md:grid-cols-3">
+      <div className="min-w-0 rounded border border-border bg-surface p-3">
+        <h3 className="text-xs font-medium uppercase tracking-wide text-foreground/70">Strategy summary</h3>
+        {strategy ? <><StatusBadge status={strategy.disposition} />
+          <p className="mt-2 text-xs text-muted">Deterministic opportunity evaluation only; never an entry recommendation.</p></> :
+          <p className="mt-2 text-sm text-muted">No Strategy decision is available.</p>}
+      </div>
+      <div className="min-w-0 rounded border border-border bg-surface p-3">
+        <h3 className="text-xs font-medium uppercase tracking-wide text-foreground/70">Risk summary</h3>
+        {value.risk ? <><StatusBadge status={value.risk.status} />
+          <p className="mt-2 text-xs text-muted">Explicit RiskAssessment projection.</p></> :
+          <><StatusBadge status="unavailable" /><p className="mt-2 text-xs text-muted">Risk is absent; no risk state has been inferred.</p></>}
+      </div>
+      <div className="min-w-0 rounded border border-border bg-surface p-3">
+        <h3 className="text-xs font-medium uppercase tracking-wide text-foreground/70">Decision summary</h3>
+        <StatusBadge status={value.decision.availability} />
+        <p className="mt-2 text-xs text-muted">{value.decision.availability === "not_implemented"
+          ? "Decision Engine not implemented. No WAIT, PREPARE, ENTER, or execution instruction exists."
+          : value.decision.state ?? "No Decision Engine state exists."}</p>
+      </div>
+    </div>
+  </section>;
 }
 
 function Analysis({ value }: { value: TraderNowResponse }) {
@@ -39,6 +70,7 @@ function Analysis({ value }: { value: TraderNowResponse }) {
     {stale && <div role="status" className="rounded border border-warn/40 bg-warn/10 p-3 text-sm text-warn">
       Market data is stale. Displayed analysis is not current.
     </div>}
+    <OperationalSummary value={value} />
     <Section title="Market" authority="Canonical market identity and latest validated input">
       <Grid>
         <Field label="Economic product">{value.market.economic_instrument?.symbol ?? value.identity.product}</Field>
@@ -101,7 +133,7 @@ function Analysis({ value }: { value: TraderNowResponse }) {
       {value.strategy.decisions.length === 0 ? <p className="text-sm text-muted">No Strategy decision is available.</p> :
         <ul className="space-y-3">{value.strategy.decisions.map((item, index) =>
           <li key={`${item.occurred_at}-${index}`} className="rounded border border-border p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2"><span className="font-mono text-sm">{item.strategy_id}@{item.strategy_version}</span><StatusBadge status={item.disposition} /></div>
+            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2"><span className="min-w-0 break-all font-mono text-sm">{item.strategy_id}@{item.strategy_version}</span><StatusBadge status={item.disposition} /></div>
             <Grid><Field label="Disposition">{item.disposition}</Field><Field label="Direction">{item.direction}</Field>
               <Field label="Confidence">{item.confidence ?? "Unavailable"}</Field><Field label="Reason codes">{join(item.reason_codes)}</Field></Grid>
           </li>)}</ul>}
@@ -128,13 +160,15 @@ function Analysis({ value }: { value: TraderNowResponse }) {
 
 function Failure({ error, retry }: { error: Error; retry: () => void }) {
   const kind = error instanceof ApiFetchError ? error.kind : "network_error";
-  const message = kind === "unauthorized" || kind === "forbidden"
-    ? "TraderNow authentication failed. No analysis is available."
-    : kind === "invalid_response"
-      ? "TraderNow returned a malformed response. Nothing has been inferred."
-      : "TraderNow is currently unavailable.";
+  const failure = kind === "unauthorized"
+    ? { title: "Authentication required", message: "TraderNow authentication failed. No analysis is available." }
+    : kind === "forbidden"
+      ? { title: "Access denied", message: "This session is not authorized to access TraderNow analysis." }
+      : kind === "invalid_response"
+        ? { title: "Invalid analysis response", message: "TraderNow returned a malformed or contract-invalid response. Nothing has been inferred." }
+        : { title: "Live analysis unavailable", message: "TraderNow is currently unavailable. No analysis has been inferred." };
   return <div role="alert" className="rounded border border-danger/40 bg-danger/10 p-5">
-    <h2 className="font-semibold">Live analysis unavailable</h2><p className="mt-2 text-sm text-muted">{message}</p>
+    <h2 className="font-semibold">{failure.title}</h2><p className="mt-2 text-sm text-foreground/75">{failure.message}</p>
     <button onClick={retry} className="mt-4 rounded border border-border px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-open">Retry</button>
   </div>;
 }
@@ -142,11 +176,18 @@ function Failure({ error, retry }: { error: Error; retry: () => void }) {
 export function TraderNowDashboard() {
   const query = useQuery({ queryKey: ["trader-now", "MNQ", "5m", "displacement_volume_context"],
     queryFn: fetchTraderNow, retry: false, refetchInterval: 10_000 });
+  const identitySummary = query.data
+    ? `Economic product ${query.data.market.economic_instrument?.symbol ?? query.data.identity.product} · ${
+      query.data.market.market_data_series
+        ? `Source series ${query.data.market.market_data_series.provider}:${query.data.market.market_data_series.symbol}`
+        : "Source series unavailable"
+    } · ${query.data.identity.timeframe}`
+    : "Canonical TraderNow composition";
   return <section className="space-y-5">
-    <header className="flex flex-col justify-between gap-3 border-b border-border pb-4 sm:flex-row sm:items-end">
+    <header className="flex min-w-0 flex-col justify-between gap-3 border-b border-border pb-4 sm:flex-row sm:items-end">
       <div><p className="text-xs uppercase tracking-[0.18em] text-muted">Live · Read only</p>
         <h1 className="mt-1 text-2xl font-semibold">Unified Market Analysis</h1>
-        <p className="mt-1 text-sm text-muted">MNQ · TradingView continuous series · 5m</p></div>
+        <p className="mt-1 break-words text-sm text-foreground/70">{identitySummary}</p></div>
       <button onClick={() => void query.refetch()} disabled={query.isFetching}
         className="rounded border border-border px-3 py-2 text-sm disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-open">
         {query.isFetching ? "Refreshing…" : "Refresh"}</button>
