@@ -1,0 +1,82 @@
+{
+  "vectors": [
+    {
+      "name": "input_multiple_snapshot_bindings",
+      "base": "golden/input.complete-current.json",
+      "mutation": {"add": {"/snapshot_ids": ["019849d1-8c00-7000-8000-000000000001", "019849d1-8c00-7000-8000-000000000002"]}},
+      "expected_violation": "closed_envelope"
+    },
+    {
+      "name": "input_unverified_snapshot",
+      "base": "golden/input.complete-current.json",
+      "mutation": {"replace": {"/snapshot/integrity_status": "unverified"}},
+      "expected_violation": "verified_snapshot_required"
+    },
+    {
+      "name": "input_unsupported_schema",
+      "base": "golden/input.complete-current.json",
+      "mutation": {"replace": {"/snapshot/snapshot_schema_version": "trader_now_snapshot.v999"}},
+      "expected_violation": "unsupported_snapshot_schema"
+    },
+    {
+      "name": "input_non_allowlisted_path",
+      "base": "golden/input.complete-current.json",
+      "mutation": {"replace": {"/evidence_items/0/path": "/evidence/repository/private_connection"}},
+      "expected_violation": "snapshot_allowlist"
+    },
+    {
+      "name": "output_uncited_claim",
+      "base": "golden/output.complete-current.json",
+      "mutation": {"replace": {"/claims/0/citations": []}},
+      "expected_violation": "missing_citation"
+    },
+    {
+      "name": "output_citation_outside_evidence",
+      "base": "golden/output.complete-current.json",
+      "mutation": {"replace": {"/claims/0/citations/0": "/integrity/evidence_digest"}},
+      "expected_violation": "citation_grammar"
+    },
+    {
+      "name": "output_unresolved_citation",
+      "base": "golden/output.complete-current.json",
+      "mutation": {"replace": {"/claims/0/citations/0": "/evidence/strategy/decisions/99/disposition"}},
+      "expected_violation": "citation_resolution"
+    },
+    {
+      "name": "output_snapshot_identity_mismatch",
+      "base": "golden/output.complete-current.json",
+      "mutation": {"replace": {"/snapshot_id": "019849d1-8c00-7000-8000-000000000002"}},
+      "expected_violation": "single_snapshot_binding"
+    },
+    {
+      "name": "output_digest_mismatch",
+      "base": "golden/output.complete-current.json",
+      "mutation": {"replace": {"/evidence_digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
+      "expected_violation": "single_snapshot_binding"
+    },
+    {
+      "name": "output_contradicts_strategy",
+      "base": "golden/output.complete-current.json",
+      "mutation": {"replace": {"/claims/0/text": "The deterministic strategy rejected this setup."}},
+      "expected_violation": "deterministic_state_contradiction"
+    },
+    {
+      "name": "output_claims_execution_authority",
+      "base": "golden/output.complete-current.json",
+      "mutation": {"replace": {"/claims/0/text": "Place a market buy order now."}},
+      "expected_violation": "prohibited_content"
+    },
+    {
+      "name": "audit_refusal_with_model_invocation",
+      "base": "golden/audit.stale-refusal.json",
+      "mutation": {"replace": {"/generator": {"model_id": "synthetic-model-v1", "provider_id": "synthetic-provider"}}},
+      "expected_violation": "model_invocation_on_refusal"
+    },
+    {
+      "name": "unknown_contract_version",
+      "base": "golden/input.complete-current.json",
+      "mutation": {"replace": {"/schema_version": "ai_analysis_input.v2"}},
+      "expected_violation": "unknown_version"
+    }
+  ]
+}

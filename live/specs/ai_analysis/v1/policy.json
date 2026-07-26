@@ -1,0 +1,100 @@
+{
+  "policy_version": "ai_analysis_policy.v1",
+  "contracts": {
+    "audit": "ai_analysis_audit.v1",
+    "input": "ai_analysis_input.v1",
+    "output": "ai_analysis_output.v1"
+  },
+  "snapshot_authority": {
+    "canonicalization_profile": "atlas-jcs.v1",
+    "evidence_profile": "trader_now_complete.v1",
+    "rule": "verified_canonical_snapshot_is_sole_evidence_authority",
+    "semantic_json_is_canonical": false,
+    "snapshot_schema_version": "trader_now_snapshot.v1"
+  },
+  "explanation_purposes": [
+    "market_snapshot_explanation",
+    "setup_explanation",
+    "strategy_explanation",
+    "risk_explanation",
+    "availability_explanation"
+  ],
+  "citation_reference": {
+    "format": "restricted_rfc6901_json_pointer",
+    "pattern": "^/evidence/(?:[^~/*?#]|~0|~1)+(?:/(?:[^~/*?#]|~0|~1)+)*$",
+    "root": "/evidence",
+    "array_index_pattern": "^(?:0|[1-9][0-9]*)$",
+    "must_exist": true,
+    "must_be_snapshot_allowlisted": true,
+    "must_match_input_evidence_item": true,
+    "input_paths_unique": true,
+    "wildcards_allowed": false,
+    "relative_references_allowed": false
+  },
+  "eligibility": {
+    "eligible_freshness": ["current", "delayed"],
+    "delayed_requires_limitation": "delayed_evidence",
+    "refusal_states": {
+      "corrupted": "snapshot_integrity_failed",
+      "stale": "snapshot_stale",
+      "unavailable": "snapshot_unavailable",
+      "unsupported": "snapshot_schema_unsupported"
+    },
+    "model_invocation_on_refusal": false
+  },
+  "evidence_strings": {
+    "classification": "untrusted_data",
+    "may_change_instructions": false,
+    "may_change_purpose": false,
+    "may_grant_authority": false,
+    "may_request_tools": false
+  },
+  "prohibited_authority": [
+    "trading_decision_authority",
+    "strategy_authority",
+    "risk_authority",
+    "execution_authority",
+    "canonical_evidence_authority"
+  ],
+  "prohibited_actions": [
+    "order_creation",
+    "order_approval",
+    "order_sizing",
+    "order_routing",
+    "order_execution",
+    "broker_access",
+    "direct_trader_now_access",
+    "arbitrary_database_access",
+    "repository_access",
+    "canonical_regeneration",
+    "client_side_digest_verification",
+    "deterministic_state_override",
+    "uncited_material_claim"
+  ],
+  "deterministic_state": {
+    "authoritative_sections": [
+      "/evidence/strategy",
+      "/evidence/risk",
+      "/evidence/decision"
+    ],
+    "contradiction_allowed": false,
+    "recomputation_allowed": false,
+    "recommendation_may_be_presented_as_deterministic": false
+  },
+  "limits": {
+    "evidence_items": 128,
+    "claims": 32,
+    "citations_per_claim": 16,
+    "summary_characters": 4000,
+    "claim_characters": 2000,
+    "limitation_items": 16
+  },
+  "versioning": {
+    "closed_envelopes": true,
+    "unknown_versions": "reject",
+    "in_place_changes": false,
+    "coercion": false,
+    "downgrade": false,
+    "partial_processing": false
+  }
+}

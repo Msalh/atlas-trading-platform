@@ -1,0 +1,10 @@
+{
+  "canonical_bytes_profile": "sorted-compact-utf8.v1",
+  "vectors": [
+    {"contract": "ai_analysis_input.v1", "file": "input.complete-current.json", "sha256": "34d67c049b1b636090a6153f0a8dd818e3213967f5cb10151c8036c6faefb15e"},
+    {"contract": "ai_analysis_output.v1", "file": "output.complete-current.json", "sha256": "c4a381b7d13e572cd7cf8217ec59bcb22a367ab54fcead806d97c82344adbf5c"},
+    {"contract": "ai_analysis_audit.v1", "file": "audit.complete-current.json", "sha256": "269aee7b03b6a3bdcc64e285da0e26d1b5d0443c0cfe5548721bdff30eef059b"},
+    {"contract": "ai_analysis_audit.v1", "file": "audit.stale-refusal.json", "sha256": "b4e29c586470630097141e7b8f06dcf586e3984347fdf4bb89bf98fd3cce5e8d"},
+    {"contract": "ai_analysis_output.v1", "file": "output.unavailable.json", "sha256": "90f9b1976f9f2b698dc26b9dd5f84e5811cd40b1eb44df379cd74e04d4e8479f"}
+  ]
+}
