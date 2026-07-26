@@ -93,7 +93,22 @@ used as metric labels.
 
 ## Phase 17F-5B certification checklist
 
-**Not yet certified. Requires Phase 17E Operational GO.**
+**Not yet certified. Phase 17E engineering certification is PASS; operational
+certification remains environment-blocked by unavailable Railway Hobby-plan
+backups.**
+
+The Evidence Browser deployment checks below may proceed only through a
+separately authorized, bounded 17F-5B increment. They do not certify Snapshot
+database backup, restore, disaster recovery, or full production readiness.
+Any 17F-5B result must retain those explicit exclusions until Phase 17E
+operational certification receives GO.
+
+Before deployment authorization, a preflight-only review may confirm the
+reviewed revision, clean release inputs, private service target, feature flag
+rollback, frozen live contracts, synthetic/local test results, sanitized
+configuration inventory, and certification evidence locations. That preflight
+must not deploy, enable the feature, change Railway, or modify production
+networking.
 
 - [ ] Confirm operator authentication equivalence in the isolated private
   environment.
@@ -115,3 +130,13 @@ used as metric labels.
 - [ ] Verify rollback produces zero Snapshot API traffic and does not affect
   TraderNow.
 - [ ] Record certification evidence and obtain the explicit 17F-5B release gate.
+
+### Phase 17E-dependent exclusions
+
+The following remain blocked regardless of Evidence Browser results:
+
+- any claim of certified Snapshot backup or recovery;
+- isolated database restore and disaster-recovery certification;
+- database rollback certification that depends on a recovery point;
+- the final Snapshot PostgreSQL public TCP proxy decision;
+- full production-readiness or real-money-trading authorization.

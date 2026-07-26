@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import asyncio
 import copy
 import json
 import logging
@@ -202,6 +203,61 @@ async def test_matching_retry_returns_existing_snapshot_without_second_insert():
     assert first.disposition is CaptureDisposition.CREATED
     assert second.disposition is CaptureDisposition.DUPLICATE
     assert second.snapshot_id == first.snapshot_id
+    assert len(repository.by_id) == 1
+
+
+@pytest.mark.asyncio
+async def test_new_evaluation_time_is_a_new_capture_not_a_retry():
+    response = _response()
+    client = FakeClient(response)
+    identifiers = iter(
+        (
+            "019849f0-0000-7000-8000-000000000001",
+            "019849f0-0000-7000-8000-000000000002",
+        )
+    )
+    repository = FakeRepository()
+    service = SnapshotCaptureService(
+        config=_config(),
+        client=client,
+        repository=repository,
+        clock=lambda: NOW,
+        uuid7_factory=lambda: next(identifiers),
+    )
+    await service.start()
+    request = CaptureRequest("MNQ", "5m", "displacement_volume_context")
+
+    first = await service.capture(request)
+    client.response["evaluated_at"] = "2026-07-25T14:00:01.000000Z"
+    second = await service.capture(request)
+
+    assert first.disposition is CaptureDisposition.CREATED
+    assert second.disposition is CaptureDisposition.CREATED
+    assert second.idempotency_key != first.idempotency_key
+    assert second.snapshot_id != first.snapshot_id
+    assert len(repository.by_id) == 2
+
+
+@pytest.mark.asyncio
+async def test_concurrent_matching_frozen_evidence_converges_to_one_snapshot():
+    service, _, repository = await _service()
+    request = CaptureRequest("MNQ", "5m", "displacement_volume_context")
+
+    results = await asyncio.gather(
+        service.capture(request),
+        service.capture(request),
+        service.capture(request),
+    )
+
+    assert sum(
+        result.disposition is CaptureDisposition.CREATED for result in results
+    ) == 1
+    assert sum(
+        result.disposition is CaptureDisposition.DUPLICATE for result in results
+    ) == 2
+    assert {result.snapshot_id for result in results} == {
+        "019849f0-0000-7000-8000-000000000001"
+    }
     assert len(repository.by_id) == 1
 
 

@@ -4,6 +4,56 @@ This runbook is an operational procedure, not an architecture contract. Phase
 17A–17D contracts remain authoritative. It does not authorize provisioning,
 deployment, capture, or Phase 17F.
 
+## Deferred closure status
+
+Phase 17E engineering certification is **PASS**. The private Snapshot API,
+authentication and authorization boundary, capture and retrieval paths,
+metadata and integrity endpoints, reader runtime, read-only session settings,
+privilege enforcement, certification probe, and runbook alignment have passed.
+
+Phase 17E operational certification is **BLOCKED BY ENVIRONMENT**. The current
+Railway Hobby plan does not provide the native backup capability required by
+this certification. No valid recovery point exists, so backup protection,
+isolated restore, database disaster recovery, final rollback certification,
+and the final PostgreSQL public TCP proxy decision remain unverified.
+
+This status is not an application, Snapshot API, PostgreSQL, security, or
+deployment defect. Development may continue in a development/pre-production
+posture because the frozen Snapshot contracts, append-only guarantees, access
+controls, and engineering tests do not depend on Railway backup availability.
+It must not be described as full production readiness, disaster-recovery
+readiness, or operational GO.
+
+While this exception remains open:
+
+- do not authorize real-money trading;
+- do not perform destructive database migrations without an independently
+  approved safety plan;
+- minimize irreversible database changes and preserve migration discipline;
+- preserve Snapshot integrity, immutability, tests, and security controls;
+- do not approve work that strictly depends on certified restore or disaster
+  recovery.
+
+### Re-entry checklist
+
+Resume Phase 17E only when all of the following are true:
+
+1. The Railway project is on a plan that supports native backups.
+2. An authorized Owner/Admin can configure and restore backups.
+3. Daily, weekly, and monthly schedules are enabled for `Postgres-3zm0`.
+4. A successful manual backup exists and is selectable for restore.
+5. The backup is confirmed to belong to `Postgres-3zm0`, not TraderNow
+   PostgreSQL.
+6. An isolated restore is completed and its schema, row counts, ordered
+   redacted manifest, and sampled integrity match the source.
+7. Restored reader restrictions are verified where applicable.
+8. Disposable restore resources and credentials are removed.
+9. Snapshot API rollback and forward restoration are rehearsed safely.
+10. The database recovery procedure is approved.
+11. The public PostgreSQL TCP proxy is removed or explicitly justified with an
+    owner, controls, removal condition, and review date.
+12. Final health, logs, metrics, secret, exposure, and cleanup checks pass.
+
 ## Hard gates
 
 Stop immediately when a mandatory item fails. Production shadow capture is
@@ -181,18 +231,45 @@ updates or deletes evidence.
 
    Supply a controlled valid correlation ID.
 7. Verify `201 created`; record snapshot ID, digest, idempotency key,
-   correlation ID, and duration.
+   correlation ID, evaluation time, and duration.
 8. Retrieve the snapshot, metadata, integrity result, and bounded listing using
    the reader token. Verify canonical payload, derived metadata, and digest.
-9. Repeat the same capture. Verify `200 duplicate`, the same snapshot ID, and
-   unchanged row count.
-10. Exercise invalid request, unauthorized, not-found, invalid cursor, and
+9. Do not treat a second live request with equal request parameters as an
+   idempotency retry. Each request obtains a new TraderNow evaluation;
+   `evaluated_at` is part of snapshot identity, so a later evaluation may
+   correctly produce a new idempotency key, snapshot ID, and `201 created`.
+   Certify duplicate handling separately through the frozen capture-service or
+   PostgreSQL-store seam by submitting the same projected canonical evidence
+   (including the original evaluation time and derived idempotency key) twice.
+   Verify one insert, one duplicate result, one stored row, an unchanged
+   snapshot identity, and fail-closed rejection of conflicting bytes under the
+   same key.
+10. Certify concurrent convergence at the same frozen seam, not by issuing
+    concurrent live HTTP requests. Submit byte-identical canonical evidence
+    with one derived idempotency identity concurrently. Verify exactly one
+    insert, all successful results reference the same snapshot, row count
+    increases once, and conflicting canonical bytes under the same key fail
+    closed.
+11. Exercise invalid request, unauthorized, not-found, invalid cursor, and
     bounded rate-limit behavior. Verify every failure is sanitized and carries
     the expected correlation behavior.
-11. Restart only the private API. Reverify health, readiness, snapshot
+12. Restart only the private API. Reverify health, readiness, snapshot
     retrieval, metadata, integrity, row count, and digest.
-12. Set capture to `false`. Verify capture returns
+13. Set capture to `false`. Verify capture returns
     `503 capture_service_disabled` and row count remains unchanged.
+
+For this runbook:
+
+- **equal request parameters** mean only the same product, timeframe, and
+  strategy were requested;
+- **equal upstream evidence** additionally includes the same TraderNow
+  evaluation and evaluation time;
+- **equal canonical payload** means byte-identical `atlas-jcs.v1` evidence;
+- **equal idempotency identity** means the same derived `tns1:` key;
+- a **retry** reuses the original evidence identity, evaluation time, and
+  idempotency key;
+- a **new evaluation** is a new capture candidate even when request parameters
+  are unchanged.
 
 ## 4. Backup and isolated restore
 
@@ -256,7 +333,12 @@ item passed.
    `displacement_volume_context`.
 4. Verify persistence, canonical bytes, metadata, digest, identity,
    correlation ID, and retrieval.
-5. Repeat once and verify idempotent duplicate behavior without a second row.
+5. Do not repeat the live capture and call it an idempotency retry. A new
+   TraderNow evaluation may legitimately create a second snapshot. Use the
+   already-certified frozen-evidence capture/store result for idempotency and
+   concurrency assurance; in the shadow window, verify only that each explicit
+   live capture truthfully reports its own snapshot identity and persistence
+   disposition.
 6. Disable capture immediately.
 7. Record the same TraderNow health, revision, availability, and latency sample.
    Compare before/after and investigate any material regression.
