@@ -60,10 +60,18 @@ def test_freshness_and_trust_depend_only_on_trader_now_models():
     assert _atlas_imports("trust.py") == {"atlas.trader_now.models"}
 
 
+def test_analysis_window_reuses_canonical_segmentation_only():
+    assert _atlas_imports("analysis_window.py") == {
+        "atlas.replay_engine.segmentation",
+        "atlas.trader_now.models",
+    }
+
+
 def test_rule_composer_uses_only_the_canonical_rule_service_and_models():
     assert _atlas_imports("rules.py") == {
         "atlas.market_engine.models",
         "atlas.rule_engine.models",
+        "atlas.rule_engine.registry",
         "atlas.rule_engine.service",
         "atlas.trader_now.models",
     }
@@ -171,7 +179,10 @@ def test_strategy_composer_uses_canonical_strategy_api_and_replay_model_only():
         for imported in _atlas_imports(file_path.name)
         if imported.startswith("atlas.replay_engine")
     }
-    assert all_replay_imports == {"atlas.replay_engine.models"}
+    assert all_replay_imports == {
+        "atlas.replay_engine.models",
+        "atlas.replay_engine.segmentation",
+    }
 
 
 def test_repository_and_contract_dependencies_are_declared_as_ports():

@@ -13,6 +13,7 @@ from atlas.market_context.definitions import (
     RegimeClassifierParams,
 )
 from atlas.market_engine.models import BarStatus, MarketState
+from atlas.profiling.models import ProfilingInputError
 from atlas.risk_assessment.service import assess_candidate_risk
 from atlas.risk_projection import project_risk_assessment
 from atlas.trader_now.contexts import MarketContextComposer
@@ -144,6 +145,16 @@ class CapturingComposer:
         return result
 
 
+class InputCapturingComposer(CapturingComposer):
+    def __init__(self, delegate) -> None:
+        super().__init__(delegate)
+        self.calls = []
+
+    def compose(self, *args, **kwargs):
+        self.calls.append((args, kwargs))
+        return super().compose(*args, **kwargs)
+
+
 class TrackingTraderNowService(TraderNowService):
     def __init__(self) -> None:
         self.risk_calls = []
@@ -206,6 +217,25 @@ def application(
         trader_now_service=trader_now_service or TraderNowService(),
     )
     return app, repository, injected_clock, provider
+
+
+def states_with_gap(*, gap_minutes: int, latest_segment_count: int) -> list[MarketState]:
+    rows = states()
+    boundary = len(rows) - latest_segment_count
+    shift = timedelta(minutes=gap_minutes - 5)
+    shifted = []
+    for state in rows[:boundary]:
+        shifted.append(
+            replace(
+                state,
+                envelope=replace(
+                    state.envelope,
+                    occurred_at=state.envelope.occurred_at - shift,
+                    received_at=state.envelope.received_at - shift,
+                ),
+            )
+        )
+    return shifted + rows[boundary:]
 
 
 @pytest.mark.asyncio
@@ -279,6 +309,110 @@ async def test_trader_now_retains_every_canonical_composition_projection():
     assert result.setups.output is result.setups.window[-1]
     with pytest.raises(FrozenInstanceError):
         result.rules = rules.results[-1]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("gap_minutes", [65, 2945, 305, 10])
+async def test_latest_contiguous_segment_drives_rules_without_altering_raw_market(
+    gap_minutes,
+):
+    rows = states_with_gap(gap_minutes=gap_minutes, latest_segment_count=276)
+    rules = InputCapturingComposer(RuleComposer())
+    setups = InputCapturingComposer(SetupComposer())
+    context = InputCapturingComposer(MarketContextComposer())
+    app, _, _, _ = application(
+        rows=rows,
+        rule_composer=rules,
+        setup_composer=setups,
+        context_composer=context,
+    )
+
+    first = await app.compose_latest(
+        symbol="MNQ",
+        timeframe="5m",
+        strategy_id="displacement_volume_context",
+        as_of=NOW,
+    )
+    second = await app.compose_latest(
+        symbol="MNQ",
+        timeframe="5m",
+        strategy_id="displacement_volume_context",
+        as_of=NOW,
+    )
+
+    rule_input = rules.calls[0][0][0]
+    setup_input = setups.calls[0][1]["market_input"]
+    context_input = context.calls[0][0][0]
+    assert len(first.market.states) == 288
+    assert first.market.states == tuple(rows)
+    assert len(first.market.identity.source_events) == 288
+    assert len(rule_input.states) == 276
+    assert setup_input.states == rule_input.states
+    assert context_input.states == first.market.states
+    assert rule_input.identity is first.market.identity
+    assert first.rules.availability.status is AvailabilityStatus.AVAILABLE
+    assert first.setups.availability.status.value in (
+        "available",
+        "insufficient_data",
+    )
+    assert first.context.availability.status.value == "insufficient_data"
+    assert first.context.availability.reason_codes[0].value == (
+        "insufficient_history"
+    )
+    assert first.rules == second.rules
+    assert first.setups == second.setups
+    assert first.interpretations == second.interpretations
+    assert first.strategy == second.strategy
+
+
+@pytest.mark.asyncio
+async def test_short_latest_segment_fails_closed_without_fabricated_downstream_output():
+    rows = states_with_gap(gap_minutes=65, latest_segment_count=10)
+    app, _, _, _ = application(rows=rows)
+
+    result = await app.compose_latest(
+        symbol="MNQ",
+        timeframe="5m",
+        strategy_id="displacement_volume_context",
+        as_of=NOW,
+    )
+
+    assert len(result.market.states) == 288
+    assert result.availability["rules"].status is AvailabilityStatus.INSUFFICIENT_DATA
+    assert result.availability["rules"].reason_codes == ("insufficient_history",)
+    assert result.rules.output is None
+    assert result.rules.window == ()
+    assert result.setups.output is None
+    assert result.interpretations.output == ()
+    assert result.strategy.output == ()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("defect", ["duplicate", "non_monotonic"])
+async def test_analysis_window_rejects_duplicate_and_non_monotonic_timestamps(defect):
+    app, _, _, _ = application(rows=states(20))
+    result = await app.compose_latest(
+        symbol="MNQ",
+        timeframe="5m",
+        strategy_id="displacement_volume_context",
+        as_of=NOW,
+    )
+    invalid_states = list(result.market.states)
+    if defect == "duplicate":
+        invalid_states[1] = replace(
+            invalid_states[1],
+            envelope=replace(
+                invalid_states[1].envelope,
+                occurred_at=invalid_states[0].envelope.occurred_at,
+            ),
+        )
+    else:
+        invalid_states[0], invalid_states[1] = invalid_states[1], invalid_states[0]
+
+    with pytest.raises(ProfilingInputError):
+        TraderNowApplication._latest_contiguous_analysis_window(
+            replace(result.market, states=tuple(invalid_states))
+        )
 
 
 @pytest.mark.asyncio

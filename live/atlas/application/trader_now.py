@@ -1,11 +1,13 @@
 """Canonical production-facing orchestration of the TraderNow pipeline."""
 
+import logging
 from datetime import datetime
 from enum import Enum
 
 from atlas.application.errors import InvalidCompositionTimeError
 from atlas.market_engine.ports import MarketStateRepository
 from atlas.risk_assessment.models import RiskAssessmentInput
+from atlas.trader_now.analysis_window import latest_contiguous_analysis_window
 from atlas.trader_now.contexts import MarketContextComposer
 from atlas.trader_now.freshness import FreshnessPolicy, FreshnessService
 from atlas.trader_now.interpretations import SetupInterpretationComposer
@@ -13,6 +15,7 @@ from atlas.trader_now.models import (
     Availability,
     AvailabilityStatus,
     DecisionNotImplemented,
+    MarketInputWindow,
     TraderNow,
     Trust,
 )
@@ -26,6 +29,8 @@ from atlas.trader_now.service import MarketInputAcquirer, TraderNowService
 from atlas.trader_now.setups import SetupComposer
 from atlas.trader_now.strategies import StrategyComposer
 from atlas.trader_now.trust import project_raw_source_trust
+
+logger = logging.getLogger(__name__)
 
 
 class TraderNowApplication:
@@ -109,9 +114,10 @@ class TraderNowApplication:
             freshness=freshness,
         )
 
-        rules = self._rule_composer.compose(market_input)
+        analysis_market_input = self._latest_contiguous_analysis_window(market_input)
+        rules = self._rule_composer.compose(analysis_market_input)
         setups = self._setup_composer.compose(
-            market_input=market_input,
+            market_input=analysis_market_input,
             rules=rules,
         )
         context = self._context_composer.compose(market_input)
@@ -181,6 +187,31 @@ class TraderNowApplication:
             strategy_decisions=strategy.output,
             risk_input=risk_input,
         )
+
+    @staticmethod
+    def _latest_contiguous_analysis_window(
+        market_input: MarketInputWindow,
+    ) -> MarketInputWindow:
+        """Select the latest cadence-valid suffix for Rule/Setup analysis.
+
+        The returned view reuses the canonical immutable MarketState objects
+        and the complete input identity. The original 288-observation window
+        remains untouched for market evidence and frozen Context semantics.
+        """
+        if (
+            market_input.availability.status != AvailabilityStatus.AVAILABLE
+            or market_input.identity is None
+            or not market_input.states
+        ):
+            return market_input
+
+        analysis_window = latest_contiguous_analysis_window(market_input)
+        if len(analysis_window.states) != len(market_input.states):
+            logger.info(
+                "TraderNow analysis window segmented",
+                extra={"diagnostic_category": "market_window_gap"},
+            )
+        return analysis_window
 
     @staticmethod
     def _availability(

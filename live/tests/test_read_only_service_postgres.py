@@ -7,6 +7,8 @@ operator supplies the dedicated role URL and exact persisted 288-row contract.
 from __future__ import annotations
 
 import os
+from datetime import timedelta
+from itertools import pairwise
 
 import pytest
 from fastapi.testclient import TestClient
@@ -23,11 +25,10 @@ EMPTY_READ_ONLY_URL = os.environ.get(
 CONTRACT = os.environ.get("TRADER_NOW_READ_ONLY_TEST_CONTRACT_SYMBOL", "")
 
 pytestmark = pytest.mark.skipif(
-    not READ_ONLY_URL or not EMPTY_READ_ONLY_URL or not CONTRACT,
+    not READ_ONLY_URL or not CONTRACT,
     reason=(
         "real read-only PostgreSQL verification requires "
         "TRADER_NOW_READ_ONLY_TEST_DATABASE_URL, "
-        "TRADER_NOW_EMPTY_READ_ONLY_TEST_DATABASE_URL, and "
         "TRADER_NOW_READ_ONLY_TEST_CONTRACT_SYMBOL"
     ),
 )
@@ -55,7 +56,7 @@ def production_settings(monkeypatch):
     }
     for name, value in values.items():
         monkeypatch.setattr(settings, name, value)
-    return values
+    return {"api_key": values["api_key"]}
 
 
 def _auth(api_key: str) -> dict[str, str]:
@@ -187,6 +188,54 @@ def test_real_postgres_full_service_boundary(production_settings):
     assert pool.closed
 
 
+def test_real_postgres_trader_now_selects_latest_contiguous_analysis_segment(
+    production_settings,
+):
+    with TestClient(app) as client:
+        repository = app.state.market_state_repository
+        rows = client.portal.call(
+            repository.get_history,
+            Symbol(CONTRACT),
+            Timeframe.M5,
+            288,
+        )
+        chronological = sorted(rows, key=lambda state: state.envelope.occurred_at)
+        gaps = [
+            current.envelope.occurred_at - previous.envelope.occurred_at
+            for previous, current in pairwise(chronological)
+            if current.envelope.occurred_at - previous.envelope.occurred_at
+            != timedelta(minutes=Timeframe.M5.duration_minutes)
+        ]
+        assert len(chronological) == 288
+        assert gaps
+
+        path = (
+            "/api/v1/trader-now?symbol=MNQ&timeframe=5m"
+            "&strategy_id=displacement_volume_context"
+        )
+        response = client.get(path, headers=_auth(production_settings["api_key"]))
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["schema_version"] == "trader_now_response.v2"
+    assert body["identity"]["product"] == "MNQ"
+    assert body["market"]["bar_count"] == 288
+    assert body["market"]["market_data_series"]["symbol"] == "MNQ1!"
+    assert body["availability"]["rules"]["status"] == "available"
+    assert "rule_engine_failure" not in body["availability"]["rules"]["reason_codes"]
+    assert body["availability"]["context"] == {
+        "status": "insufficient_data",
+        "reason_codes": ["insufficient_history"],
+    }
+
+
+@pytest.mark.skipif(
+    not EMPTY_READ_ONLY_URL,
+    reason=(
+        "real no-data PostgreSQL verification requires "
+        "TRADER_NOW_EMPTY_READ_ONLY_TEST_DATABASE_URL"
+    ),
+)
 def test_real_postgres_no_data_remains_http_200(production_settings, monkeypatch):
     from atlas.application.trader_now_production import TraderNowProductionConfig
 

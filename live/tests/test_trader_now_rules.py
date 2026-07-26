@@ -7,18 +7,18 @@ import pytest
 from atlas.core.events import Event
 from atlas.core.primitives import Symbol, Timeframe
 from atlas.market_engine.models import BarStatus, MarketState
-from atlas.rule_engine.models import InsufficientData, RuleEngineOutput
+from atlas.rule_engine.models import RuleEngineOutput
 from atlas.rule_engine.service import build_rule_engine_output_window
 from atlas.trader_now.models import (
     AvailabilityStatus,
-    MarketInputIdentity,
-    MarketInputWindow,
-    MarketSourceAvailability,
-    MarketSourceReason,
     EconomicInstrument,
     MarketDataProvider,
     MarketDataSeries,
     MarketDataSeriesType,
+    MarketInputIdentity,
+    MarketInputWindow,
+    MarketSourceAvailability,
+    MarketSourceReason,
     RuleAvailabilityReason,
     SourceEventIdentity,
 )
@@ -128,17 +128,19 @@ def test_successful_rule_composition_preserves_canonical_output_unchanged():
     assert tuple(result.output.facts) == tuple(expected.facts)
 
 
-def test_insufficient_history_is_preserved_as_domain_output_not_unavailability():
+def test_short_contiguous_history_is_typed_insufficiency_without_rule_output(caplog):
     market_input = _market_input([_state(19)])
     result = RuleComposer().compose(market_input)
-    assert result.availability.status == AvailabilityStatus.AVAILABLE
-    assert result.output is not None
-    assert any(
-        isinstance(outcome, InsufficientData)
-        for outcome in result.output.facts.values()
+    assert result.availability.status == AvailabilityStatus.INSUFFICIENT_DATA
+    assert result.availability.reason_codes == (
+        RuleAvailabilityReason.INSUFFICIENT_HISTORY,
     )
-    assert result.metadata is not None
-    assert result.metadata.has_insufficient_data is True
+    assert result.output is None
+    assert result.metadata is None
+    assert result.window == ()
+    assert caplog.records[-1].diagnostic_category == (
+        "insufficient_contiguous_history"
+    )
 
 
 @pytest.mark.parametrize(
@@ -153,7 +155,7 @@ def test_insufficient_history_is_preserved_as_domain_output_not_unavailability()
     ],
 )
 def test_alignment_mismatch_is_typed_and_never_repaired(override, reason):
-    market_input = _market_input([_state(19)])
+    market_input = _market_input([_state(index) for index in range(20)])
     mismatched = _output(market_input, **override)
     result = RuleComposer(evaluator=lambda _: [mismatched]).compose(market_input)
     assert result.availability.status == AvailabilityStatus.UNAVAILABLE
@@ -162,21 +164,24 @@ def test_alignment_mismatch_is_typed_and_never_repaired(override, reason):
     assert result.metadata is None
 
 
-def test_rule_engine_failure_is_typed_unavailability():
-    market_input = _market_input([_state(19)])
+def test_rule_engine_failure_is_typed_unavailability(caplog):
+    market_input = _market_input([_state(index) for index in range(20)])
 
     def fail(_: list[MarketState]) -> list[RuleEngineOutput]:
-        raise RuntimeError("rule internals")
+        raise RuntimeError("sensitive rule internals")
 
     result = RuleComposer(evaluator=fail).compose(market_input)
     assert result.availability.status == AvailabilityStatus.UNAVAILABLE
     assert result.availability.reason_codes == (
         RuleAvailabilityReason.RULE_ENGINE_FAILURE,
     )
+    assert caplog.records[-1].diagnostic_category == "rule_engine_failure"
+    assert "sensitive rule internals" not in caplog.text
 
 
 def test_gapped_input_preserves_canonical_rule_window_failure():
-    states = [_state(18, minute_offset=15), _state(19, minute_offset=5)]
+    states = [_state(index) for index in range(20)]
+    states[-1] = _state(19, minute_offset=-5)
     result = RuleComposer().compose(_market_input(states))
     assert result.availability.reason_codes == (
         RuleAvailabilityReason.RULE_ENGINE_FAILURE,
@@ -184,7 +189,7 @@ def test_gapped_input_preserves_canonical_rule_window_failure():
 
 
 def test_empty_evaluator_output_is_rule_unavailable():
-    market_input = _market_input([_state(19)])
+    market_input = _market_input([_state(index) for index in range(20)])
     result = RuleComposer(evaluator=lambda _: []).compose(market_input)
     assert result.availability.reason_codes == (
         RuleAvailabilityReason.RULE_OUTPUT_UNAVAILABLE,

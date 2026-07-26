@@ -379,6 +379,7 @@ class MarketInputWindow:
 
 class RuleAvailabilityReason(str, Enum):
     RAW_MARKET_UNAVAILABLE = "raw_market_unavailable"
+    INSUFFICIENT_HISTORY = "insufficient_history"
     RULE_ENGINE_FAILURE = "rule_engine_failure"
     RULE_OUTPUT_UNAVAILABLE = "rule_output_unavailable"
     TIMESTAMP_MISMATCH = "rule_timestamp_mismatch"

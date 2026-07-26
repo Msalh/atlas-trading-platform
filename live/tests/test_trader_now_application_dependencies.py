@@ -55,6 +55,7 @@ def test_facade_reuses_only_canonical_public_composition_modules():
         "atlas.application.errors",
         "atlas.market_engine.ports",
         "atlas.risk_assessment.models",
+        "atlas.trader_now.analysis_window",
         "atlas.trader_now.contexts",
         "atlas.trader_now.freshness",
         "atlas.trader_now.interpretations",
