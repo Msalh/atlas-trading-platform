@@ -1,89 +1,76 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import MarketViewPage from "@/app/market-view/page";
-import { LiveSelectorProvider } from "@/lib/liveSelector";
+import { traderNowFixture } from "@/test/traderNowFixture";
 
 function renderPage() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={client}>
-      <LiveSelectorProvider>
-        <MarketViewPage />
-      </LiveSelectorProvider>
-    </QueryClientProvider>,
-  );
+  return render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    <MarketViewPage />
+  </QueryClientProvider>);
 }
 
-function setupEngineBody() {
-  return {
-    ok: true,
-    found: true,
-    envelope: {
-      schema_version: "1.0",
-      source_track: "live",
-      symbol: "MNQU6",
-      timeframe: "5m",
-      generated_at: "2026-07-20T12:00:00Z",
-      data_as_of: "2026-07-20T11:55:00Z",
-      code_version: "abc123",
-      warnings: [],
-    },
-    data: {
-      schema_version: "1.0",
-      symbol: "MNQU6",
-      timeframe: "5m",
-      occurred_at: "2026-07-20T11:55:00Z",
-      setups: [],
-    },
-  };
-}
+describe("unified TraderNow Market View", () => {
+  afterEach(() => vi.restoreAllMocks());
 
-function ruleEngineBody() {
-  return {
-    ok: true,
-    found: true,
-    data: {
-      schema_version: "1.0",
-      symbol: "MNQU6",
-      timeframe: "5m",
-      occurred_at: "2026-07-20T11:55:00Z",
-      facts: [],
-    },
-  };
-}
-
-describe("MarketViewPage", () => {
-  const originalFetch = global.fetch;
-  afterEach(() => {
-    global.fetch = originalFetch;
-    vi.restoreAllMocks();
+  it("renders every authority section and keeps candidate non-recommendational", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(new Response(JSON.stringify(traderNowFixture()), { status: 200 }));
+    renderPage();
+    await screen.findByRole("heading", { name: "Market" });
+    for (const heading of ["Market", "Trust and availability", "Facts", "Setups", "Context",
+      "Interpretation", "Strategy", "Risk", "Decision"]) {
+      expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
+    }
+    const strategy = screen.getByRole("heading", { name: "Strategy" }).closest("section")!;
+    expect(within(strategy).getAllByText("candidate").length).toBeGreaterThan(0);
+    expect(within(strategy).getByText(/never an entry recommendation/i)).toBeInTheDocument();
+    expect(screen.queryByText("ENTRY CONDITIONS MET")).not.toBeInTheDocument();
   });
 
-  it("renders both panels and a LIVE freshness badge sourced from setup-engine's envelope", async () => {
-    let setupEngineCalls = 0;
-    global.fetch = vi.fn(async (url: string | URL) => {
-      const u = String(url);
-      if (u.includes("setup-engine/latest")) {
-        setupEngineCalls += 1;
-        return new Response(JSON.stringify(setupEngineBody()), { status: 200 });
-      }
-      if (u.includes("rule-engine/latest")) {
-        return new Response(JSON.stringify(ruleEngineBody()), { status: 200 });
-      }
-      throw new Error(`unexpected URL ${u}`);
-    }) as unknown as typeof fetch;
-
+  it("shows absent Risk honestly and preserves decision.not_implemented", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(new Response(JSON.stringify(traderNowFixture()), { status: 200 }));
     renderPage();
+    expect(await screen.findByText(/Risk was not supplied/)).toBeInTheDocument();
+    expect(screen.getByText(/No risk state has been inferred/)).toBeInTheDocument();
+    expect(screen.getByText(/Decision Engine not implemented/)).toBeInTheDocument();
+    expect(screen.getByText(/No Decision Engine state exists/)).toBeInTheDocument();
+  });
 
-    await waitFor(() => expect(screen.getByText("Rule Engine Facts")).toBeInTheDocument());
-    expect(screen.getByText("Setup Engine")).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByText(/LIVE/)).toBeInTheDocument());
+  it("renders stale and partially unavailable sections without substitution", async () => {
+    const body = traderNowFixture({
+      source_trust: { ...traderNowFixture().source_trust!, freshness: {
+        ...traderNowFixture().source_trust!.freshness, status: "stale", lateness_seconds: 600,
+      } },
+      context: { availability: { status: "unavailable", reason_codes: ["context_unavailable"] }, data: null },
+      interpretations: { availability: { status: "unavailable", reason_codes: [] }, interpretations: [] },
+      strategy: { availability: { status: "unavailable", reason_codes: [] }, decisions: [] },
+    });
+    vi.spyOn(global, "fetch").mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
+    renderPage();
+    expect(await screen.findByText(/Market data is stale/)).toBeInTheDocument();
+    expect(screen.getByText("Market Context is unavailable.")).toBeInTheDocument();
+    expect(screen.getByText("No Strategy decision is available.")).toBeInTheDocument();
+  });
 
-    // The page's own useQuery and SetupEngineViewer's internal useQuery share
-    // the exact same query key - react-query must dedupe them into one
-    // network request, not two (architecture §9's shared-fetch discipline,
-    // applied here one page early).
-    await waitFor(() => expect(setupEngineCalls).toBe(1));
+  it.each([
+    [401, "TraderNow authentication failed"],
+    [502, "TraderNow is currently unavailable"],
+  ])("renders sanitized HTTP %s state", async (status, message) => {
+    vi.spyOn(global, "fetch").mockResolvedValue(new Response(JSON.stringify({ ok: false, error: "safe" }), { status }));
+    renderPage();
+    expect(await screen.findByText(new RegExp(message))).toBeInTheDocument();
+  });
+
+  it("fails closed on malformed success", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue(new Response(JSON.stringify({ schema_version: "trader_now_response.v2" }), { status: 200 }));
+    renderPage();
+    expect(await screen.findByText(/malformed response/)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Strategy" })).not.toBeInTheDocument();
+  });
+
+  it("renders a loading state", () => {
+    vi.spyOn(global, "fetch").mockReturnValue(new Promise(() => {}));
+    renderPage();
+    expect(screen.getByRole("status")).toHaveTextContent("Loading live TraderNow analysis");
   });
 });

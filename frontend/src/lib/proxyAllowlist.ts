@@ -49,6 +49,7 @@ export interface ProxyRouteConfig {
 export type ProxyMethod = "GET" | "POST";
 
 export const ALLOWED_PROXY_ROUTES: Readonly<Record<string, ProxyRouteConfig>> = {
+  "trader-now": { GET: { params: ["symbol", "timeframe", "strategy_id"] } },
   "rule-engine/latest": { GET: { params: ["symbol", "timeframe"] } },
   "setup-engine/latest": { GET: { params: ["symbol", "timeframe"] } },
   "setup-engine/episodes/live": { GET: { params: ["symbol", "timeframe", "window"] } },

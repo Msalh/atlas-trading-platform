@@ -183,7 +183,7 @@ describe("fetchTradeDetail", () => {
 
   it("propagates a non-404 error (e.g. 401) rather than returning null", async () => {
     mockFetchOnce({ ok: false, error: "missing or invalid API key" }, 401);
-    await expect(fetchTradeDetail("abc123")).rejects.toMatchObject({ kind: "upstream_error" });
+    await expect(fetchTradeDetail("abc123")).rejects.toMatchObject({ kind: "unauthorized" });
   });
 
   it("throws network_error when fetch itself throws", async () => {

@@ -92,6 +92,28 @@ describe("GET /api/proxy/[...path]", () => {
     expect(capturedUrl).not.toContain("drop-me");
   });
 
+  it("forwards only the approved TraderNow identity and uses server authentication", async () => {
+    let capturedUrl = "";
+    let capturedHeaders: Headers | undefined;
+    global.fetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      capturedUrl = String(url);
+      capturedHeaders = new Headers(init?.headers);
+      return new Response(JSON.stringify({ schema_version: "trader_now_response.v2" }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const res = await GET(
+      makeRequest("trader-now", "symbol=MNQ&timeframe=5m&strategy_id=displacement_volume_context&token=drop"),
+      ctx("trader-now"),
+    );
+
+    expect(res.status).toBe(200);
+    expect(capturedUrl).toBe(
+      "http://localhost:8000/api/v1/trader-now?symbol=MNQ&timeframe=5m&strategy_id=displacement_volume_context",
+    );
+    expect(capturedHeaders?.get("Authorization")).toBe("Bearer the-real-secret-key");
+    expect(capturedUrl).not.toContain("token");
+  });
+
   it("never forwards a browser-supplied Authorization header", async () => {
     let capturedHeaders: Headers | undefined;
     global.fetch = vi.fn(async (_url, init?: RequestInit) => {

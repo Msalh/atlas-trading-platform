@@ -19,6 +19,8 @@
 export type ApiFetchErrorKind =
   | "not_found"
   | "invalid_request"
+  | "unauthorized"
+  | "forbidden"
   | "upstream_error"
   | "network_error"
   | "invalid_response";
@@ -54,6 +56,8 @@ async function parseAndValidate<T>(res: Response, isValid: (body: unknown) => bo
   if (!res.ok) {
     const message = isErrorBody(body) ? body.error : `Unexpected response: HTTP ${res.status}`;
     if (res.status === 404) throw new ApiFetchError("not_found", message);
+    if (res.status === 401) throw new ApiFetchError("unauthorized", "Authentication is required.");
+    if (res.status === 403) throw new ApiFetchError("forbidden", "Access is not permitted.");
     if (res.status === 422) throw new ApiFetchError("invalid_request", message);
     throw new ApiFetchError("upstream_error", message);
   }
