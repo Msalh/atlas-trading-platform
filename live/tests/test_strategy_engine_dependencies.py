@@ -48,6 +48,7 @@ _STRATEGY_ENGINE_DIR = _ATLAS_ROOT / "strategy_engine"
 _TRADER_NOW_DIR = _ATLAS_ROOT / "trader_now"
 _RISK_ASSESSMENT_DIR = _ATLAS_ROOT / "risk_assessment"
 _TRADE_RISK_AUTHORITY_DIR = _ATLAS_ROOT / "trade_risk_authority"
+_TRADE_PLAN_DIR = _ATLAS_ROOT / "trade_plan"
 
 _ACTUAL_ALLOWED: dict[str, frozenset[str]] = {
     "__init__.py": frozenset(),
@@ -167,6 +168,7 @@ def test_only_approved_domains_import_strategy_engine_downstream():
                 _TRADER_NOW_DIR,
                 _RISK_ASSESSMENT_DIR,
                 _TRADE_RISK_AUTHORITY_DIR,
+                _TRADE_PLAN_DIR,
             )
         ):
             continue

@@ -1,0 +1,43 @@
+{
+  "schema_version": "product_p2b_fixtures.v1",
+  "fixture_scope": "authoritative_test_only",
+  "runtime_default": false,
+  "identity": {
+    "economic_product": "MNQ",
+    "analysis_series": "tradingview:MNQ1!",
+    "listed_contract": "TEST-MNQU6"
+  },
+  "instrument_specification": {
+    "specification_id": "test-only-mnq-specification",
+    "tick_size": "0.25",
+    "session_calendar_id": "test-only-calendar"
+  },
+  "policy": {
+    "policy_id": "test-only-trade-plan-policy",
+    "reward_multiple": "1.9",
+    "maximum_entry_bars": 2
+  },
+  "candidate_bar": {
+    "open": "20000.00",
+    "high": "20001.25",
+    "low": "19999.00",
+    "close": "20000.50"
+  },
+  "expected_long": {
+    "entry": "20001.50",
+    "invalidation": "19999.00",
+    "stop": "19998.75",
+    "target": "20006.50"
+  },
+  "expected_short": {
+    "entry": "19998.75",
+    "invalidation": "20001.25",
+    "stop": "20001.50",
+    "target": "19993.75"
+  },
+  "golden_serialization": {
+    "long_plan_id": "13f972254fb01018748b300ba8c38568bf7f99cf6396c2843d9a27a7c3f16dd7",
+    "long_result_sha256": "1d02de022cf2cf6578e95d9edf9f4e9d1aa31c43b775c0e2c712452ac1bbd3cd",
+    "long_result_byte_length": 3931
+  }
+}

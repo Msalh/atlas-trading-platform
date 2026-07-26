@@ -1,0 +1,25 @@
+{
+  "schema_version": "product_p2b_vectors.v1",
+  "golden": [
+    "mirrored_long",
+    "mirrored_short",
+    "bar_count_expiry",
+    "session_boundary_expiry"
+  ],
+  "negative": [
+    "missing_listed_contract",
+    "continuous_series_as_listed",
+    "missing_specification",
+    "conflicting_specification",
+    "context_unavailable",
+    "stale_evidence",
+    "candidate_source_mismatch"
+  ],
+  "adversarial": [
+    "strategy_geometry_conflict",
+    "rounding_collapse",
+    "no_partial_output",
+    "policy_identity_change",
+    "source_event_identity_change"
+  ]
+}
