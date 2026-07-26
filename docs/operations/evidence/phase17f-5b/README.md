@@ -30,3 +30,10 @@ certification remains BLOCKED BY ENVIRONMENT. No record in this directory may
 claim certified backup, restore, disaster recovery, database rollback, final
 public TCP proxy disposition, full platform production readiness, or
 real-money-trading authorization.
+
+## Records
+
+- `local-preflight-2026-07-26.md` — frozen-revision local quality and contract
+  preflight.
+- `operator-ui-certification-2026-07-26.md` — bounded production UI exercise,
+  mandatory rollback evidence, and the residual verification gap.
