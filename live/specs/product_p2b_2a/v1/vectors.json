@@ -1,0 +1,33 @@
+{
+  "schema_version": "product_p2b_2a_vectors.v1",
+  "golden": [
+    "available_listed_contract",
+    "available_instrument_specification",
+    "available_exchange_session",
+    "available_trade_plan_policy",
+    "canonical_288_market_evidence",
+    "effective_start_inclusive",
+    "effective_end_exclusive",
+    "deterministic_resolution_identity"
+  ],
+  "negative": [
+    "missing_authority",
+    "stale_authority",
+    "future_dated_authority",
+    "unreconciled_authority",
+    "continuous_series_as_listed_contract",
+    "instrument_identity_mismatch",
+    "noncanonical_market_count",
+    "context_insufficient_history"
+  ],
+  "adversarial": [
+    "overlapping_authority_records",
+    "conflicting_provider_values",
+    "duplicate_source_event_identity",
+    "non_monotonic_source_events",
+    "source_event_envelope_mismatch",
+    "resolution_identity_tampering",
+    "unknown_effective_interval_used_as_available",
+    "partial_geometry_prohibited"
+  ]
+}

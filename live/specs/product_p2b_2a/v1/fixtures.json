@@ -1,0 +1,42 @@
+{
+  "schema_version": "product_p2b_2a_fixtures.v1",
+  "fixture_scope": "authoritative_test_only",
+  "runtime_default": false,
+  "evaluation_time": "2026-07-27T05:40:30.000000Z",
+  "identity": {
+    "economic_product": "MNQ",
+    "analysis_provider": "tradingview",
+    "analysis_series": "MNQ1!",
+    "analysis_series_type": "continuous",
+    "listed_contract": "TEST-MNQU6",
+    "venue": "TEST-CME"
+  },
+  "authority_source": {
+    "provider_id": "test-only-reference-authority",
+    "provider_version": "test-provider.v1",
+    "source_id": "test-only-source-record",
+    "source_version": "test-source.v7",
+    "observed_at": "2026-07-27T05:39:00.000000Z",
+    "retrieved_at": "2026-07-27T05:40:00.000000Z",
+    "reconciled": true
+  },
+  "effective_interval": {
+    "starts_at": "2026-06-19T00:00:00.000000Z",
+    "ends_at": "2026-09-18T00:00:00.000000Z"
+  },
+  "exchange_session": {
+    "calendar_id": "test-only-cme-calendar",
+    "calendar_version": "test-calendar.v1",
+    "session_id": "test-session-2026-07-27",
+    "session_opens_at": "2026-07-26T22:00:00.000000Z",
+    "session_ends_at": "2026-07-27T21:00:00.000000Z",
+    "eligible_entry_bar_closes": [
+      "2026-07-27T05:45:00.000000Z",
+      "2026-07-27T05:50:00.000000Z"
+    ]
+  },
+  "golden_serialization": {
+    "listed_resolution_id": "1428d9d9d65a7905f22c942f72bff9f83497b890c7d3a8146c2159845b9d4bd4",
+    "listed_resolution_sha256": "9f665cf24c0c6af8141a252754f049c69d957190f1c5a4f9f06f26358e6ca289"
+  }
+}
