@@ -5,7 +5,14 @@ from dataclasses import replace
 from datetime import datetime, timezone
 
 import pytest
-from atlas.api.deps import get_trader_now_application
+from fastapi.testclient import TestClient
+
+from atlas.api.deps import (
+    get_market_state_repository,
+    get_repository,
+    get_trader_now_application,
+)
+from atlas.api.security import require_trader_now_results_api_key
 from atlas.api_models.trader_now import (
     AvailabilityResponse,
     StrategyDecisionResponse,
@@ -19,11 +26,11 @@ from atlas.main import app
 from atlas.market_engine.models import BarStatus, MarketState
 from atlas.shadow_results import ProcessTelemetry
 from atlas.shadow_results.service import build_shadow_results
-from fastapi.testclient import TestClient
-
 from tests.test_trader_now_response import legacy_trader_now
 
 PATH = "/api/v1/trader-now/results"
+DEDICATED_KEY = "synthetic-results-only-key"
+BROADER_API_KEY = "synthetic-broader-api-key"
 
 
 class FakeApplication:
@@ -45,10 +52,32 @@ def results_client(client, monkeypatch):
         reset_at=datetime(2026, 7, 27, 12, 0, tzinfo=timezone.utc)
     )
     app.dependency_overrides[get_trader_now_application] = lambda: fake
+    app.dependency_overrides[require_trader_now_results_api_key] = lambda: None
     try:
         yield client, fake
     finally:
         app.dependency_overrides.pop(get_trader_now_application, None)
+        app.dependency_overrides.pop(require_trader_now_results_api_key, None)
+
+
+@pytest.fixture
+def authenticated_results_client(monkeypatch, repository, market_state_repository):
+    fake = FakeApplication()
+    monkeypatch.setattr(settings, "api_key", BROADER_API_KEY)
+    monkeypatch.setattr(settings, "trader_now_results_api_key", DEDICATED_KEY)
+    monkeypatch.setattr(settings, "trader_now_product", "MNQ")
+    monkeypatch.setattr(settings, "trader_now_market_data_series_symbol", "MNQ1!")
+    monkeypatch.setattr(settings, "pickmytrade_webhook_url", "")
+    app.state.shadow_results_telemetry = ProcessTelemetry()
+    app.dependency_overrides[get_repository] = lambda: repository
+    app.dependency_overrides[get_market_state_repository] = lambda: (
+        market_state_repository
+    )
+    app.dependency_overrides[get_trader_now_application] = lambda: fake
+    try:
+        yield TestClient(app), fake
+    finally:
+        app.dependency_overrides.clear()
 
 
 def _market_state() -> MarketState:
@@ -313,6 +342,80 @@ def test_endpoint_requires_server_side_bearer_auth(
     assert response.status_code == 401
     assert "server-only-secret" not in response.text
     assert fake.calls == []
+
+
+def test_missing_dedicated_environment_variable_fails_closed(
+    authenticated_results_client, monkeypatch
+):
+    monkeypatch.setattr(settings, "trader_now_results_api_key", "")
+
+    response = authenticated_results_client[0].get(
+        PATH, headers={"Authorization": f"Bearer {DEDICATED_KEY}"}
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "missing or invalid API key"}
+    assert authenticated_results_client[1].calls == []
+
+
+def test_missing_authorization_fails_closed(authenticated_results_client):
+    response = authenticated_results_client[0].get(PATH)
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "missing or invalid API key"}
+    assert authenticated_results_client[1].calls == []
+
+
+def test_invalid_dedicated_credential_fails_closed(authenticated_results_client):
+    response = authenticated_results_client[0].get(
+        PATH, headers={"Authorization": "Bearer synthetic-invalid-key"}
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "missing or invalid API key"}
+    assert authenticated_results_client[1].calls == []
+
+
+def test_valid_dedicated_credential_is_accepted(authenticated_results_client):
+    response = authenticated_results_client[0].get(
+        PATH, headers={"Authorization": f"Bearer {DEDICATED_KEY}"}
+    )
+
+    assert response.status_code == 200
+    assert authenticated_results_client[1].calls
+
+
+def test_broader_api_key_cannot_access_results(authenticated_results_client):
+    response = authenticated_results_client[0].get(
+        PATH, headers={"Authorization": f"Bearer {BROADER_API_KEY}"}
+    )
+
+    assert response.status_code == 401
+    assert authenticated_results_client[1].calls == []
+
+
+def test_other_protected_routes_still_use_broader_api_key(authenticated_results_client):
+    response = authenticated_results_client[0].get(
+        "/api/v1/trades",
+        headers={"Authorization": f"Bearer {BROADER_API_KEY}"},
+    )
+
+    assert response.status_code == 200
+
+
+def test_auth_failure_does_not_leak_credentials(authenticated_results_client, caplog):
+    presented = "synthetic-presented-secret"
+    response = authenticated_results_client[0].get(
+        PATH, headers={"Authorization": f"Bearer {presented}"}
+    )
+
+    assert response.status_code == 401
+    assert presented not in response.text
+    assert DEDICATED_KEY not in response.text
+    assert BROADER_API_KEY not in response.text
+    assert presented not in caplog.text
+    assert DEDICATED_KEY not in caplog.text
+    assert BROADER_API_KEY not in caplog.text
 
 
 def test_openapi_exposes_only_the_shadow_results_contract():

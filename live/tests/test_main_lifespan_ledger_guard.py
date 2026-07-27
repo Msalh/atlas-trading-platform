@@ -72,6 +72,9 @@ async def test_required_2_production_without_research_ledger_dir_starts_but_degr
     monkeypatch.setattr(main_module.settings, "research_ledger_dir", "")
     monkeypatch.setattr(main_module.settings, "webhook_secret", "wh")
     monkeypatch.setattr(main_module.settings, "api_key", "key")
+    monkeypatch.setattr(
+        main_module.settings, "trader_now_results_api_key", "results-key"
+    )
     monkeypatch.setattr(main_module.settings, "market_state_webhook_secret", "ms")
     monkeypatch.setattr(main_module, "create_pool", _fake_create_pool)
 
@@ -98,6 +101,9 @@ async def test_required_6_no_implicit_write_under_data_research_in_production(
     monkeypatch.setattr(main_module.settings, "research_ledger_dir", "")
     monkeypatch.setattr(main_module.settings, "webhook_secret", "wh")
     monkeypatch.setattr(main_module.settings, "api_key", "key")
+    monkeypatch.setattr(
+        main_module.settings, "trader_now_results_api_key", "results-key"
+    )
     monkeypatch.setattr(main_module.settings, "market_state_webhook_secret", "ms")
     monkeypatch.setattr(main_module, "create_pool", _fake_create_pool)
 
@@ -118,6 +124,9 @@ async def test_required_4_trading_and_status_routes_stay_available_when_ledger_d
     monkeypatch.setattr(main_module.settings, "research_ledger_dir", "")
     monkeypatch.setattr(main_module.settings, "webhook_secret", "wh")
     monkeypatch.setattr(main_module.settings, "api_key", "test-api-key")
+    monkeypatch.setattr(
+        main_module.settings, "trader_now_results_api_key", "results-key"
+    )
     monkeypatch.setattr(main_module.settings, "market_state_webhook_secret", "ms")
     monkeypatch.setattr(main_module, "create_pool", _fake_create_pool)
 
@@ -160,6 +169,9 @@ async def test_required_3_research_run_rejects_with_503_when_ledger_not_configur
     monkeypatch.setattr(main_module.settings, "research_ledger_dir", "")
     monkeypatch.setattr(main_module.settings, "webhook_secret", "wh")
     monkeypatch.setattr(main_module.settings, "api_key", "test-api-key")
+    monkeypatch.setattr(
+        main_module.settings, "trader_now_results_api_key", "results-key"
+    )
     monkeypatch.setattr(main_module.settings, "market_state_webhook_secret", "ms")
     monkeypatch.setattr(main_module, "create_pool", _fake_create_pool)
 
@@ -186,6 +198,9 @@ async def test_required_5_production_with_explicit_writable_dir_stays_ready_and_
     )
     monkeypatch.setattr(main_module.settings, "webhook_secret", "wh")
     monkeypatch.setattr(main_module.settings, "api_key", "test-api-key")
+    monkeypatch.setattr(
+        main_module.settings, "trader_now_results_api_key", "results-key"
+    )
     monkeypatch.setattr(main_module.settings, "market_state_webhook_secret", "ms")
     monkeypatch.setattr(main_module, "create_pool", _fake_create_pool)
 

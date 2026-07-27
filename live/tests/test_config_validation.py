@@ -19,6 +19,7 @@ from atlas.config import Settings
 BASE_ENV = {
     "WEBHOOK_SECRET": "wh-secret",
     "API_KEY": "api-key",
+    "TRADER_NOW_RESULTS_API_KEY": "results-api-key",
     "MARKET_STATE_WEBHOOK_SECRET": "ms-secret",
     "ENVIRONMENT": "production",
     "RISK_ENFORCEMENT": "false",
@@ -60,6 +61,14 @@ def test_refuses_to_start_without_api_key_in_production(monkeypatch):
         s.validate_for_startup()
 
 
+def test_refuses_to_start_without_trader_now_results_api_key_in_production(
+    monkeypatch,
+):
+    s = _settings(monkeypatch, TRADER_NOW_RESULTS_API_KEY="")
+    with pytest.raises(RuntimeError, match="TRADER_NOW_RESULTS_API_KEY"):
+        s.validate_for_startup()
+
+
 def test_refuses_to_start_without_either_secret_lists_both(monkeypatch):
     s = _settings(monkeypatch, WEBHOOK_SECRET="", API_KEY="")
     with pytest.raises(
@@ -85,6 +94,7 @@ def test_development_mode_tolerates_missing_secrets(monkeypatch):
         ENVIRONMENT="development",
         WEBHOOK_SECRET="",
         API_KEY="",
+        TRADER_NOW_RESULTS_API_KEY="",
         MARKET_STATE_WEBHOOK_SECRET="",
     )
     s.validate_for_startup()  # must not raise

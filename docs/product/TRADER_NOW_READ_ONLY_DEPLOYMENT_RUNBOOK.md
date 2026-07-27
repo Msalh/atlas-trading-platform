@@ -31,6 +31,26 @@ Set all of the following explicitly:
 No webhook, broker, Anthropic, research-ledger, account, or execution credential is
 required by this service.
 
+The monolithic Atlas service separately exposes
+`GET /api/v1/trader-now/results`. That route does not use this read-only service's
+`API_KEY` and does not fall back to the monolithic service's broader `API_KEY`.
+Configure an independent, server-only `TRADER_NOW_RESULTS_API_KEY` on the monolithic
+Atlas service and on its authorized server-side consumer. Never place it in browser
+code, a `NEXT_PUBLIC_*` variable, a URL, logs, evidence, or committed files.
+
+Roll out that credential in this order:
+
+1. Configure `TRADER_NOW_RESULTS_API_KEY` on the Atlas backend before deploying the
+   code that requires it.
+2. Deploy the backend and verify missing, invalid, and broader `API_KEY` credentials
+   receive `401`.
+3. Configure the same credential through the consumer's server-only secret interface.
+4. Deploy the consumer and verify the endpoint succeeds without exposing credentials
+   to the browser.
+
+Rollback the application revision and its configuration as one unit. Keep the
+broader `API_KEY` unchanged; never make it a fallback for the results route.
+
 ## PostgreSQL role
 
 Create the role through the approved database-administration workflow. Replace every

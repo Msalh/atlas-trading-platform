@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 
 from atlas.api.deps import get_market_state_repository, get_repository
+from atlas.api.security import require_trader_now_results_api_key
 from atlas.api.trader_now_deps import get_trader_now_application
 from atlas.api_models.shadow_results import ShadowResultsResponse
 from atlas.api_models.trader_now import project_trader_now_response
@@ -24,6 +25,7 @@ TIMEFRAME = "5m"
 @router.get("/trader-now/results", response_model=ShadowResultsResponse)
 async def read_shadow_results(
     request: Request,
+    _authentication: None = Depends(require_trader_now_results_api_key),
     repository: TradeRepository = Depends(get_repository),  # noqa: B008
     market_repository: MarketStateRepository = Depends(  # noqa: B008
         get_market_state_repository

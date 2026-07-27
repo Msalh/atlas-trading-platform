@@ -343,7 +343,6 @@ app.include_router(
     shadow_results.router,
     prefix="/api/v1",
     tags=["v1"],
-    dependencies=[Depends(require_api_key)],
 )
 app.include_router(
     trades.router,

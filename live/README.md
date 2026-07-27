@@ -114,22 +114,24 @@ See [`.env.example`](.env.example) for the full list with explanations. The requ
 - `ANTHROPIC_API_KEY` - from https://console.anthropic.com/settings/keys
 - `WEBHOOK_SECRET` - a password you make up; must match the Pine script's `webhookSecret` input.
   As of Sprint 9, the app refuses to start in production (the default) without this set.
-- `API_KEY` - a second, separate shared secret (Sprint 9) required on every non-webhook,
-  non-health endpoint (`Authorization: Bearer <API_KEY>`, or `?api_key=` for `/api/v1/stream`
-  specifically - browsers' EventSource can't set custom headers). Also required to start in
-  production.
+- `API_KEY` - a second, separate shared secret (Sprint 9) required on protected
+  endpoints other than `GET /api/v1/trader-now/results`. Supply it only as
+  `Authorization: Bearer <API_KEY>`. Also required to start in production.
+- `TRADER_NOW_RESULTS_API_KEY` - an independent server-only Bearer credential used
+  exclusively by `GET /api/v1/trader-now/results`. It never falls back to `API_KEY`
+  and is required to start in production.
 - `PICKMYTRADE_WEBHOOK_URL` - if unset, entries are still stored/analyzed, just not forwarded.
 - `RISK_ENFORCEMENT` (Sprint 9) - `true`/`false`, default `false`. When `true`, requires all
   four `ACCOUNT_*` variables also be set (see below) or the app refuses to start.
-- `ENVIRONMENT` - `production` (default) or `development`. Only `development` tolerates a
-  missing `WEBHOOK_SECRET`/`API_KEY`, for local testing only.
+- `ENVIRONMENT` - `production` (default) or `development`. Only `development`
+  tolerates a missing required credential, for local testing only.
 
 ## Deploy (Railway)
 See [`../docs/sprint1/deployment-checklist.md`](../docs/sprint1/deployment-checklist.md) for the
 original ordered cutover checklist (provision Postgres, migrate data, verify, then deploy), and
 [`../docs/sprint9/deployment-checklist.md`](../docs/sprint9/deployment-checklist.md) for what
 changed since (auth, rate limiting, kill switch enforcement). The short version once Postgres
-is provisioned and `DATABASE_URL`/`WEBHOOK_SECRET`/`API_KEY` are set: Railway detects
+is provisioned and all required credentials are set: Railway detects
 `Procfile` and runs `uvicorn atlas.main:app --host 0.0.0.0 --port $PORT` automatically.
 
 ## Point TradingView at it
@@ -148,14 +150,16 @@ unless `TEST_DATABASE_URL` is set; see the deployment checklist for how to run t
 cutover.
 
 ## Notes / limitations
-- As of Sprint 9, every endpoint except `/webhook` (its own shared-secret scheme) and
-  `/health` (deliberately public) requires the `API_KEY` bearer token - see
+- Protected endpoints use the shared `API_KEY` bearer token except
+  `GET /api/v1/trader-now/results`, which uses only
+  `TRADER_NOW_RESULTS_API_KEY`. `/webhook` retains its own shared-secret scheme and
+  `/health` remains deliberately public. See
   `../docs/sprint9/security-notes.md` for the full design and its remaining residual risks
   (this is a single shared key for a single-user tool, not per-user auth).
 - Real-time updates are push (SSE, `/api/v1/stream`) with polling kept as a safety net, not
   the primary path - see `../docs/sprint3/architecture-decisions.md`. `/api/v1/stream`
-  requires `API_KEY` like everything else, passed as `?api_key=` since browsers' EventSource
-  can't set custom headers - and still has no replay/delivery guarantee by design (see
+  requires `API_KEY` in the `Authorization` header through its server-side proxy and
+  still has no replay/delivery guarantee by design (see
   `../docs/sprint3/api-contracts-addendum.md`).
 - EventBus/SystemStatus/SSE all assume a single backend process (documented in
   `atlas/events/bus.py`) - a real horizontal-scaling constraint, not addressed this sprint.

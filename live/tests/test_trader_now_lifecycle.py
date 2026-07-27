@@ -49,6 +49,7 @@ def configure(monkeypatch, *, environment="development"):
         "research_ledger_dir": "",
         "webhook_secret": "webhook-secret",
         "api_key": "api-secret",
+        "trader_now_results_api_key": "results-api-secret",
         "market_state_webhook_secret": "market-secret",
         "trader_now_product": "MNQ",
         "trader_now_market_data_provider": "tradingview",

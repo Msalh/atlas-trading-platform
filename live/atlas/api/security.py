@@ -10,6 +10,7 @@ Applied at router-registration time in atlas/main.py via
 one central list of which routers are protected, instead of relying on every route
 function remembering to declare it individually.
 """
+
 import hmac
 from typing import Optional
 
@@ -28,9 +29,25 @@ def _extract_bearer(authorization: Optional[str]) -> Optional[str]:
 
 
 def _check(token: Optional[str]) -> None:
-    if not token or not settings.api_key or not hmac.compare_digest(token, settings.api_key):
+    if (
+        not token
+        or not settings.api_key
+        or not hmac.compare_digest(token, settings.api_key)
+    ):
         raise HTTPException(status_code=401, detail="missing or invalid API key")
 
 
-def require_api_key(request: Request, authorization: Optional[str] = Header(default=None)) -> None:
+def require_api_key(
+    request: Request, authorization: Optional[str] = Header(default=None)
+) -> None:
     _check(_extract_bearer(authorization))
+
+
+def require_trader_now_results_api_key(
+    request: Request, authorization: Optional[str] = Header(default=None)
+) -> None:
+    """Authenticate the public Shadow Results contract with its dedicated key."""
+    token = _extract_bearer(authorization)
+    expected = settings.trader_now_results_api_key
+    if not token or not expected or not hmac.compare_digest(token, expected):
+        raise HTTPException(status_code=401, detail="missing or invalid API key")

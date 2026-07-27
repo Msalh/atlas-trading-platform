@@ -38,6 +38,12 @@ class Settings:
         # (see atlas/api/security.py). Single shared secret, not per-user - this
         # remains a single-user tool, not a multi-tenant system.
         self.api_key = os.environ.get("API_KEY", "")
+        # Dedicated server-to-server credential for the public, read-only
+        # Shadow Results contract. It is deliberately not derived from or
+        # defaulted to API_KEY.
+        self.trader_now_results_api_key = os.environ.get(
+            "TRADER_NOW_RESULTS_API_KEY", ""
+        )
         # Sprint 9: display-only by default (Sprint 4's original scope). Only when
         # this is explicitly "true" does a breached kill switch actually block new
         # PickMyTrade forwards - see atlas/api/v1/webhook.py's risk-enforcement gate.
@@ -227,6 +233,8 @@ class Settings:
             missing.append("WEBHOOK_SECRET")
         if not self.api_key:
             missing.append("API_KEY")
+        if not self.trader_now_results_api_key:
+            missing.append("TRADER_NOW_RESULTS_API_KEY")
         if not self.market_state_webhook_secret:
             missing.append("MARKET_STATE_WEBHOOK_SECRET")
         if missing:
