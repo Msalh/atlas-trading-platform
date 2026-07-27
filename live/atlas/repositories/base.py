@@ -20,6 +20,15 @@ class ClaimResult:
     duplicate: bool  # True if this correlation_id was already forwarded previously - `forward` was never called
 
 
+@dataclass(frozen=True)
+class ShadowResultCounts:
+    """Exact persisted counts used by the allowlisted Shadow results projection."""
+
+    strategy_signals: int
+    ai_notes: int
+    historically_pickmytrade_forwarded: int
+
+
 class TradeRepository(Protocol):
     async def claim_and_forward(
         self, correlation_id: str, entry: dict[str, Any], raw_body: str, forward: ForwardFn,
@@ -103,6 +112,10 @@ class TradeRepository(Protocol):
     async def list_recent(self, limit: int = 100, status: Optional[str] = None) -> list[dict[str, Any]]:
         """Most recent trades first. `status`, if given, filters to exactly that
         lifecycle status ('open' / 'won' / 'lost')."""
+        ...
+
+    async def shadow_result_counts(self) -> ShadowResultCounts:
+        """Return exact database-backed counts without loading sensitive rows."""
         ...
 
     async def get_open_trade(self) -> Optional[dict[str, Any]]:

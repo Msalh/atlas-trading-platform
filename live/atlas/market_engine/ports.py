@@ -56,6 +56,10 @@ class MarketStateRepository(Protocol):
         envelope.occurred_at, most recent first."""
         ...
 
+    async def count(self, symbol: Symbol, timeframe: Timeframe) -> int:
+        """Exact stored event count for one canonical identity."""
+        ...
+
     async def get_range(
         self, symbol: Symbol, timeframe: Timeframe, start: datetime, end: datetime, limit: int = 10000
     ) -> list[MarketState]:

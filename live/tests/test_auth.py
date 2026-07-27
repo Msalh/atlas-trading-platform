@@ -83,6 +83,7 @@ def raw_client(
         # scheme - see atlas/main.py's registration comment).
         "/api/v1/rule-engine/latest?symbol=MNQU6&timeframe=5m",
         "/api/v1/trader-now?symbol=MNQ&timeframe=5m&strategy_id=displacement_volume_context",
+        "/api/v1/trader-now/results",
         # UI v2 (research.py) - same shared API key, applied at
         # router-registration time.
         "/api/v1/research/re1/summary",

@@ -229,6 +229,20 @@ class PostgresMarketStateRepository:
                 rows = await cur.fetchall()
         return [_row_to_state(row) for row in rows]
 
+    async def count(self, symbol: Symbol, timeframe: Timeframe) -> int:
+        async with self._pool.connection() as conn:
+            cur = await conn.execute(
+                """
+                SELECT COUNT(*) FROM market_state_events
+                WHERE symbol = %s AND timeframe = %s
+                """,
+                (symbol.ticker, timeframe.value),
+            )
+            row = await cur.fetchone()
+        if row is None:
+            raise RuntimeError("market-state count query returned no row")
+        return int(row[0])
+
     async def get_range(
         self, symbol: Symbol, timeframe: Timeframe, start: datetime, end: datetime, limit: int = 10000
     ) -> list[MarketState]:

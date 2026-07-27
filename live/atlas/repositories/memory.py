@@ -11,7 +11,7 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Any
 
-from atlas.repositories.base import ClaimResult
+from atlas.repositories.base import ClaimResult, ShadowResultCounts
 
 ENTRY_FIELDS = [
     "signal_time", "direction", "setup_tag", "symbol",
@@ -130,6 +130,15 @@ class InMemoryTradeRepository:
         if status:
             rows = [r for r in rows if r["status"] == status]
         return rows[:limit]
+
+    async def shadow_result_counts(self) -> ShadowResultCounts:
+        return ShadowResultCounts(
+            strategy_signals=len(self._trades),
+            ai_notes=len(self._ai_notes),
+            historically_pickmytrade_forwarded=sum(
+                1 for row in self._trades.values() if row["pmt_forwarded"]
+            ),
+        )
 
     async def get_open_trade(self) -> dict[str, Any] | None:
         open_trades = await self.list_recent(limit=1, status="open")

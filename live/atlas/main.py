@@ -66,6 +66,7 @@ from atlas.api.v1 import (
     research_pipeline,
     risk,
     rule_engine,
+    shadow_results,
     setup_engine,
     status,
     stats,
@@ -96,6 +97,7 @@ from atlas.research_export.startup_check import (
     check_snapshots,
     internal_error_readiness,
 )
+from atlas.shadow_results import ProcessTelemetry
 from atlas.status import SystemStatus
 
 configure_logging()
@@ -137,6 +139,9 @@ async def lifespan(app: FastAPI):
         else None
     )
     app.state.started_at = datetime.now(timezone.utc)
+    app.state.shadow_results_telemetry = ProcessTelemetry(
+        reset_at=app.state.started_at
+    )
     # Production-hardening amendment 3: computed once here, never per-request -
     # does not raise on a missing/invalid snapshot (LIVE endpoints have no
     # dependency on these files), only records the degraded state for
@@ -262,6 +267,7 @@ _docs_kwargs = (
     else {"docs_url": None, "redoc_url": None, "openapi_url": None}
 )
 app = FastAPI(title="Atlas AI Trading Platform", lifespan=lifespan, **_docs_kwargs)
+app.state.shadow_results_telemetry = ProcessTelemetry()
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -274,7 +280,13 @@ async def _security_headers(request: Request, call_next):
     (the HTML dashboard was removed this sprint - see docs/sprint9/architecture-
     decisions.md), so a strict CSP is safe here: there is no first-party HTML/script
     for a policy to break."""
-    response = await call_next(request)
+    telemetry = request.app.state.shadow_results_telemetry
+    try:
+        response = await call_next(request)
+    except Exception:
+        telemetry.observe_runtime_error()
+        raise
+    telemetry.observe_response(path=request.url.path, status_code=response.status_code)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Strict-Transport-Security"] = (
@@ -323,6 +335,12 @@ app.include_router(
 )
 app.include_router(
     trader_now.router,
+    prefix="/api/v1",
+    tags=["v1"],
+    dependencies=[Depends(require_api_key)],
+)
+app.include_router(
+    shadow_results.router,
     prefix="/api/v1",
     tags=["v1"],
     dependencies=[Depends(require_api_key)],

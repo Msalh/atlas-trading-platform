@@ -50,6 +50,9 @@ class InMemoryMarketStateRepository:
         matches.sort(key=lambda s: s.envelope.occurred_at, reverse=True)
         return matches[:limit]
 
+    async def count(self, symbol: Symbol, timeframe: Timeframe) -> int:
+        return len(self._matching(symbol, timeframe))
+
     async def get_range(
         self, symbol: Symbol, timeframe: Timeframe, start: datetime, end: datetime, limit: int = 10000
     ) -> list[MarketState]:

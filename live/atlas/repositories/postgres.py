@@ -23,7 +23,7 @@ from typing import Any, Optional
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
-from atlas.repositories.base import ClaimResult, ForwardFn
+from atlas.repositories.base import ClaimResult, ForwardFn, ShadowResultCounts
 
 
 def now_iso() -> str:
@@ -206,6 +206,31 @@ class PostgresTradeRepository:
                 else:
                     await cur.execute("SELECT * FROM trades ORDER BY id DESC LIMIT %s", (limit,))
                 return [_decode_trade(row) for row in await cur.fetchall()]
+
+    async def shadow_result_counts(self) -> ShadowResultCounts:
+        async with self._pool.connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(
+                    """
+                    SELECT
+                        (SELECT COUNT(*) FROM trades) AS strategy_signals,
+                        (SELECT COUNT(*) FROM ai_notes) AS ai_notes,
+                        (
+                            SELECT COUNT(*) FROM trades
+                            WHERE pmt_forwarded IS TRUE
+                        ) AS historically_pickmytrade_forwarded
+                    """
+                )
+                row = await cur.fetchone()
+        if row is None:
+            raise RuntimeError("shadow result count query returned no row")
+        return ShadowResultCounts(
+            strategy_signals=int(row["strategy_signals"]),
+            ai_notes=int(row["ai_notes"]),
+            historically_pickmytrade_forwarded=int(
+                row["historically_pickmytrade_forwarded"]
+            ),
+        )
 
     async def get_open_trade(self) -> Optional[dict[str, Any]]:
         async with self._pool.connection() as conn:
