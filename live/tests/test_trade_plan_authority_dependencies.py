@@ -59,15 +59,23 @@ def test_authority_package_has_no_provider_adapter_or_mutation_implementation():
 
 
 def test_certified_runtime_does_not_import_or_invoke_trade_plan_packages():
-    runtime_files = [
-        path
-        for path in ATLAS.rglob("*.py")
-        if "trade_plan" not in path.parts and "tests" not in path.parts
+    runtime_roots = (
+        ATLAS / "api",
+        ATLAS / "application",
+        ATLAS / "services",
+        ATLAS / "trader_now",
+    )
+    runtime_files = [path for root in runtime_roots for path in root.rglob("*.py")] + [
+        ATLAS / "main.py",
+        ATLAS / "read_only_service.py",
     ]
     for path in runtime_files:
         imports = _imports(path)
-        assert "atlas.trade_plan" not in imports
-        assert "atlas.trade_plan_authority" not in imports
+        assert not any(
+            name == prefix or name.startswith(f"{prefix}.")
+            for name in imports
+            for prefix in ("atlas.trade_plan", "atlas.trade_plan_authority")
+        )
         source = path.read_text(encoding="utf-8")
         assert "build_trade_plan(" not in source
 

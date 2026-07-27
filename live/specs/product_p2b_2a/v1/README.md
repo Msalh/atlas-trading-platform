@@ -44,8 +44,11 @@ The market-evidence adapter accepts the existing immutable
 `MarketInputWindow`. It never fetches, persists, normalizes, canonicalizes, or
 regenerates market data. An available result requires exactly 288 observations
 and exact agreement between every source-event identity and every canonical
-market-state envelope. Duplicate, non-monotonic, missing, or mismatched lineage
-fails closed.
+market-state envelope. Its declared timeframe determines an exact expected
+cadence; duplicate, non-monotonic, gapped, missing, or mismatched lineage fails
+closed. Scheduled maintenance remains part of the preserved raw 288-observation
+window, but a gap-spanning window is not eligible as contiguous trade-plan
+evidence. P2B does not reinterpret or repair that evidence.
 
 The frozen Context policy is unchanged. `insufficient_history` remains a closed
 trade-plan prerequisite failure and must produce no Entry, Stop, Target,
@@ -56,3 +59,12 @@ invalidation, confidence, quantity, sizing, or partial geometry.
 No P2B-2A port has a provider implementation. No application, TraderNow,
 read-only service, endpoint, dashboard, or deployment imports or invokes
 `atlas.trade_plan` or `atlas.trade_plan_authority`.
+
+## Deferred provider ownership
+
+P2B-2B remains blocked until the primary provider, permitted corroborating
+source, licensing owner, credential owner, reconciliation approver, freshness
+policy, correction policy, and emergency-calendar owner are explicitly
+approved for listed-contract, instrument-specification, exchange-calendar, and
+trade-plan-policy authority. No provider choice, inferred roll, production
+default, or silent fallback exists in P2B-2A.

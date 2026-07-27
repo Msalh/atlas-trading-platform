@@ -1,7 +1,9 @@
 import hashlib
+import json
 from dataclasses import FrozenInstanceError, replace
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -26,6 +28,7 @@ from atlas.trade_plan_authority import (
     adapt_canonical_market_input,
     authority_resolution,
     canonical_bytes,
+    require_sufficient_context_history,
     resolve_authority_records,
     validate_exchange_session,
     validate_instrument_specification,
@@ -49,6 +52,9 @@ from atlas.trader_now.models import (
 AT = datetime(2026, 7, 27, 5, 40, 30, tzinfo=timezone.utc)
 START = datetime(2026, 6, 19, tzinfo=timezone.utc)
 END = datetime(2026, 9, 18, tzinfo=timezone.utc)
+FIXTURES = (
+    Path(__file__).parents[1] / "specs" / "product_p2b_2a" / "v1" / "fixtures.json"
+)
 
 
 def product() -> EconomicInstrument:
@@ -165,14 +171,14 @@ def policy() -> TradePlanPolicy:
 def test_available_resolution_is_deterministic_immutable_and_byte_stable():
     first = listed_resolution()
     second = listed_resolution()
+    golden = json.loads(FIXTURES.read_text(encoding="utf-8"))["golden_serialization"]
     assert first == second
     assert first.resolution_id == second.resolution_id
-    assert first.resolution_id == (
-        "1428d9d9d65a7905f22c942f72bff9f83497b890c7d3a8146c2159845b9d4bd4"
-    )
+    assert first.resolution_id == golden["listed_resolution_id"]
     assert canonical_bytes(first) == canonical_bytes(second)
-    assert hashlib.sha256(canonical_bytes(first)).hexdigest() == (
-        "9f665cf24c0c6af8141a252754f049c69d957190f1c5a4f9f06f26358e6ca289"
+    assert (
+        hashlib.sha256(canonical_bytes(first)).hexdigest()
+        == golden["listed_resolution_sha256"]
     )
     with pytest.raises(FrozenInstanceError):
         first.status = AuthorityStatus.STALE  # type: ignore[misc]
@@ -397,6 +403,8 @@ def test_instrument_specification_mismatch_fails_closed():
 
 def expiry_inputs() -> PlanExpiryInputs:
     return PlanExpiryInputs(
+        listed_instrument=listed(),
+        timeframe="5m",
         calendar_id="test-only-cme-calendar",
         calendar_version="test-calendar.v1",
         session_id="test-session-2026-07-27",
@@ -425,14 +433,45 @@ def test_exchange_session_contract_and_entry_count_are_exact():
         value=expiry_inputs(),
     )
     assert (
-        validate_exchange_session(
-            resolution, expected_entry_bar_count=request.maximum_entry_bars
-        ).status
+        validate_exchange_session(request, resolution).status
         == AuthorityStatus.AVAILABLE
     )
-    refused = validate_exchange_session(resolution, expected_entry_bar_count=3)
+    refused = validate_exchange_session(
+        replace(request, maximum_entry_bars=3), resolution
+    )
     assert refused.status == AuthorityStatus.CONFLICTING
     assert refused.value is None
+
+
+def test_exchange_session_is_bound_to_request_identity_and_maintenance():
+    request = ExchangeSessionAuthorityRequest(
+        listed(), datetime(2026, 7, 27, 5, 40, tzinfo=timezone.utc), "5m", 2, AT
+    )
+    maintenance = EffectiveInterval(
+        datetime(2026, 7, 27, 5, 35, tzinfo=timezone.utc),
+        datetime(2026, 7, 27, 5, 41, tzinfo=timezone.utc),
+    )
+    inputs = replace(
+        expiry_inputs(),
+        maintenance_periods=(maintenance,),
+        eligible_entry_bar_closes=(
+            datetime(2026, 7, 27, 5, 45, tzinfo=timezone.utc),
+            datetime(2026, 7, 27, 5, 50, tzinfo=timezone.utc),
+        ),
+    )
+    resolution = authority_resolution(
+        kind=AuthorityKind.EXCHANGE_SESSION,
+        status=AuthorityStatus.AVAILABLE,
+        evaluated_at=AT,
+        effective_interval=EffectiveInterval(
+            request.candidate_closed_at, inputs.session_ends_at
+        ),
+        source=source(),
+        value=inputs,
+    )
+    result = validate_exchange_session(request, resolution)
+    assert result.status == AuthorityStatus.CONFLICTING
+    assert result.reasons == (AuthorityReason.EXCHANGE_SESSION_MISMATCH,)
 
 
 def test_trade_plan_policy_must_retain_authoritative_p2a_identity():
@@ -506,6 +545,49 @@ def test_canonical_market_adapter_requires_and_preserves_exactly_288_events():
     assert result.value.market_input.bar_count == 288
     assert len(result.value.source_event_ids) == 288
     assert result.value.latest_source_event.event_id == "event-287"
+    assert result.value.timeframe == "5m"
+    assert result.value.expected_cadence_seconds == 300
+
+
+def test_canonical_market_adapter_rejects_a_gapped_288_event_window():
+    window = market_window()
+    shifted_states = tuple(
+        replace(
+            item,
+            envelope=replace(
+                item.envelope,
+                occurred_at=item.envelope.occurred_at
+                + (timedelta(hours=1) if index >= 144 else timedelta()),
+                received_at=item.envelope.received_at
+                + (timedelta(hours=1) if index >= 144 else timedelta()),
+            ),
+        )
+        for index, item in enumerate(window.states)
+    )
+    shifted_events = tuple(
+        SourceEventIdentity(
+            event_id=item.envelope.event_id,
+            event_type=item.envelope.event_type,
+            source=item.envelope.source,
+            schema_version=item.schema_version,
+            occurred_at=item.envelope.occurred_at,
+            received_at=item.envelope.received_at,
+        )
+        for item in shifted_states
+    )
+    assert window.identity is not None
+    identity = replace(
+        window.identity,
+        latest_closed_at=shifted_events[-1].occurred_at,
+        source_events=shifted_events,
+    )
+    result = adapt_canonical_market_input(
+        replace(window, identity=identity, states=shifted_states),
+        source=source(),
+    )
+    assert result.status == AuthorityStatus.CONFLICTING
+    assert result.value is None
+    assert result.reasons == (AuthorityReason.MARKET_CADENCE_INVALID,)
 
 
 def test_noncanonical_market_history_fails_closed():
@@ -534,6 +616,63 @@ def test_market_source_event_disagreement_fails_closed():
     assert result.reasons == (AuthorityReason.SOURCE_EVENT_MISMATCH,)
 
 
+def test_duplicate_source_event_identity_fails_closed_without_exception():
+    window = market_window()
+    assert window.identity is not None
+    duplicate_id = window.identity.source_events[-2].event_id
+    changed_state = replace(
+        window.states[-1],
+        envelope=replace(window.states[-1].envelope, event_id=duplicate_id),
+    )
+    changed_event = replace(window.identity.source_events[-1], event_id=duplicate_id)
+    result = adapt_canonical_market_input(
+        replace(
+            window,
+            identity=replace(
+                window.identity,
+                source_events=window.identity.source_events[:-1] + (changed_event,),
+            ),
+            states=window.states[:-1] + (changed_state,),
+        ),
+        source=source(),
+    )
+    assert result.status == AuthorityStatus.CONFLICTING
+    assert result.reasons == (AuthorityReason.SOURCE_EVENT_ORDER_INVALID,)
+
+
+def test_non_monotonic_source_events_fail_closed_without_exception():
+    window = market_window()
+    assert window.identity is not None
+    earlier = window.identity.source_events[-2].occurred_at - timedelta(minutes=1)
+    changed_state = replace(
+        window.states[-1],
+        envelope=replace(
+            window.states[-1].envelope,
+            occurred_at=earlier,
+            received_at=earlier + timedelta(seconds=1),
+        ),
+    )
+    changed_event = replace(
+        window.identity.source_events[-1],
+        occurred_at=earlier,
+        received_at=earlier + timedelta(seconds=1),
+    )
+    result = adapt_canonical_market_input(
+        replace(
+            window,
+            identity=replace(
+                window.identity,
+                latest_closed_at=earlier,
+                source_events=window.identity.source_events[:-1] + (changed_event,),
+            ),
+            states=window.states[:-1] + (changed_state,),
+        ),
+        source=source(),
+    )
+    assert result.status == AuthorityStatus.CONFLICTING
+    assert result.reasons == (AuthorityReason.SOURCE_EVENT_ORDER_INVALID,)
+
+
 def test_market_adapter_rejects_future_and_unreconciled_authority():
     future = adapt_canonical_market_input(
         market_window(),
@@ -547,6 +686,49 @@ def test_market_adapter_rejects_future_and_unreconciled_authority():
     )
     assert future.reasons == (AuthorityReason.FUTURE_DATED,)
     assert unreconciled.reasons == (AuthorityReason.UNRECONCILED,)
+
+
+def test_context_insufficient_history_closes_an_available_market_resolution():
+    available = adapt_canonical_market_input(market_window(), source=source())
+    refused = require_sufficient_context_history(available, sufficient=False)
+    assert refused.status == AuthorityStatus.UNAVAILABLE
+    assert refused.value is None
+    assert refused.reasons == (AuthorityReason.CONTEXT_INSUFFICIENT_HISTORY,)
+    assert require_sufficient_context_history(available, sufficient=True) is available
+
+
+def test_resolution_identity_normalizes_equivalent_instants_to_utc():
+    utc = listed_resolution()
+    offset = timezone(timedelta(hours=3))
+    equivalent = authority_resolution(
+        kind=AuthorityKind.LISTED_CONTRACT,
+        status=AuthorityStatus.AVAILABLE,
+        evaluated_at=AT.astimezone(offset),
+        effective_interval=EffectiveInterval(
+            START.astimezone(offset), END.astimezone(offset)
+        ),
+        source=replace(
+            source(),
+            observed_at=source().observed_at.astimezone(offset),
+            retrieved_at=source().retrieved_at.astimezone(offset),
+        ),
+        value=listed(),
+    )
+    assert equivalent.resolution_id == utc.resolution_id
+    assert canonical_bytes(equivalent) == canonical_bytes(utc)
+
+
+@pytest.mark.parametrize(
+    ("status", "reason"),
+    (
+        (AuthorityStatus.UNAVAILABLE, AuthorityReason.CONFLICTING),
+        (AuthorityStatus.STALE, AuthorityReason.MISSING),
+        (AuthorityStatus.CONFLICTING, AuthorityReason.MISSING),
+    ),
+)
+def test_resolution_rejects_status_reason_mismatch(status, reason):
+    with pytest.raises(ValueError, match="incompatible reason"):
+        listed_resolution(status=status, reasons=(reason,))
 
 
 def test_unknown_interval_cannot_be_used_as_available_authority():

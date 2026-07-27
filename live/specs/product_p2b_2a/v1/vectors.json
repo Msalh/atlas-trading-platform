@@ -8,7 +8,8 @@
     "canonical_288_market_evidence",
     "effective_start_inclusive",
     "effective_end_exclusive",
-    "deterministic_resolution_identity"
+    "deterministic_resolution_identity",
+    "equivalent_timezone_identity"
   ],
   "negative": [
     "missing_authority",
@@ -18,7 +19,8 @@
     "continuous_series_as_listed_contract",
     "instrument_identity_mismatch",
     "noncanonical_market_count",
-    "context_insufficient_history"
+    "context_insufficient_history",
+    "status_reason_mismatch"
   ],
   "adversarial": [
     "overlapping_authority_records",
@@ -28,6 +30,29 @@
     "source_event_envelope_mismatch",
     "resolution_identity_tampering",
     "unknown_effective_interval_used_as_available",
-    "partial_geometry_prohibited"
-  ]
+    "partial_geometry_prohibited",
+    "gapped_canonical_market_evidence",
+    "exchange_session_request_mismatch"
+  ],
+  "behavior_tests": {
+    "missing_authority": "test_record_selection_returns_missing_stale_future_and_unreconciled_outcomes",
+    "stale_authority": "test_expired_record_is_represented_as_stale_without_a_value",
+    "future_dated_authority": "test_market_adapter_rejects_future_and_unreconciled_authority",
+    "unreconciled_authority": "test_market_adapter_rejects_future_and_unreconciled_authority",
+    "continuous_series_as_listed_contract": "test_continuous_analysis_series_is_never_a_listed_contract",
+    "instrument_identity_mismatch": "test_instrument_specification_mismatch_fails_closed",
+    "noncanonical_market_count": "test_noncanonical_market_history_fails_closed",
+    "context_insufficient_history": "test_context_insufficient_history_closes_an_available_market_resolution",
+    "status_reason_mismatch": "test_resolution_rejects_status_reason_mismatch",
+    "overlapping_authority_records": "test_record_selection_detects_overlaps_instead_of_choosing_a_provider",
+    "conflicting_provider_values": "test_conflicting_provider_values_are_explicit_and_identity_sensitive",
+    "duplicate_source_event_identity": "test_duplicate_source_event_identity_fails_closed_without_exception",
+    "non_monotonic_source_events": "test_non_monotonic_source_events_fail_closed_without_exception",
+    "source_event_envelope_mismatch": "test_market_source_event_disagreement_fails_closed",
+    "resolution_identity_tampering": "test_resolution_identity_rejects_tampering",
+    "unknown_effective_interval_used_as_available": "test_unknown_interval_cannot_be_used_as_available_authority",
+    "partial_geometry_prohibited": "test_contracts_expose_no_partial_trade_geometry",
+    "gapped_canonical_market_evidence": "test_canonical_market_adapter_rejects_a_gapped_288_event_window",
+    "exchange_session_request_mismatch": "test_exchange_session_is_bound_to_request_identity_and_maintenance"
+  }
 }

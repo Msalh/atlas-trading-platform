@@ -40,6 +40,7 @@ from .ports import (
 from .serialization import canonical_bytes, project, sha256_identity
 from .validation import (
     adapt_canonical_market_input,
+    require_sufficient_context_history,
     resolve_authority_records,
     validate_exchange_session,
     validate_instrument_specification,
@@ -84,6 +85,7 @@ __all__ = [
     "authority_resolution",
     "canonical_bytes",
     "project",
+    "require_sufficient_context_history",
     "resolve_authority_records",
     "sha256_identity",
     "validate_exchange_session",

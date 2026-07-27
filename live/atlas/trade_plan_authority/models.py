@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 from typing import Generic, TypeVar
 
@@ -72,7 +72,36 @@ class AuthorityReason(str, Enum):
     MARKET_HISTORY_NOT_CANONICAL = "authority.market_history_not_canonical"
     SOURCE_EVENT_MISMATCH = "authority.source_event_mismatch"
     SOURCE_EVENT_ORDER_INVALID = "authority.source_event_order_invalid"
+    MARKET_CADENCE_INVALID = "authority.market_cadence_invalid"
+    EXCHANGE_SESSION_MISMATCH = "authority.exchange_session_mismatch"
     CONTEXT_INSUFFICIENT_HISTORY = "authority.context_insufficient_history"
+
+
+_STATUS_REASONS: dict[AuthorityStatus, frozenset[AuthorityReason]] = {
+    AuthorityStatus.UNAVAILABLE: frozenset(
+        {
+            AuthorityReason.MISSING,
+            AuthorityReason.FUTURE_DATED,
+            AuthorityReason.UNRECONCILED,
+            AuthorityReason.MARKET_UNAVAILABLE,
+            AuthorityReason.MARKET_HISTORY_NOT_CANONICAL,
+            AuthorityReason.CONTEXT_INSUFFICIENT_HISTORY,
+        }
+    ),
+    AuthorityStatus.STALE: frozenset({AuthorityReason.STALE}),
+    AuthorityStatus.CONFLICTING: frozenset(
+        {
+            AuthorityReason.OVERLAPPING,
+            AuthorityReason.CONFLICTING,
+            AuthorityReason.IDENTITY_MISMATCH,
+            AuthorityReason.CONTINUOUS_SERIES_AS_LISTED,
+            AuthorityReason.SOURCE_EVENT_MISMATCH,
+            AuthorityReason.SOURCE_EVENT_ORDER_INVALID,
+            AuthorityReason.MARKET_CADENCE_INVALID,
+            AuthorityReason.EXCHANGE_SESSION_MISMATCH,
+        }
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -214,11 +243,19 @@ class AuthorityResolution(Generic[T]):
                 raise ValueError("non-available authority carries reasons and no value")
             if len(set(self.reasons)) != len(self.reasons):
                 raise ValueError("authority reasons must be unique")
+            permitted = _STATUS_REASONS[self.status]
+            if any(reason not in permitted for reason in self.reasons):
+                raise ValueError(
+                    f"{self.status.value} authority carries an incompatible reason"
+                )
             if (
-                self.status == AuthorityStatus.STALE
-                and AuthorityReason.STALE not in self.reasons
+                self.status == AuthorityStatus.CONFLICTING
+                and AuthorityReason.OVERLAPPING in self.reasons
+                and AuthorityReason.CONFLICTING not in self.reasons
             ):
-                raise ValueError("stale authority requires the stale reason")
+                raise ValueError(
+                    "overlapping authority requires the conflicting reason"
+                )
 
 
 def authority_resolution(
@@ -304,6 +341,8 @@ class ExchangeSessionAuthorityRequest:
 
 @dataclass(frozen=True)
 class PlanExpiryInputs:
+    listed_instrument: ListedInstrument
+    timeframe: str
     calendar_id: str
     calendar_version: str
     session_id: str
@@ -314,7 +353,7 @@ class PlanExpiryInputs:
     schema_version: str = PLAN_EXPIRY_INPUTS_SCHEMA_VERSION
 
     def __post_init__(self) -> None:
-        for name in ("calendar_id", "calendar_version", "session_id"):
+        for name in ("timeframe", "calendar_id", "calendar_version", "session_id"):
             _text(name, getattr(self, name))
         _aware("session_opens_at", self.session_opens_at)
         _aware("session_ends_at", self.session_ends_at)
@@ -342,6 +381,19 @@ class PlanExpiryInputs:
                 or period.ends_at > self.session_ends_at
             ):
                 raise ValueError("maintenance periods must be bounded by the session")
+        for previous, current in zip(
+            self.maintenance_periods, self.maintenance_periods[1:]
+        ):
+            assert previous.ends_at is not None
+            assert current.starts_at is not None
+            if current.starts_at < previous.ends_at:
+                raise ValueError("maintenance periods must not overlap")
+        if any(
+            period.contains(value)
+            for value in self.eligible_entry_bar_closes
+            for period in self.maintenance_periods
+        ):
+            raise ValueError("eligible entry close must not be in maintenance")
         if self.schema_version != PLAN_EXPIRY_INPUTS_SCHEMA_VERSION:
             raise ValueError("unsupported plan-expiry schema")
 
@@ -368,11 +420,18 @@ class CanonicalMarketEvidence:
     latest_source_event: SourceEventIdentity
     source_event_ids: tuple[str, ...]
     source_event_timestamps: tuple[datetime, ...]
+    timeframe: str
+    expected_cadence_seconds: int
     schema_version: str = CANONICAL_MARKET_EVIDENCE_SCHEMA_VERSION
 
     def __post_init__(self) -> None:
         if self.schema_version != CANONICAL_MARKET_EVIDENCE_SCHEMA_VERSION:
             raise ValueError("unsupported canonical-market-evidence schema")
+        _text("timeframe", self.timeframe)
+        if self.expected_cadence_seconds <= 0:
+            raise ValueError("expected cadence must be positive")
+        if self.timeframe != self.market_input.timeframe:
+            raise ValueError("canonical timeframe must match market input")
         if self.market_input.bar_count != 288:
             raise ValueError(
                 "canonical market evidence requires exactly 288 observations"
@@ -393,6 +452,13 @@ class CanonicalMarketEvidence:
             )
         ):
             raise ValueError("canonical source timestamps must be chronological")
+        if any(
+            current - previous != timedelta(seconds=self.expected_cadence_seconds)
+            for previous, current in zip(
+                self.source_event_timestamps, self.source_event_timestamps[1:]
+            )
+        ):
+            raise ValueError("canonical source timestamps must match expected cadence")
         if self.latest_source_event != self.market_input.source_events[-1]:
             raise ValueError("latest source event must match market input identity")
         if self.latest_source_event.occurred_at != self.market_input.latest_closed_at:

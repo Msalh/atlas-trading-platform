@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from itertools import pairwise
 from typing import TypeVar
 
@@ -26,6 +26,7 @@ from .models import (
     CanonicalMarketEvidence,
     CanonicalMarketEvidenceResolution,
     EffectiveInterval,
+    ExchangeSessionAuthorityRequest,
     InstrumentSpecificationAuthorityRequest,
     ListedContractAuthorityRequest,
     PlanExpiryInputs,
@@ -34,6 +35,14 @@ from .models import (
 )
 
 T = TypeVar("T")
+
+_TIMEFRAME_CADENCE: dict[str, timedelta] = {
+    "1m": timedelta(minutes=1),
+    "5m": timedelta(minutes=5),
+    "15m": timedelta(minutes=15),
+    "30m": timedelta(minutes=30),
+    "1h": timedelta(hours=1),
+}
 
 
 def resolve_authority_records(
@@ -192,19 +201,33 @@ def validate_instrument_specification(
 
 
 def validate_exchange_session(
+    request: ExchangeSessionAuthorityRequest,
     resolution: AuthorityResolution[PlanExpiryInputs],
-    *,
-    expected_entry_bar_count: int,
 ) -> AuthorityResolution[PlanExpiryInputs]:
     if resolution.kind != AuthorityKind.EXCHANGE_SESSION:
         raise ValueError("exchange-session resolution kind mismatch")
+    if resolution.evaluated_at != request.evaluated_at:
+        raise ValueError("exchange-session evaluation time mismatch")
     if resolution.status != AuthorityStatus.AVAILABLE:
         return resolution
     assert resolution.value is not None
-    if len(resolution.value.eligible_entry_bar_closes) != expected_entry_bar_count:
+    value = resolution.value
+    if (
+        value.listed_instrument != request.listed_instrument
+        or value.timeframe != request.timeframe
+        or len(value.eligible_entry_bar_closes) != request.maximum_entry_bars
+        or not value.session_opens_at
+        < request.candidate_closed_at
+        <= value.session_ends_at
+        or any(
+            period.contains(request.candidate_closed_at)
+            for period in value.maintenance_periods
+        )
+        or value.eligible_entry_bar_closes[0] <= request.candidate_closed_at
+    ):
         return _closed(
             resolution,
-            AuthorityReason.IDENTITY_MISMATCH,
+            AuthorityReason.EXCHANGE_SESSION_MISMATCH,
             status=AuthorityStatus.CONFLICTING,
         )
     return resolution
@@ -277,11 +300,21 @@ def adapt_canonical_market_input(
             reasons=(AuthorityReason.MARKET_UNAVAILABLE,),
         )
     identity = market_input.identity
+    cadence = _TIMEFRAME_CADENCE.get(identity.timeframe)
     if (
         identity.bar_count != 288
         or len(identity.source_events) != 288
         or len(market_input.states) != 288
     ):
+        return authority_resolution(
+            kind=AuthorityKind.CANONICAL_MARKET_EVIDENCE,
+            status=AuthorityStatus.UNAVAILABLE,
+            evaluated_at=evaluated_at,
+            effective_interval=interval,
+            source=source,
+            reasons=(AuthorityReason.MARKET_HISTORY_NOT_CANONICAL,),
+        )
+    if cadence is None:
         return authority_resolution(
             kind=AuthorityKind.CANONICAL_MARKET_EVIDENCE,
             status=AuthorityStatus.UNAVAILABLE,
@@ -305,9 +338,12 @@ def adapt_canonical_market_input(
             source=source,
             reasons=(AuthorityReason.SOURCE_EVENT_MISMATCH,),
         )
+    event_ids = tuple(event.event_id for event in identity.source_events)
     timestamps = tuple(event.occurred_at for event in identity.source_events)
-    if len(set(timestamps)) != 288 or any(
-        current <= previous for previous, current in pairwise(timestamps)
+    if (
+        len(set(event_ids)) != 288
+        or len(set(timestamps)) != 288
+        or any(current <= previous for previous, current in pairwise(timestamps))
     ):
         return authority_resolution(
             kind=AuthorityKind.CANONICAL_MARKET_EVIDENCE,
@@ -317,11 +353,34 @@ def adapt_canonical_market_input(
             source=source,
             reasons=(AuthorityReason.SOURCE_EVENT_ORDER_INVALID,),
         )
+    if any(current - previous != cadence for previous, current in pairwise(timestamps)):
+        return authority_resolution(
+            kind=AuthorityKind.CANONICAL_MARKET_EVIDENCE,
+            status=AuthorityStatus.CONFLICTING,
+            evaluated_at=evaluated_at,
+            effective_interval=interval,
+            source=source,
+            reasons=(AuthorityReason.MARKET_CADENCE_INVALID,),
+        )
+    if (
+        identity.latest_closed_at != timestamps[-1]
+        or market_input.states[-1].envelope.occurred_at != timestamps[-1]
+    ):
+        return authority_resolution(
+            kind=AuthorityKind.CANONICAL_MARKET_EVIDENCE,
+            status=AuthorityStatus.CONFLICTING,
+            evaluated_at=evaluated_at,
+            effective_interval=interval,
+            source=source,
+            reasons=(AuthorityReason.SOURCE_EVENT_MISMATCH,),
+        )
     evidence = CanonicalMarketEvidence(
         market_input=identity,
         latest_source_event=identity.source_events[-1],
         source_event_ids=tuple(event.event_id for event in identity.source_events),
         source_event_timestamps=timestamps,
+        timeframe=identity.timeframe,
+        expected_cadence_seconds=int(cadence.total_seconds()),
     )
     return authority_resolution(
         kind=AuthorityKind.CANONICAL_MARKET_EVIDENCE,
@@ -331,3 +390,15 @@ def adapt_canonical_market_input(
         source=source,
         value=evidence,
     )
+
+
+def require_sufficient_context_history(
+    resolution: CanonicalMarketEvidenceResolution,
+    *,
+    sufficient: bool,
+) -> CanonicalMarketEvidenceResolution:
+    """Fail closed when the frozen Context prerequisite is unavailable."""
+
+    if resolution.status != AuthorityStatus.AVAILABLE or sufficient:
+        return resolution
+    return _closed(resolution, AuthorityReason.CONTEXT_INSUFFICIENT_HISTORY)

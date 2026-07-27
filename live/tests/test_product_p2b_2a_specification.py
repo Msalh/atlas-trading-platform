@@ -1,3 +1,4 @@
+import ast
 import json
 from pathlib import Path
 
@@ -60,6 +61,22 @@ def test_vectors_cover_authority_and_fail_closed_requirements():
         "context_insufficient_history",
         "partial_geometry_prohibited",
     } <= actual
+
+
+def test_every_refusal_vector_is_bound_to_an_executed_behavior_test():
+    vectors = json.loads((SPEC / "vectors.json").read_text(encoding="utf-8"))
+    bindings = vectors["behavior_tests"]
+    refusal_vectors = set(vectors["negative"]) | set(vectors["adversarial"])
+    assert set(bindings) == refusal_vectors
+
+    test_path = Path(__file__).with_name("test_trade_plan_authority.py")
+    tree = ast.parse(test_path.read_text(encoding="utf-8"))
+    test_names = {
+        node.name
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    assert set(bindings.values()) <= test_names
 
 
 def test_spec_preserves_context_and_prohibits_partial_geometry():
