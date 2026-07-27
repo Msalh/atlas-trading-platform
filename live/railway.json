@@ -1,0 +1,1 @@
+{"$schema":"https://railway.com/railway.schema.json","build":{"builder":"RAILPACK"},"deploy":{"restartPolicyMaxRetries":10,"restartPolicyType":"ON_FAILURE","startCommand":"uvicorn atlas.read_only_service:app --host 0.0.0.0 --port $PORT"}}
