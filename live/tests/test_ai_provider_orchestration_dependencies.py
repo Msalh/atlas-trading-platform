@@ -5,6 +5,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
 PACKAGE = ROOT / "atlas_ai_orchestration"
+ADAPTER = PACKAGE / "openai_adapter.py"
+CORE_FILES = tuple(path for path in PACKAGE.glob("*.py") if path != ADAPTER)
 
 
 def _imports(path: Path) -> list[str]:
@@ -41,7 +43,7 @@ def test_orchestration_has_only_frozen_and_standard_library_dependencies():
         "atlas_snapshot_capture",
         "atlas_snapshot_store",
     )
-    for path in PACKAGE.glob("*.py"):
+    for path in CORE_FILES:
         assert not any(
             name == prefix or name.startswith(f"{prefix}.")
             for name in _imports(path)
@@ -51,7 +53,7 @@ def test_orchestration_has_only_frozen_and_standard_library_dependencies():
 
 def test_orchestration_contains_no_concrete_io_persistence_or_execution_capability():
     source = "\n".join(
-        path.read_text(encoding="utf-8") for path in PACKAGE.glob("*.py")
+        path.read_text(encoding="utf-8") for path in CORE_FILES
     ).lower()
     for forbidden in (
         "http://",
@@ -79,7 +81,7 @@ def test_orchestration_contains_no_concrete_io_persistence_or_execution_capabili
 
 def test_orchestration_does_not_duplicate_frozen_authority():
     source = "\n".join(
-        path.read_text(encoding="utf-8") for path in PACKAGE.glob("*.py")
+        path.read_text(encoding="utf-8") for path in CORE_FILES
     )
     for forbidden in (
         "atlas_snapshot.digest",
@@ -110,3 +112,39 @@ def test_no_runtime_package_imports_phase18d_before_a_later_integration_phase():
                 or name.startswith("atlas_ai_orchestration.")
                 for name in _imports(path)
             ), path.name
+
+
+def test_phase18e_adapter_has_only_approved_transport_and_internal_dependencies():
+    imports = _imports(ADAPTER)
+    allowed = {
+        "__future__",
+        "collections.abc",
+        "dataclasses",
+        "errors",
+        "httpx",
+        "json",
+        "math",
+        "models",
+        "time",
+        "typing",
+    }
+    assert set(imports) <= allowed
+    assert "httpx" in imports
+
+
+def test_no_production_runtime_imports_or_binds_phase18e_adapter():
+    runtime_roots = (
+        ROOT / "atlas" / "main.py",
+        ROOT / "atlas" / "api",
+        ROOT / "atlas" / "application",
+        ROOT / "atlas" / "services",
+        ROOT / "atlas" / "repositories",
+    )
+    paths = []
+    for root in runtime_roots:
+        paths.extend([root] if root.is_file() else root.rglob("*.py"))
+    for path in paths:
+        source = path.read_text(encoding="utf-8")
+        assert "openai_adapter" not in source, path
+        assert "OpenAIProviderAdapter" not in source, path
+        assert "ATLAS_AI_PROVIDER_" not in source, path

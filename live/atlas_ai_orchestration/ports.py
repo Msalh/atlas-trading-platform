@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Protocol
 
-from .models import TrustedProviderRequest
+from .models import JSONValue, TrustedProviderRequest
 
 
 class IdentityFactory(Protocol):
@@ -25,4 +25,4 @@ class CostPolicy(Protocol):
 
 
 class ProviderPort(Protocol):
-    def invoke(self, request: TrustedProviderRequest) -> Mapping[str, Any]: ...
+    def invoke(self, request: TrustedProviderRequest) -> JSONValue: ...

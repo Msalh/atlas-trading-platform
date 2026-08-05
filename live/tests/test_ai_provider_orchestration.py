@@ -8,9 +8,11 @@ from dataclasses import FrozenInstanceError
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 
 import atlas_ai_analysis.sdk as analysis_sdk
+import atlas_ai_orchestration.orchestrator as orchestration_module
 from atlas_ai_analysis import (
     AnalysisInputIdentity,
     EligibleAnalysis,
@@ -19,9 +21,6 @@ from atlas_ai_analysis import (
     SnapshotVerification,
     project_input,
 )
-from atlas_ai_service import ServiceFailure
-
-import atlas_ai_orchestration.orchestrator as orchestration_module
 from atlas_ai_orchestration import (
     CompletedOutcome,
     DeterministicPromptBuilder,
@@ -32,6 +31,11 @@ from atlas_ai_orchestration import (
     RefusedOutcome,
     ServiceUnavailableOutcome,
 )
+from atlas_ai_orchestration.openai_adapter import (
+    OpenAIAdapterPolicy,
+    OpenAIProviderAdapter,
+)
+from atlas_ai_service import ServiceFailure
 
 ROOT = Path(__file__).parents[1]
 AI_GOLDEN = ROOT / "specs" / "ai_analysis" / "v1" / "golden"
@@ -688,8 +692,8 @@ def test_normalized_key_collision_builds_one_sanitized_failed_audit(monkeypatch)
     assert "analysis output keys collide" not in sanitized
 
 
-def test_non_mapping_candidate_is_one_invalid_validation(monkeypatch):
-    candidate = object()
+@pytest.mark.parametrize("candidate", ["scalar", 7, 1.25, True, None, [1, {"x": 2}]])
+def test_json_non_mapping_candidate_is_one_invalid_validation(monkeypatch, candidate):
     provider = FakeProvider(candidate)
     core, _, _ = _core(provider)
     calls = 0
@@ -795,3 +799,116 @@ def test_provider_candidate_mutation_cannot_change_completed_output():
 
     assert outcome.output["summary"] == original_summary
     assert outcome.output["claims"][0]["text"] != "mutated"
+
+
+def test_concrete_adapter_preserves_phase18b_and_audit_authority(monkeypatch):
+    transport_calls = 0
+    adapter_calls = 0
+    validation_calls = 0
+    completed_calls = 0
+    failed_calls = 0
+    refused_calls = 0
+
+    def handler(request):
+        payload = json.loads(request.content)
+        provider_input = json.loads(payload["input"])
+        candidate = _load(AI_GOLDEN / "output.complete-current.json")
+        candidate.update(
+            analysis_output_id=provider_input["analysis_output_id"],
+            analysis_input_id=provider_input["analysis_input_id"],
+            snapshot_id=provider_input["snapshot_id"],
+            evidence_digest=provider_input["evidence_digest"],
+            purpose=provider_input["purpose"],
+        )
+        text = json.dumps(candidate, separators=(",", ":"))
+        return httpx.Response(
+            200,
+            json={
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [{"type": "output_text", "text": text}],
+                    }
+                ]
+            },
+        )
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    adapter = OpenAIProviderAdapter(
+        client=client,
+        credential_provider=lambda: "offline-only-secret",
+        input_token_estimator=lambda _request: 100,
+        policy=OpenAIAdapterPolicy(
+            enabled=True,
+            model_id="offline-approved-model-snapshot",
+            approved_model_ids=frozenset({"offline-approved-model-snapshot"}),
+            input_usd_per_million_tokens=2.0,
+            output_usd_per_million_tokens=12.0,
+            pricing_verified=True,
+        ),
+    )
+    core = ProviderOrchestrator(
+        prompt_builder=RecordingBuilder(),
+        provider=adapter,
+        cost_policy=FixedCostPolicy(),
+        audit_id_factory=FixedFactory(AUDIT_ID),
+        clock=FixedFactory(RECORDED_AT),
+        generator=GeneratorIdentity("openai", "offline-approved-model-snapshot"),
+    )
+
+    original_send = httpx.Client.send
+    original_invoke = OpenAIProviderAdapter.invoke
+    original_validate = orchestration_module.validate_output
+    original_completed = orchestration_module.completed_audit_from_validated_output
+    original_failed = orchestration_module.failed_audit
+    original_refused = orchestration_module.refused_audit
+
+    def counted_send(self, request, **kwargs):
+        nonlocal transport_calls
+        transport_calls += 1
+        return original_send(self, request, **kwargs)
+
+    def counted_invoke(self, request):
+        nonlocal adapter_calls
+        adapter_calls += 1
+        return original_invoke(self, request)
+
+    def counted_validate(value, eligible):
+        nonlocal validation_calls
+        validation_calls += 1
+        return original_validate(value, eligible)
+
+    def counted_completed(*args, **kwargs):
+        nonlocal completed_calls
+        completed_calls += 1
+        return original_completed(*args, **kwargs)
+
+    def counted_failed(*args, **kwargs):
+        nonlocal failed_calls
+        failed_calls += 1
+        return original_failed(*args, **kwargs)
+
+    def counted_refused(*args, **kwargs):
+        nonlocal refused_calls
+        refused_calls += 1
+        return original_refused(*args, **kwargs)
+
+    monkeypatch.setattr(httpx.Client, "send", counted_send)
+    monkeypatch.setattr(OpenAIProviderAdapter, "invoke", counted_invoke)
+    monkeypatch.setattr(orchestration_module, "validate_output", counted_validate)
+    monkeypatch.setattr(
+        orchestration_module,
+        "completed_audit_from_validated_output",
+        counted_completed,
+    )
+    monkeypatch.setattr(orchestration_module, "failed_audit", counted_failed)
+    monkeypatch.setattr(orchestration_module, "refused_audit", counted_refused)
+    try:
+        outcome = core.run(_eligible())
+    finally:
+        client.close()
+
+    assert isinstance(outcome, CompletedOutcome)
+    assert adapter_calls == transport_calls == validation_calls == completed_calls == 1
+    assert failed_calls == refused_calls == 0
+    assert "offline-only-secret" not in repr(outcome)

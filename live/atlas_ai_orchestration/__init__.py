@@ -4,13 +4,21 @@ from .errors import ProviderPortError, ProviderTimeoutError, ProviderUnavailable
 from .models import (
     CompletedOutcome,
     FailedOutcome,
+    JSONScalar,
+    JSONValue,
     OrchestrationOutcome,
     RefusedOutcome,
     ServiceUnavailableOutcome,
     TrustedProviderRequest,
 )
 from .orchestrator import ProviderOrchestrator
-from .ports import CostPolicy, IdentityFactory, ProviderPort, TrustedPromptBuilder, UTCClock
+from .ports import (
+    CostPolicy,
+    IdentityFactory,
+    ProviderPort,
+    TrustedPromptBuilder,
+    UTCClock,
+)
 from .prompt import DeterministicPromptBuilder
 
 __all__ = [
@@ -19,6 +27,8 @@ __all__ = [
     "DeterministicPromptBuilder",
     "FailedOutcome",
     "IdentityFactory",
+    "JSONScalar",
+    "JSONValue",
     "OrchestrationOutcome",
     "ProviderOrchestrator",
     "ProviderPort",

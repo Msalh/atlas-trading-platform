@@ -1,8 +1,10 @@
 # Phase 18 AI Analysis Roadmap
 
-Status: Phase 18A, Phase 18B, and Phase 18C are complete. This document
-authoritatively defines Phase 18D. It does not authorize provider access,
-deployment, persistence, an API, Railway work, R4, or operational certification.
+Status: Phase 18A, Phase 18B, Phase 18C, and Phase 18D are complete. This
+document authoritatively orders Phase 18E as the next work package, subject to
+the operational gates in `PHASE_18E_PROVIDER_ADAPTER.md`. It does not
+authorize provider access, deployment, persistence, an API, Railway work, R4,
+or operational certification.
 
 ## Completed foundations
 
@@ -218,17 +220,32 @@ The Phase 18A specification tests, Phase 18B SDK tests, Phase 18C tests, and the
 new focused Phase 18D tests must all pass together. Ruff and repository diff
 checks must pass.
 
+## Phase 18E — Offline Concrete Provider Adapter Contract and Qualification Harness
+
+Phase 18E is the next ordered Phase 18 work package. Its purpose is to place
+exactly one concrete provider adapter behind the existing Phase 18D
+`ProviderPort` and qualify the adapter entirely offline. The authoritative
+design, entry blockers, security boundary, qualification matrix, and exit gates
+are defined in `PHASE_18E_PROVIDER_ADAPTER.md`.
+
+Phase 18E offline implementation is authorized for an OpenAI direct-HTTP adapter
+using `httpx==0.28.1`, an injected explicit model allowlist, and the approved
+bounded policy in `PHASE_18E_PROVIDER_ADAPTER.md`. It remains default-disabled,
+offline-qualified, and unattached. Operational enablement is separately blocked
+until an immutable model identifier, account entitlement, retention/ZDR,
+pricing metadata, secret ownership, and runtime binding are independently
+verified. The implementation authorizes no credential, provider call, runtime
+integration, deployment, or operational certification.
+
 ## Later work-package boundaries
 
-Later explicitly approved phases may define:
+After Phase 18E, later explicitly approved phases may define:
 
-1. concrete provider adapters, secret handling, transport timeout configuration,
-   and provider qualification;
-2. persistence ports and atomic storage of validated output/audit records;
-3. service or HTTP APIs, authorization, request idempotency, and concurrency;
-4. deployment configuration and operational observability with sanitized logs;
-5. operational certification and rollback procedures.
+1. persistence ports and atomic storage of validated output/audit records;
+2. service or HTTP APIs, authorization, request idempotency, and concurrency;
+3. deployment configuration and operational observability with sanitized logs;
+4. operational certification and rollback procedures.
 
 Those phases must preserve the Phase 18A contracts and Phase 18B validation
-authority. Local Phase 18D completion is engineering evidence only and is not an
+authority. Local Phase 18E completion is engineering evidence only and is not an
 operational certification claim.

@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Literal, Union
+from typing import Any, Literal
 
 from atlas_ai_analysis.models import FailureReason
+
+type JSONScalar = str | int | float | bool | None
+type JSONValue = JSONScalar | list[JSONValue] | dict[str, JSONValue]
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,9 +54,6 @@ class ServiceUnavailableOutcome:
     detail: Literal["analysis_unavailable"] = "analysis_unavailable"
 
 
-OrchestrationOutcome = Union[
-    CompletedOutcome,
-    FailedOutcome,
-    RefusedOutcome,
-    ServiceUnavailableOutcome,
-]
+type OrchestrationOutcome = (
+    CompletedOutcome | FailedOutcome | RefusedOutcome | ServiceUnavailableOutcome
+)
