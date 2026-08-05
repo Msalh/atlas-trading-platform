@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 RefusalReason = Literal[
     "snapshot_stale",
@@ -22,6 +22,38 @@ FailureReason = Literal[
     "cost_limit",
     "internal_unavailable",
 ]
+
+_VALIDATED_OUTPUT_CAPABILITY = object()
+
+
+class ValidatedAnalysisOutput:
+    """Immutable output produced only by the Phase 18B validation authority."""
+
+    __slots__ = ("__value",)
+
+    def __init__(self, value: Mapping[str, Any], capability: object) -> None:
+        if capability is not _VALIDATED_OUTPUT_CAPABILITY:
+            raise TypeError("validated output construction is private")
+        object.__setattr__(self, "_ValidatedAnalysisOutput__value", value)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        raise AttributeError("validated output is immutable")
+
+    @property
+    def value(self) -> Mapping[str, Any]:
+        return self.__value
+
+    @property
+    def status(self) -> Literal["available", "unavailable"]:
+        return cast(Literal["available", "unavailable"], self.__value["status"])
+
+    @property
+    def unavailable_reason(self) -> FailureReason | None:
+        return cast(FailureReason | None, self.__value["unavailable_reason"])
+
+
+def _validated_analysis_output(value: Mapping[str, Any]) -> ValidatedAnalysisOutput:
+    return ValidatedAnalysisOutput(value, _VALIDATED_OUTPUT_CAPABILITY)
 
 
 @dataclass(frozen=True, slots=True)

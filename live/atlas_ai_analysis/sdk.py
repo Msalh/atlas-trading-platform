@@ -24,6 +24,8 @@ from .models import (
     GeneratorIdentity,
     RefusedAnalysis,
     SnapshotVerification,
+    ValidatedAnalysisOutput,
+    _validated_analysis_output,
 )
 
 INPUT_SCHEMA_VERSION = "ai_analysis_input.v1"
@@ -368,8 +370,17 @@ def validate_input(value: Mapping[str, Any], snapshot: Mapping[str, Any]) -> Non
 def validate_output(
     value: Mapping[str, Any],
     eligible: EligibleAnalysis,
-) -> None:
+) -> ValidatedAnalysisOutput:
     """Validate structural and semantic output against one eligible input."""
+    normalization_failed = False
+    try:
+        value = cast(Mapping[str, Any], _trusted_output_value(value))
+    except AIAnalysisValidationError:
+        raise
+    except Exception:
+        normalization_failed = True
+    if normalization_failed:
+        raise AIAnalysisValidationError("analysis output normalization failed")
     _closed(value, _OUTPUT_KEYS, "analysis output")
     if value["schema_version"] != OUTPUT_SCHEMA_VERSION:
         raise AIAnalysisValidationError("unsupported analysis output schema")
@@ -440,6 +451,32 @@ def validate_output(
             raise AIAnalysisValidationError("unavailable output requires a failure reason")
     else:
         raise AIAnalysisValidationError("invalid output status")
+    return _validated_analysis_output(value)
+
+
+def _trusted_output_value(value: Any) -> Any:
+    """Copy provider data into exact immutable JSON-domain built-in values."""
+    if isinstance(value, Mapping):
+        copied: dict[str, Any] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise AIAnalysisValidationError("analysis output key must be text")
+            normalized_key = str.__str__(key)
+            if normalized_key in copied:
+                raise AIAnalysisValidationError("analysis output keys collide")
+            copied[normalized_key] = _trusted_output_value(item)
+        return MappingProxyType(copied)
+    if isinstance(value, (list, tuple)):
+        return tuple(_trusted_output_value(item) for item in value)
+    if value is None or type(value) is bool:
+        return value
+    if isinstance(value, str):
+        return str.__str__(value)
+    if isinstance(value, int):
+        return int.__int__(value)
+    if isinstance(value, float):
+        return float.__float__(value)
+    raise AIAnalysisValidationError("analysis output contains a non-JSON value")
 
 
 def resolve_citation(path: str, eligible: EligibleAnalysis) -> Any:
@@ -515,16 +552,29 @@ def completed_audit(
     identity: AnalysisAuditIdentity,
     generator: GeneratorIdentity,
 ) -> Mapping[str, Any]:
-    validate_output(output, eligible)
-    if output["status"] != "available":
+    validated = validate_output(output, eligible)
+    return completed_audit_from_validated_output(eligible, validated, identity, generator)
+
+
+def completed_audit_from_validated_output(
+    eligible: EligibleAnalysis,
+    output: ValidatedAnalysisOutput,
+    identity: AnalysisAuditIdentity,
+    generator: GeneratorIdentity,
+) -> Mapping[str, Any]:
+    """Build a completed audit from the exact trusted Phase 18B output type."""
+    if type(output) is not ValidatedAnalysisOutput:
+        raise TypeError("validated output is required")
+    if output.status != "available":
         raise AIAnalysisValidationError("completed audit requires available output")
+    value = output.value
     return _audit(
         identity=identity,
         analysis_input_id=eligible.analysis_input["analysis_input_id"],
-        analysis_output_id=output["analysis_output_id"],
-        snapshot_id=output["snapshot_id"],
-        evidence_digest=output["evidence_digest"],
-        purpose=output["purpose"],
+        analysis_output_id=value["analysis_output_id"],
+        snapshot_id=value["snapshot_id"],
+        evidence_digest=value["evidence_digest"],
+        purpose=value["purpose"],
         outcome="completed",
         reason_code=None,
         generator=generator,

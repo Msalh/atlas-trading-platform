@@ -42,7 +42,8 @@ Phase 18D owns:
 4. invoking one injected provider port at most once;
 5. classifying typed provider failures without retaining raw diagnostics;
 6. passing every provider-produced output candidate to Phase 18B
-   `validate_output()` exactly once as the sole output-validation authority;
+   `validate_output()` exactly once as the sole output-validation authority and
+   routing only from its immutable `ValidatedAnalysisOutput` result;
 7. constructing the existing Phase 18B completed, refused, or failed audit when
    the frozen audit schema can represent the outcome; and
 8. returning deterministic sanitized value types suitable for a later
@@ -143,9 +144,14 @@ pricing configuration, or provider options.
 Provider output is untrusted. Phase 18D must not coerce, repair, partially accept,
 or supplement it.
 
-1. Pass the candidate to Phase 18B `validate_output(candidate, eligible)`.
-2. If the validated status is `available`, construct `completed_audit()` and
-   return the validated output plus audit.
+1. Pass the candidate to Phase 18B `validate_output(candidate, eligible)`, which
+   returns an immutable `ValidatedAnalysisOutput` after copying and freezing the
+   fully validated value. Supported public APIs cannot construct this type from
+   unchecked data; this is an application boundary, not protection against
+   hostile same-process reflection into private Python internals.
+2. If the trusted validated status is `available`, construct
+   `completed_audit_from_validated_output()` without revalidation and return the
+   validated output plus audit.
 3. If the validated status is `unavailable`, map its approved
    `unavailable_reason` to `failed_audit()`. Do not represent it as completed and
    do not return or retain the unavailable provider payload as evidence.
