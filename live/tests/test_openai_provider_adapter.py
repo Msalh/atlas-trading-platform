@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import inspect
 import json
+import math
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any
 
 import httpx
@@ -593,7 +595,7 @@ def test_invalid_authoritative_pricing_fails_before_any_caller_or_transport(
     _assert_pricing_rejected_before_side_effects(monkeypatch)
 
 
-def _assert_pricing_rejected_before_side_effects(monkeypatch):
+def _assert_pricing_rejected_before_side_effects(monkeypatch, *, policy=None):
     calls = {"estimator": 0, "credential": 0, "client": 0, "send": 0, "transport": 0}
 
     def estimator(_request):
@@ -618,7 +620,9 @@ def _assert_pricing_rejected_before_side_effects(monkeypatch):
 
     monkeypatch.setattr(httpx.Client, "send", send)
     monkeypatch.setattr(OpenAIProviderAdapter, "_client", client)
-    adapter, transport = _adapter(handler, credential=credential, estimator=estimator)
+    adapter, transport = _adapter(
+        handler, policy=policy, credential=credential, estimator=estimator
+    )
     with pytest.raises(ProviderPortError) as captured:
         adapter.invoke(_request(EVIDENCE_MARKER))
     _assert_clean(captured.value)
@@ -668,8 +672,63 @@ def test_catalog_integrity_duplicate_and_source_approval_fail_closed(monkeypatch
         _assert_pricing_rejected_before_side_effects(monkeypatch)
 
 
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"input_usd_per_million_tokens": 2.01},
+        {"output_usd_per_million_tokens": 12.01},
+        {"source_id": "other-source"},
+        {"source_version": "other-version"},
+        {"catalog_version": "other-catalog.v1"},
+        {"currency": "EUR"},
+        {"unit": "per_token"},
+        {"effective_at": NOW - timedelta(days=5)},
+        {"verified_at": NOW - timedelta(minutes=30)},
+        {"expires_at": NOW + timedelta(days=2)},
+        {"maximum_age_seconds": 172_800},
+    ],
+)
+def test_cross_reference_identity_conflicts_reject_either_reference(
+    monkeypatch, changes
+):
+    first = _pricing()
+    second = replace(first, reference_id="conflicting-reference", **changes)
+    records = (first, second)
+    resolver = _qualification_resolver(
+        records,
+        approved_sources=frozenset(
+            {
+                APPROVED_SOURCE,
+                (second.source_id, second.source_version),
+            }
+        ),
+    )
+    monkeypatch.setattr(adapter_module, "resolve_authoritative_pricing", resolver)
+    for reference in (first.reference_id, second.reference_id):
+        _assert_pricing_rejected_before_side_effects(
+            monkeypatch, policy=_policy(pricing_reference_id=reference)
+        )
+
+
+def test_cross_reference_semantic_duplicates_are_rejected(monkeypatch):
+    first = _pricing()
+    second = replace(first, reference_id="duplicate-identity-reference")
+    monkeypatch.setattr(
+        adapter_module,
+        "resolve_authoritative_pricing",
+        _qualification_resolver((first, second)),
+    )
+    for reference in (first.reference_id, second.reference_id):
+        _assert_pricing_rejected_before_side_effects(
+            monkeypatch, policy=_policy(pricing_reference_id=reference)
+        )
+
+
 def test_pricing_ceiling_boundary_and_just_over_boundary(monkeypatch):
-    boundary_rate = (120_000 - 16_384 * 2.0) / 4_096
+    boundary_rate = float(
+        (Decimal("0.12") * Decimal(1_000_000) - Decimal(16_384) * Decimal(2))
+        / Decimal(4_096)
+    )
     accepted = _pricing(output_usd_per_million_tokens=boundary_rate)
     adapter, transport = _adapter(
         lambda _request: httpx.Response(200, content=_provider_body({"ok": True})),
@@ -678,7 +737,10 @@ def test_pricing_ceiling_boundary_and_just_over_boundary(monkeypatch):
     monkeypatch.setattr(adapter_module, "resolve_authoritative_pricing", _qualification_resolver((accepted,)))
     assert adapter.invoke(_request()) == {"ok": True}
     transport.close()
-    over = replace(accepted, output_usd_per_million_tokens=boundary_rate + 0.000001)
+    over = replace(
+        accepted,
+        output_usd_per_million_tokens=math.nextafter(boundary_rate, math.inf),
+    )
     adapter, transport = _adapter(
         lambda _request: pytest.fail("transport must not run"),
         policy=_policy(),
@@ -687,6 +749,67 @@ def test_pricing_ceiling_boundary_and_just_over_boundary(monkeypatch):
     with pytest.raises(ProviderPortError):
         adapter.invoke(_request())
     transport.close()
+
+
+@pytest.mark.parametrize("caller_limits", [(1, 1), (100, 100), (16_384, 4_096)])
+def test_boundary_authority_approval_is_independent_of_caller_limits(
+    monkeypatch, caller_limits
+):
+    boundary_rate = float(
+        (Decimal("0.12") * Decimal(1_000_000) - Decimal(16_384) * Decimal(2))
+        / Decimal(4_096)
+    )
+    record = _pricing(output_usd_per_million_tokens=boundary_rate)
+    monkeypatch.setattr(
+        adapter_module,
+        "resolve_authoritative_pricing",
+        _qualification_resolver((record,)),
+    )
+    adapter, transport = _adapter(
+        lambda _request: httpx.Response(200, content=_provider_body({"ok": True})),
+        policy=_policy(
+            max_input_tokens=caller_limits[0],
+            max_output_tokens=caller_limits[1],
+        ),
+        estimator=lambda _request: 1,
+    )
+    assert adapter.invoke(_request()) == {"ok": True}
+    transport.close()
+
+
+@pytest.mark.parametrize(
+    "record",
+    [
+        _pricing(
+            input_usd_per_million_tokens=math.nextafter(7.32421875, math.inf),
+            output_usd_per_million_tokens=0.000001,
+        ),
+        _pricing(
+            input_usd_per_million_tokens=0.000001,
+            output_usd_per_million_tokens=math.nextafter(29.296875, math.inf),
+        ),
+        _pricing(
+            input_usd_per_million_tokens=2.0,
+            output_usd_per_million_tokens=22.0,
+        ),
+    ],
+)
+@pytest.mark.parametrize("caller_limits", [(1, 1), (100, 100), (16_384, 4_096)])
+def test_fixed_maxima_cost_cannot_be_reduced_by_caller_limits(
+    monkeypatch, record, caller_limits
+):
+    monkeypatch.setattr(
+        adapter_module,
+        "resolve_authoritative_pricing",
+        _qualification_resolver((record,)),
+    )
+    _assert_pricing_rejected_before_side_effects(
+        monkeypatch,
+        policy=_policy(
+            max_input_tokens=caller_limits[0],
+            max_output_tokens=caller_limits[1],
+        ),
+    )
 
 
 @pytest.mark.parametrize(

@@ -353,12 +353,6 @@ class OpenAIProviderAdapter:
         )
         if pricing is None:
             return None
-        worst_case_cost = (
-            policy.max_input_tokens * pricing.input_usd_per_million_tokens
-            + policy.max_output_tokens * pricing.output_usd_per_million_tokens
-        ) / 1_000_000
-        if not math.isfinite(worst_case_cost) or worst_case_cost > policy.max_estimated_cost_usd:
-            return None
         return pricing
 
     @staticmethod

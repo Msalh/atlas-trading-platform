@@ -232,8 +232,11 @@ Phase 18E offline implementation is authorized for an OpenAI direct-HTTP adapter
 using `httpx==0.28.1`, an injected explicit model allowlist, and the approved
 bounded policy in `PHASE_18E_PROVIDER_ADAPTER.md`. Pricing approval is owned by
 a package-controlled integrity-bound catalog; callers select only an exact
-reference. The operational catalog remains empty and fail-closed pending
-approved pricing provenance. It remains default-disabled,
+reference. Catalog validation rejects every duplicate exact
+provider/model/service-tier identity. Its USD $0.12 authority gate always uses
+package-owned 16,384-input/4,096-output maxima, independent of caller request
+limits. The operational catalog remains empty and fail-closed pending approved
+pricing provenance. It remains default-disabled,
 offline-qualified, and unattached. Operational enablement is separately blocked
 until an immutable model identifier, account entitlement, retention/ZDR,
 pricing metadata, secret ownership, and runtime binding are independently

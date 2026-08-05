@@ -143,6 +143,7 @@ def test_pricing_authority_has_only_standard_library_dependencies():
         "__future__",
         "dataclasses",
         "datetime",
+        "decimal",
         "hashlib",
         "json",
         "math",

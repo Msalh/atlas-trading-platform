@@ -7,6 +7,7 @@ import json
 import math
 from dataclasses import asdict, dataclass
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,6 +35,10 @@ _OPERATIONAL_APPROVED_SOURCES: frozenset[tuple[str, str]] = frozenset()
 _OPERATIONAL_CATALOG_SHA256 = (
     "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
 )
+_AUTHORITY_MAX_INPUT_TOKENS = 16_384
+_AUTHORITY_MAX_OUTPUT_TOKENS = 4_096
+_AUTHORITY_MAX_COST_USD = Decimal("0.12")
+_TOKENS_PER_MILLION = Decimal(1_000_000)
 
 
 def _catalog_bytes(records: tuple[ProviderPricingRecord, ...]) -> bytes:
@@ -53,6 +58,19 @@ def _catalog_bytes(records: tuple[ProviderPricingRecord, ...]) -> bytes:
 
 def _catalog_digest(records: tuple[ProviderPricingRecord, ...]) -> str:
     return hashlib.sha256(_catalog_bytes(records)).hexdigest()
+
+
+def _within_authority_cost_ceiling(record: ProviderPricingRecord) -> bool:
+    try:
+        input_rate = Decimal(str(record.input_usd_per_million_tokens))
+        output_rate = Decimal(str(record.output_usd_per_million_tokens))
+        cost = (
+            Decimal(_AUTHORITY_MAX_INPUT_TOKENS) * input_rate
+            + Decimal(_AUTHORITY_MAX_OUTPUT_TOKENS) * output_rate
+        ) / _TOKENS_PER_MILLION
+    except (InvalidOperation, ValueError):
+        return False
+    return cost <= _AUTHORITY_MAX_COST_USD
 
 
 def _resolve_catalog(
@@ -90,10 +108,19 @@ def _resolve_catalog(
         and now.tzinfo is not None
     ):
         return None
-    matches = tuple(record for record in records if record.reference_id == reference_id)
-    if len(matches) != 1:
+    reference_matches = tuple(
+        record for record in records if record.reference_id == reference_id
+    )
+    identity_matches = tuple(
+        record
+        for record in records
+        if record.provider_id == provider_id
+        and record.model_id == model_id
+        and record.service_tier == service_tier
+    )
+    if len(reference_matches) != 1 or len(identity_matches) != 1:
         return None
-    record = matches[0]
+    record = reference_matches[0]
     rates = (
         record.input_usd_per_million_tokens,
         record.output_usd_per_million_tokens,
@@ -131,6 +158,7 @@ def _resolve_catalog(
         and record.maximum_age_seconds > 0
         and record.effective_at <= record.verified_at <= now < record.expires_at
         and (now - record.verified_at).total_seconds() <= record.maximum_age_seconds
+        and _within_authority_cost_ceiling(record)
     ):
         return None
     return record

@@ -33,7 +33,7 @@ strategy, risk, decision, audit, persistence, broker, or execution authority.
 | Response-byte ceiling | 131,072 streamed bytes. |
 | Transport timeout | 5-second connect, 45-second read, 60-second end-to-end deadline. |
 | Maximum input/output tokens | 16,384 input and 4,096 output. |
-| Estimated pre-call cost ceiling and units | USD 0.12 maximum standard/default token charge. A package-owned pricing catalog binds an immutable record to an opaque reference, provider, exact model, rates, USD-per-million-token unit, service tier, independently approved source/version, catalog version/digest, effective time, verification time, expiry, and maximum age. Missing, conflicting, stale, future-effective, mismatched, unsupported, integrity-invalid, or over-ceiling metadata fails before prompt construction, credentials, client creation, or transport. The operational catalog is intentionally empty until separately approved provenance exists. |
+| Estimated pre-call cost ceiling and units | USD 0.12 maximum standard/default token charge. A package-owned pricing catalog binds an immutable record to an opaque reference, provider, exact model, rates, USD-per-million-token unit, service tier, independently approved source/version, catalog version/digest, effective time, verification time, expiry, and maximum age. The catalog rejects every duplicate exact provider/model/service-tier identity, including semantic duplicates under different references. The authority gate always calculates cost with package-owned maxima of 16,384 input and 4,096 output tokens using deterministic decimal arithmetic; caller request limits cannot reduce it. Missing, conflicting, stale, future-effective, mismatched, unsupported, integrity-invalid, or over-ceiling metadata fails before prompt construction, credentials, client creation, or transport. The operational catalog is intentionally empty until separately approved provenance exists. |
 | Decoded JSON-domain return type | Recursive `JSONValue`: exact JSON scalar, list, or string-keyed dictionary values without `Any`, coercion, envelope, or sentinel. |
 | Absent-candidate classification | Sanitized `ProviderUnavailableError`, routed by Phase 18D to `provider_unavailable`; no fabricated candidate. |
 
@@ -45,6 +45,12 @@ authority objects, or an approval capability. Offline tests replace the resolver
 symbol only through pytest monkeypatch with a fixed qualification catalog. That
 test-only replacement is not accepted by the adapter constructor or policy and
 is not exposed by any runtime factory or configuration loader.
+
+Caller-configurable token limits remain bounded request controls only. They may
+lower the size of a particular offline-qualified request, but never replace or
+reduce the fixed authority-level 16,384/4,096 calculation. Phase 18E remains
+offline-only pending another independent recertification; real pricing
+provenance and immutable-model approval remain operational blockers.
 
 The request explicitly selects `service_tier: "default"`, the documented
 standard pricing/performance tier. It also selects explicit prompt-caching mode
