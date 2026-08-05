@@ -6,7 +6,10 @@ from pathlib import Path
 ROOT = Path(__file__).parents[1]
 PACKAGE = ROOT / "atlas_ai_orchestration"
 ADAPTER = PACKAGE / "openai_adapter.py"
-CORE_FILES = tuple(path for path in PACKAGE.glob("*.py") if path != ADAPTER)
+PRICING_AUTHORITY = PACKAGE / "pricing_authority.py"
+CORE_FILES = tuple(
+    path for path in PACKAGE.glob("*.py") if path not in {ADAPTER, PRICING_AUTHORITY}
+)
 
 
 def _imports(path: Path) -> list[str]:
@@ -127,11 +130,23 @@ def test_phase18e_adapter_has_only_approved_transport_and_internal_dependencies(
         "json",
         "math",
         "models",
+        "pricing_authority",
         "time",
         "typing",
     }
     assert set(imports) <= allowed
     assert "httpx" in imports
+
+
+def test_pricing_authority_has_only_standard_library_dependencies():
+    assert set(_imports(PRICING_AUTHORITY)) <= {
+        "__future__",
+        "dataclasses",
+        "datetime",
+        "hashlib",
+        "json",
+        "math",
+    }
 
 
 def test_no_production_runtime_imports_or_binds_phase18e_adapter():

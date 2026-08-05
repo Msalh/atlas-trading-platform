@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import inspect
+import json
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -11,8 +11,8 @@ from typing import Any
 
 import httpx
 import pytest
-
 from atlas_ai_orchestration import TrustedProviderRequest
+from atlas_ai_orchestration import openai_adapter as adapter_module
 from atlas_ai_orchestration.errors import (
     ProviderPortError,
     ProviderTimeoutError,
@@ -21,17 +21,27 @@ from atlas_ai_orchestration.errors import (
 from atlas_ai_orchestration.openai_adapter import (
     OpenAIAdapterPolicy,
     OpenAIProviderAdapter,
+)
+from atlas_ai_orchestration.pricing_authority import (
     ProviderPricingRecord,
+    _catalog_digest,
+    _resolve_catalog,
+    resolve_authoritative_pricing,
 )
 
 MODEL = "offline-approved-model-snapshot"
 SECRET = "offline-secret-that-must-not-leak"
 EVIDENCE_MARKER = "private-evidence-that-must-not-leak"
 NOW = datetime(2026, 8, 5, 12, 0, tzinfo=timezone.utc)
+REFERENCE = "offline-approved-pricing-reference"
+CATALOG_VERSION = "offline-qualification-catalog.v1"
+APPROVED_SOURCE = ("official-openai-pricing", "2026-07-30")
 
 
 def _pricing(**changes: Any) -> ProviderPricingRecord:
     values = {
+        "reference_id": REFERENCE,
+        "catalog_version": CATALOG_VERSION,
         "provider_id": "openai",
         "model_id": MODEL,
         "input_usd_per_million_tokens": 2.0,
@@ -48,6 +58,40 @@ def _pricing(**changes: Any) -> ProviderPricingRecord:
     }
     values.update(changes)
     return ProviderPricingRecord(**values)
+
+
+def _qualification_resolver(
+    records: tuple[ProviderPricingRecord, ...],
+    *,
+    approved_sources: frozenset[tuple[str, str]] = frozenset({APPROVED_SOURCE}),
+    catalog_version: str = CATALOG_VERSION,
+    catalog_sha256: str | None = None,
+):
+    digest = catalog_sha256 or _catalog_digest(records)
+
+    def resolve(*, provider_id, model_id, service_tier, reference_id, now):
+        return _resolve_catalog(
+            records=records,
+            approved_sources=approved_sources,
+            expected_catalog_version=catalog_version,
+            expected_catalog_sha256=digest,
+            provider_id=provider_id,
+            model_id=model_id,
+            service_tier=service_tier,
+            reference_id=reference_id,
+            now=now,
+        )
+
+    return resolve
+
+
+@pytest.fixture(autouse=True)
+def qualification_pricing_authority(monkeypatch):
+    monkeypatch.setattr(
+        adapter_module,
+        "resolve_authoritative_pricing",
+        _qualification_resolver((_pricing(),)),
+    )
 
 
 def _traceback_locals(error: BaseException) -> str:
@@ -74,16 +118,11 @@ def _request(evidence: str = "{}") -> TrustedProviderRequest:
 
 
 def _policy(**changes: Any) -> OpenAIAdapterPolicy:
-    pricing = changes.pop("pricing", _pricing())
     values = {
         "enabled": True,
         "model_id": MODEL,
         "approved_model_ids": frozenset({MODEL}),
-        "pricing": pricing,
-        "approved_pricing_records": (pricing,),
-        "approved_pricing_sources": frozenset(
-            {("official-openai-pricing", "2026-07-30")}
-        ),
+        "pricing_reference_id": REFERENCE,
     }
     values.update(changes)
     return OpenAIAdapterPolicy(**values)
@@ -193,7 +232,8 @@ def test_counted_transport_symbol_runs_exactly_once(monkeypatch):
         (_policy(enabled=False), lambda _request: 1),
         (_policy(model_id="not-allowlisted"), lambda _request: 1),
         (_policy(approved_model_ids=MODEL), lambda _request: 1),
-        (_policy(pricing=None, approved_pricing_records=()), lambda _request: 1),
+        (_policy(pricing_reference_id=""), lambda _request: 1),
+        (_policy(pricing_reference_id="unapproved-reference"), lambda _request: 1),
         (_policy(max_request_bytes=65_537), lambda _request: 1),
         (_policy(max_response_bytes=131_073), lambda _request: 1),
         (_policy(max_input_tokens=16_385), lambda _request: 1),
@@ -527,57 +567,123 @@ def test_one_send_is_one_transport_invocation_and_redirect_is_not_followed():
 
 
 @pytest.mark.parametrize(
-    "policy",
+    "record_changes",
     [
-        _policy(pricing=None, approved_pricing_records=()),
-        _policy(pricing=_pricing(source_id="")),
-        _policy(pricing=_pricing(source_version="")),
-        _policy(pricing=_pricing(source_version="unapproved")),
-        _policy(pricing=_pricing(provider_id="other")),
-        _policy(pricing=_pricing(model_id="other")),
-        _policy(pricing=_pricing(service_tier="priority")),
-        _policy(pricing=_pricing(currency="EUR")),
-        _policy(pricing=_pricing(unit="per_token")),
-        _policy(pricing=_pricing(effective_at=NOW + timedelta(seconds=1))),
-        _policy(pricing=_pricing(verified_at=NOW - timedelta(days=2))),
-        _policy(pricing=_pricing(expires_at=NOW)),
-        _policy(
-            pricing=_pricing(input_usd_per_million_tokens=0.01),
-            approved_pricing_records=(_pricing(),),
-        ),
-        _policy(approved_pricing_records=(_pricing(), _pricing())),
-        _policy(pricing=_pricing(output_usd_per_million_tokens=22.0)),
+        {"source_id": ""},
+        {"source_version": "unapproved"},
+        {"provider_id": "other"},
+        {"model_id": "other"},
+        {"service_tier": "priority"},
+        {"currency": "EUR"},
+        {"unit": "per_token"},
+        {"effective_at": NOW + timedelta(seconds=1)},
+        {"verified_at": NOW - timedelta(days=2)},
+        {"expires_at": NOW},
     ],
 )
-def test_invalid_or_untrusted_pricing_fails_before_transport(policy):
-    calls = 0
+def test_invalid_authoritative_pricing_fails_before_any_caller_or_transport(
+    monkeypatch, record_changes
+):
+    record = _pricing(**record_changes)
+    monkeypatch.setattr(
+        adapter_module,
+        "resolve_authoritative_pricing",
+        _qualification_resolver((record,)),
+    )
+    _assert_pricing_rejected_before_side_effects(monkeypatch)
 
-    def handler(_request):
-        nonlocal calls
-        calls += 1
+
+def _assert_pricing_rejected_before_side_effects(monkeypatch):
+    calls = {"estimator": 0, "credential": 0, "client": 0, "send": 0, "transport": 0}
+
+    def estimator(_request):
+        calls["estimator"] += 1
+        return 1
+
+    def credential():
+        calls["credential"] += 1
+        return SECRET
+
+    def client(_self):
+        calls["client"] += 1
         raise AssertionError
 
-    adapter, transport = _adapter(handler, policy=policy)
-    with pytest.raises(ProviderPortError):
-        adapter.invoke(_request())
-    assert calls == 0
+    def send(*args, **kwargs):
+        calls["send"] += 1
+        raise AssertionError
+
+    def handler(_request):
+        calls["transport"] += 1
+        raise AssertionError
+
+    monkeypatch.setattr(httpx.Client, "send", send)
+    monkeypatch.setattr(OpenAIProviderAdapter, "_client", client)
+    adapter, transport = _adapter(handler, credential=credential, estimator=estimator)
+    with pytest.raises(ProviderPortError) as captured:
+        adapter.invoke(_request(EVIDENCE_MARKER))
+    _assert_clean(captured.value)
+    assert calls == {"estimator": 0, "credential": 0, "client": 0, "send": 0, "transport": 0}
     transport.close()
 
 
-def test_pricing_ceiling_boundary_and_just_over_boundary():
+def test_policy_caller_cannot_supply_or_redefine_pricing_authority(monkeypatch):
+    parameters = inspect.signature(OpenAIAdapterPolicy).parameters
+    prohibited = {
+        "pricing",
+        "rates",
+        "approved_pricing_records",
+        "approved_pricing_sources",
+        "approved_source_versions",
+        "pricing_catalog",
+        "pricing_authority",
+    }
+    assert prohibited.isdisjoint(parameters)
+    for name in prohibited:
+        with pytest.raises(TypeError):
+            _policy(**{name: object()})
+    monkeypatch.setattr(
+        adapter_module, "resolve_authoritative_pricing", resolve_authoritative_pricing
+    )
+    _assert_pricing_rejected_before_side_effects(monkeypatch)
+
+
+def test_production_authority_cannot_use_offline_qualification_catalog(monkeypatch):
+    monkeypatch.setattr(
+        adapter_module, "resolve_authoritative_pricing", resolve_authoritative_pricing
+    )
+    _assert_pricing_rejected_before_side_effects(monkeypatch)
+
+
+def test_catalog_integrity_duplicate_and_source_approval_fail_closed(monkeypatch):
+    record = _pricing()
+    resolvers = (
+        _qualification_resolver((record,), catalog_sha256="0" * 64),
+        _qualification_resolver((record, record)),
+        _qualification_resolver((record, replace(record, model_id="conflict"))),
+        _qualification_resolver((record,), approved_sources=frozenset()),
+        _qualification_resolver((replace(record, catalog_version="other"),)),
+    )
+    for resolver in resolvers:
+        monkeypatch.setattr(adapter_module, "resolve_authoritative_pricing", resolver)
+        _assert_pricing_rejected_before_side_effects(monkeypatch)
+
+
+def test_pricing_ceiling_boundary_and_just_over_boundary(monkeypatch):
     boundary_rate = (120_000 - 16_384 * 2.0) / 4_096
     accepted = _pricing(output_usd_per_million_tokens=boundary_rate)
     adapter, transport = _adapter(
         lambda _request: httpx.Response(200, content=_provider_body({"ok": True})),
-        policy=_policy(pricing=accepted, approved_pricing_records=(accepted,)),
+        policy=_policy(),
     )
+    monkeypatch.setattr(adapter_module, "resolve_authoritative_pricing", _qualification_resolver((accepted,)))
     assert adapter.invoke(_request()) == {"ok": True}
     transport.close()
     over = replace(accepted, output_usd_per_million_tokens=boundary_rate + 0.000001)
     adapter, transport = _adapter(
         lambda _request: pytest.fail("transport must not run"),
-        policy=_policy(pricing=over, approved_pricing_records=(over,)),
+        policy=_policy(),
     )
+    monkeypatch.setattr(adapter_module, "resolve_authoritative_pricing", _qualification_resolver((over,)))
     with pytest.raises(ProviderPortError):
         adapter.invoke(_request())
     transport.close()
@@ -601,6 +707,34 @@ def test_hostile_response_close_is_sanitized_and_preserves_selected_failure(
         policy=_policy(max_response_bytes=1024),
     )
     with pytest.raises(expected) as captured:
+        adapter.invoke(_request(EVIDENCE_MARKER))
+    _assert_clean(captured.value)
+    transport.close()
+
+
+def test_hostile_client_close_is_sanitized(monkeypatch):
+    def hostile_close(_self):
+        hostile_local = SECRET
+        raise RuntimeError(hostile_local)
+
+    monkeypatch.setattr(httpx.Client, "close", hostile_close)
+    adapter, transport = _adapter(
+        lambda _request: httpx.Response(200, content=_provider_body({"ok": True}))
+    )
+    with pytest.raises(ProviderPortError) as captured:
+        adapter.invoke(_request(EVIDENCE_MARKER))
+    _assert_clean(captured.value)
+    transport.close()
+
+
+def test_hostile_client_close_does_not_replace_selected_failure(monkeypatch):
+    def hostile_close(_self):
+        hostile_local = SECRET
+        raise RuntimeError(hostile_local)
+
+    monkeypatch.setattr(httpx.Client, "close", hostile_close)
+    adapter, transport = _adapter(lambda _request: httpx.Response(500, text=SECRET))
+    with pytest.raises(ProviderUnavailableError) as captured:
         adapter.invoke(_request(EVIDENCE_MARKER))
     _assert_clean(captured.value)
     transport.close()

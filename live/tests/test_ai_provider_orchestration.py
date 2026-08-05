@@ -9,11 +9,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+import atlas_ai_analysis.sdk as analysis_sdk
+import atlas_ai_orchestration.openai_adapter as openai_adapter_module
+import atlas_ai_orchestration.orchestrator as orchestration_module
 import httpx
 import pytest
-
-import atlas_ai_analysis.sdk as analysis_sdk
-import atlas_ai_orchestration.orchestrator as orchestration_module
 from atlas_ai_analysis import (
     AnalysisInputIdentity,
     EligibleAnalysis,
@@ -35,7 +35,11 @@ from atlas_ai_orchestration import (
 from atlas_ai_orchestration.openai_adapter import (
     OpenAIAdapterPolicy,
     OpenAIProviderAdapter,
+)
+from atlas_ai_orchestration.pricing_authority import (
     ProviderPricingRecord,
+    _catalog_digest,
+    _resolve_catalog,
 )
 from atlas_ai_service import ServiceFailure
 
@@ -268,6 +272,7 @@ def test_concrete_adapter_identity_mismatch_has_zero_transport_dispatches():
         policy=OpenAIAdapterPolicy(
             model_id="adapter-model",
             approved_model_ids=frozenset({"adapter-model"}),
+            pricing_reference_id="unused-before-identity-match",
         ),
         qualification_transport=httpx.MockTransport(handler),
     )
@@ -926,6 +931,8 @@ def test_concrete_adapter_preserves_phase18b_and_audit_authority(monkeypatch):
 
     now = datetime(2026, 8, 5, 12, 0, tzinfo=timezone.utc)
     pricing = ProviderPricingRecord(
+        reference_id="offline-approved-pricing-reference",
+        catalog_version="offline-qualification-catalog.v1",
         provider_id="openai",
         model_id="offline-approved-model-snapshot",
         input_usd_per_million_tokens=2.0,
@@ -940,6 +947,19 @@ def test_concrete_adapter_preserves_phase18b_and_audit_authority(monkeypatch):
         expires_at=now + timedelta(days=1),
         maximum_age_seconds=86_400,
     )
+    monkeypatch.setattr(
+        openai_adapter_module,
+        "resolve_authoritative_pricing",
+        lambda **query: _resolve_catalog(
+            records=(pricing,),
+            approved_sources=frozenset(
+                {("official-openai-pricing", "2026-07-30")}
+            ),
+            expected_catalog_version="offline-qualification-catalog.v1",
+            expected_catalog_sha256=_catalog_digest((pricing,)),
+            **query,
+        ),
+    )
     transport = httpx.MockTransport(handler)
     adapter = OpenAIProviderAdapter(
         credential_provider=lambda: "offline-only-secret",
@@ -950,11 +970,7 @@ def test_concrete_adapter_preserves_phase18b_and_audit_authority(monkeypatch):
             enabled=True,
             model_id="offline-approved-model-snapshot",
             approved_model_ids=frozenset({"offline-approved-model-snapshot"}),
-            pricing=pricing,
-            approved_pricing_records=(pricing,),
-            approved_pricing_sources=frozenset(
-                {("official-openai-pricing", "2026-07-30")}
-            ),
+            pricing_reference_id="offline-approved-pricing-reference",
         ),
     )
     core = ProviderOrchestrator(

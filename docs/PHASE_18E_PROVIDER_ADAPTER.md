@@ -33,12 +33,18 @@ strategy, risk, decision, audit, persistence, broker, or execution authority.
 | Response-byte ceiling | 131,072 streamed bytes. |
 | Transport timeout | 5-second connect, 45-second read, 60-second end-to-end deadline. |
 | Maximum input/output tokens | 16,384 input and 4,096 output. |
-| Estimated pre-call cost ceiling and units | USD 0.12 maximum standard/default token charge. An immutable pricing record is bound to the provider, exact model, rates, USD-per-million-token unit, service tier, approved source/version, effective time, verification time, expiry, and maximum age. Missing, conflicting, stale, future-effective, mismatched, unsupported, or over-ceiling metadata fails before transport. |
+| Estimated pre-call cost ceiling and units | USD 0.12 maximum standard/default token charge. A package-owned pricing catalog binds an immutable record to an opaque reference, provider, exact model, rates, USD-per-million-token unit, service tier, independently approved source/version, catalog version/digest, effective time, verification time, expiry, and maximum age. Missing, conflicting, stale, future-effective, mismatched, unsupported, integrity-invalid, or over-ceiling metadata fails before prompt construction, credentials, client creation, or transport. The operational catalog is intentionally empty until separately approved provenance exists. |
 | Decoded JSON-domain return type | Recursive `JSONValue`: exact JSON scalar, list, or string-keyed dictionary values without `Any`, coercion, envelope, or sentinel. |
 | Absent-candidate classification | Sanitized `ProviderUnavailableError`, routed by Phase 18D to `provider_unavailable`; no fabricated candidate. |
 
 Only the approved ceilings may be defaults. Provider/model identity, enablement,
-pricing verification, and credential supply remain explicit and fail closed.
+pricing verification, and credential supply remain explicit and fail closed. The
+request-policy caller supplies only an exact pricing-reference identifier; it
+cannot supply rates, records, sources, versions, approval allowlists, catalogs,
+authority objects, or an approval capability. Offline tests replace the resolver
+symbol only through pytest monkeypatch with a fixed qualification catalog. That
+test-only replacement is not accepted by the adapter constructor or policy and
+is not exposed by any runtime factory or configuration loader.
 
 The request explicitly selects `service_tier: "default"`, the documented
 standard pricing/performance tier. It also selects explicit prompt-caching mode
@@ -388,7 +394,8 @@ Phase 18E closes only when:
 
 The reviewed implementation set is limited to this document, the roadmap,
 `live/requirements.txt`, the Phase 18D package models/ports/exports, the new
-`live/atlas_ai_orchestration/openai_adapter.py`, the Phase 18D dependency and
+`live/atlas_ai_orchestration/openai_adapter.py`, the package-owned
+`live/atlas_ai_orchestration/pricing_authority.py`, the Phase 18D dependency and
 orchestration tests, and the new
 `live/tests/test_openai_provider_adapter.py`. It must not modify Phase 18A
 schemas, duplicate Phase 18B validation, or wire the adapter into an application

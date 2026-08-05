@@ -11,11 +11,11 @@ from datetime import datetime, timezone
 from typing import Protocol
 
 import httpx
-
 from atlas_ai_analysis import GeneratorIdentity
 
 from .errors import ProviderPortError, ProviderTimeoutError, ProviderUnavailableError
 from .models import JSONValue, TrustedProviderRequest
+from .pricing_authority import ProviderPricingRecord, resolve_authoritative_pricing
 
 _RESPONSES_ENDPOINT = "https://api.openai.com/v1/responses"
 _PROVIDER_ID = "openai"
@@ -34,29 +34,10 @@ def _utc_now() -> datetime:
 
 
 @dataclass(frozen=True, slots=True)
-class ProviderPricingRecord:
-    provider_id: str
-    model_id: str
-    input_usd_per_million_tokens: float
-    output_usd_per_million_tokens: float
-    currency: str
-    unit: str
-    service_tier: str
-    source_id: str
-    source_version: str
-    effective_at: datetime
-    verified_at: datetime
-    expires_at: datetime
-    maximum_age_seconds: int
-
-
-@dataclass(frozen=True, slots=True)
 class OpenAIAdapterPolicy:
     model_id: str
     approved_model_ids: frozenset[str]
-    pricing: ProviderPricingRecord | None = None
-    approved_pricing_records: tuple[ProviderPricingRecord, ...] = ()
-    approved_pricing_sources: frozenset[tuple[str, str]] = frozenset()
+    pricing_reference_id: str
     enabled: bool = False
     max_request_bytes: int = 65_536
     max_response_bytes: int = 131_072
@@ -340,7 +321,6 @@ class OpenAIProviderAdapter:
             policy.deadline_seconds,
             policy.max_estimated_cost_usd,
         )
-        pricing = policy.pricing
         if not (
             policy.enabled is True
             and type(policy.model_id) is str
@@ -348,6 +328,8 @@ class OpenAIProviderAdapter:
             and type(policy.approved_model_ids) is frozenset
             and all(type(item) is str and bool(item) for item in policy.approved_model_ids)
             and policy.model_id in policy.approved_model_ids
+            and type(policy.pricing_reference_id) is str
+            and bool(policy.pricing_reference_id)
             and all(type(value) is int and value > 0 for value in positive_ints)
             and all(type(value) in {int, float} and math.isfinite(value) and value > 0 for value in positive_numbers)
             and policy.connect_timeout_seconds <= 5.0
@@ -358,39 +340,18 @@ class OpenAIProviderAdapter:
             and policy.max_input_tokens <= 16_384
             and policy.max_output_tokens <= 4_096
             and policy.max_estimated_cost_usd <= 0.12
-            and type(pricing) is ProviderPricingRecord
-            and type(policy.approved_pricing_records) is tuple
-            and len(policy.approved_pricing_records) == 1
-            and pricing == policy.approved_pricing_records[0]
-            and type(policy.approved_pricing_sources) is frozenset
             and type(now) is datetime
             and now.tzinfo is not None
         ):
             return None
-        timestamps = (pricing.effective_at, pricing.verified_at, pricing.expires_at)
-        rates = (
-            pricing.input_usd_per_million_tokens,
-            pricing.output_usd_per_million_tokens,
+        pricing = resolve_authoritative_pricing(
+            provider_id=_PROVIDER_ID,
+            model_id=policy.model_id,
+            service_tier="default",
+            reference_id=policy.pricing_reference_id,
+            now=now,
         )
-        if not (
-            pricing.provider_id == _PROVIDER_ID
-            and pricing.model_id == policy.model_id
-            and pricing.currency == "USD"
-            and pricing.unit == "per_million_tokens"
-            and pricing.service_tier == "default"
-            and type(pricing.source_id) is str
-            and bool(pricing.source_id)
-            and type(pricing.source_version) is str
-            and bool(pricing.source_version)
-            and (pricing.source_id, pricing.source_version)
-            in policy.approved_pricing_sources
-            and all(type(value) in {int, float} and math.isfinite(value) and value > 0 for value in rates)
-            and all(type(value) is datetime and value.tzinfo is not None for value in timestamps)
-            and type(pricing.maximum_age_seconds) is int
-            and pricing.maximum_age_seconds > 0
-            and pricing.effective_at <= pricing.verified_at <= now < pricing.expires_at
-            and (now - pricing.verified_at).total_seconds() <= pricing.maximum_age_seconds
-        ):
+        if pricing is None:
             return None
         worst_case_cost = (
             policy.max_input_tokens * pricing.input_usd_per_million_tokens
