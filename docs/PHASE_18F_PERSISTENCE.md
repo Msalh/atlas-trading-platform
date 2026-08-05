@@ -46,6 +46,14 @@ immutable public `output` view. Its supported constructor is closed. Phase 18F
 requires that retained object and never reconstructs trust from a mapping or
 calls `validate_output()` again.
 
+`FailedOutcome` and `RefusedOutcome` likewise retain the exact audit object
+created by the Phase 18B builder in the authorized Phase 18D execution path.
+Their supported constructors are closed and expose only immutable read-only
+`audit` compatibility views. Schema validity, mapping immutability, equality,
+canonical bytes, and digest agreement do not confer execution provenance:
+serializing, copying, or publicly reparsing an audit cannot recreate outcome or
+persistence authority.
+
 The persistence DTO constructors are also closed. This is an application
 authority boundary and, like the Phase 18B capability, is not a claim of
 protection against hostile same-process reflection into private Python members.
@@ -86,6 +94,12 @@ whole logical record committed or was an exact replay.
 The coordinator invokes the port at most once. It contains no retry and never
 reports partial or uncertain success. Storage-specific transaction and locking
 details do not enter the public contract.
+
+Production enforces the typed provenance, pre-dispatch integrity, one-call, and
+sanitized receipt boundaries. Atomic commit, rollback, replay, collision, and
+concurrency are obligations of a future concrete port. The offline test suite
+qualifies those obligations with a test-only transactional state machine; it
+does not claim that Phase 18F contains a production transaction manager.
 
 ## Replay, collision, and concurrency
 
@@ -147,8 +161,12 @@ records and receipts; one-call/no-retry behavior; hostile cause/context redactio
 and static absence of concrete storage, HTTP, Railway, provider, broker,
 deployment, runtime bindings, and production-reachable test fakes.
 
-All qualification uses deterministic in-memory test fakes. The fake is test-only
-and cannot be imported by production construction or runtime code.
+All qualification uses a deterministic in-memory test-only state machine. It
+separates staged output, staged audit, and committed state; reaches distinct
+between-write, pre-commit, commit-failure, timeout, cancellation,
+rollback-success, and rollback-failure boundaries; and exposes tightly bounded
+instrumentation only to tests. Staged state is never part of its committed-state
+view. The fake cannot be imported by production construction or runtime code.
 
 ## Independent certification and later boundaries
 

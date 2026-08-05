@@ -75,15 +75,64 @@ def _completed_outcome(
     )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class FailedOutcome:
     reason: FailureReason
-    audit: Mapping[str, Any]
+    _trusted_audit: Mapping[str, Any] = field(repr=False)
+
+    def __init__(
+        self,
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        raise TypeError("failed outcome construction is private")
+
+    @property
+    def audit(self) -> Mapping[str, Any]:
+        return self._trusted_audit
+
+    def __copy__(self) -> FailedOutcome:
+        return self
+
+    def __deepcopy__(self, _memo: dict[int, object]) -> FailedOutcome:
+        raise TypeError("failed outcome copying is private")
+
+    def __reduce_ex__(self, _protocol: int) -> object:
+        raise TypeError("failed outcome serialization is private")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class RefusedOutcome:
-    audit: Mapping[str, Any]
+    _trusted_audit: Mapping[str, Any] = field(repr=False)
+
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        raise TypeError("refused outcome construction is private")
+
+    @property
+    def audit(self) -> Mapping[str, Any]:
+        return self._trusted_audit
+
+    def __copy__(self) -> RefusedOutcome:
+        return self
+
+    def __deepcopy__(self, _memo: dict[int, object]) -> RefusedOutcome:
+        raise TypeError("refused outcome copying is private")
+
+    def __reduce_ex__(self, _protocol: int) -> object:
+        raise TypeError("refused outcome serialization is private")
+
+
+def _failed_outcome(reason: FailureReason, audit: Mapping[str, Any]) -> FailedOutcome:
+    outcome = object.__new__(FailedOutcome)
+    object.__setattr__(outcome, "reason", reason)
+    object.__setattr__(outcome, "_trusted_audit", audit)
+    return outcome
+
+
+def _refused_outcome(audit: Mapping[str, Any]) -> RefusedOutcome:
+    outcome = object.__new__(RefusedOutcome)
+    object.__setattr__(outcome, "_trusted_audit", audit)
+    return outcome
 
 
 @dataclass(frozen=True, slots=True)

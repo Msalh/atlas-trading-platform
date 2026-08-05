@@ -94,10 +94,10 @@ class PersistenceCoordinator:
             return self._completed(cast(CompletedOutcome, outcome))
         if type(outcome) is FailedOutcome:
             failed = cast(FailedOutcome, outcome)
-            return self._audit_only(failed.audit, "failed", failed.reason)
+            return self._audit_only(failed._trusted_audit, "failed", failed.reason)
         if type(outcome) is RefusedOutcome:
             refused = cast(RefusedOutcome, outcome)
-            return self._audit_only(refused.audit, "refused", None)
+            return self._audit_only(refused._trusted_audit, "refused", None)
         raise PersistenceIntegrityError
 
     def _completed(self, outcome: CompletedOutcome) -> CompletedPersistenceRecord:

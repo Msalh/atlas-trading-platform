@@ -17,12 +17,12 @@ from atlas_ai_service import ServiceFailure
 
 from .errors import ProviderTimeoutError, ProviderUnavailableError
 from .models import (
-    FailedOutcome,
     OrchestrationOutcome,
-    RefusedOutcome,
     ServiceUnavailableOutcome,
     TrustedProviderRequest,
     _completed_outcome,
+    _failed_outcome,
+    _refused_outcome,
 )
 from .ports import (
     CostPolicy,
@@ -68,7 +68,7 @@ class ProviderOrchestrator:
 
     def _refused(self, refusal: RefusedAnalysis) -> OrchestrationOutcome:
         try:
-            return RefusedOutcome(audit=refused_audit(refusal, self._audit_identity()))
+            return _refused_outcome(refused_audit(refusal, self._audit_identity()))
         except Exception:
             return ServiceUnavailableOutcome()
 
@@ -86,7 +86,7 @@ class ProviderOrchestrator:
             )
         except Exception:
             return ServiceUnavailableOutcome()
-        return FailedOutcome(reason=reason, audit=audit)
+        return _failed_outcome(reason, audit)
 
     def _eligible(self, eligible: EligibleAnalysis) -> OrchestrationOutcome:
         try:
