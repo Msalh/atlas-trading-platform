@@ -90,6 +90,15 @@ class ProviderOrchestrator:
 
     def _eligible(self, eligible: EligibleAnalysis) -> OrchestrationOutcome:
         try:
+            provider_identity = self._provider.identity
+        except Exception:
+            return self._failure(eligible, "internal_unavailable")
+        if (
+            type(provider_identity) is not GeneratorIdentity
+            or provider_identity != self._generator
+        ):
+            return self._failure(eligible, "internal_unavailable")
+        try:
             request = self._prompt_builder.build(eligible.analysis_input)
             if not isinstance(request, TrustedProviderRequest):
                 return self._failure(eligible, "internal_unavailable")

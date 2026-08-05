@@ -8,7 +8,7 @@ import json
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import Any, get_type_hints
 
 import pytest
 
@@ -42,6 +42,7 @@ from atlas_ai_analysis import (
     validate_output,
 )
 from atlas_ai_analysis._json import plain
+from atlas_ai_analysis.models import JSONValue
 
 ROOT = Path(__file__).parents[1]
 SPEC = ROOT / "specs" / "ai_analysis" / "v1"
@@ -381,6 +382,17 @@ def test_available_and_unavailable_representations_are_exclusive():
     unavailable["summary"] = "fallback prose is forbidden"
     with pytest.raises(AIAnalysisValidationError):
         validate_output(unavailable, eligible)
+
+
+@pytest.mark.parametrize("candidate", [None, True, 7, 1.5, "text", [], [1]])
+def test_validate_output_recursive_json_contract_rejects_non_objects(candidate):
+    with pytest.raises(AIAnalysisValidationError, match="must be an object"):
+        validate_output(candidate, _eligible())
+
+
+def test_validate_output_annotation_uses_recursive_json_value_contract():
+    assert validate_output.__annotations__["value"] == "JSONValue"
+    assert get_type_hints(validate_output)["value"] is JSONValue
 
 
 def test_every_material_claim_requires_unique_resolving_citations():

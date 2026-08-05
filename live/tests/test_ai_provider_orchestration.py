@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 from dataclasses import FrozenInstanceError
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +35,7 @@ from atlas_ai_orchestration import (
 from atlas_ai_orchestration.openai_adapter import (
     OpenAIAdapterPolicy,
     OpenAIProviderAdapter,
+    ProviderPricingRecord,
 )
 from atlas_ai_service import ServiceFailure
 
@@ -118,8 +120,13 @@ class FixedCostPolicy:
 
 
 class FakeProvider:
-    def __init__(self, result: Any) -> None:
+    def __init__(
+        self,
+        result: Any,
+        identity: GeneratorIdentity = GENERATOR,
+    ) -> None:
         self.result = result
+        self.identity = identity
         self.calls = 0
         self.requests: list[Any] = []
 
@@ -203,6 +210,90 @@ def test_valid_available_output_is_validated_once_and_completed(monkeypatch):
     assert not hasattr(result, "request")
     with pytest.raises(TypeError):
         result.output["summary"] = "changed"
+
+
+@pytest.mark.parametrize(
+    "identity",
+    [
+        GeneratorIdentity("other-provider", GENERATOR.model_id),
+        GeneratorIdentity(GENERATOR.provider_id, "other-model"),
+    ],
+)
+def test_provider_identity_mismatch_fails_before_prompt_cost_and_transport(identity):
+    provider = FakeProvider(_available, identity=identity)
+    core, builder, cost = _core(provider)
+
+    result = core.run(_eligible())
+
+    assert isinstance(result, FailedOutcome)
+    assert result.reason == "internal_unavailable"
+    assert builder.calls == cost.calls == provider.calls == 0
+    assert result.audit["generator"] == {
+        "provider_id": GENERATOR.provider_id,
+        "model_id": GENERATOR.model_id,
+    }
+
+
+def test_missing_provider_identity_fails_before_prompt_cost_and_transport():
+    class MissingIdentityProvider:
+        calls = 0
+
+        def invoke(self, _request):
+            self.calls += 1
+            raise AssertionError("transport must not run")
+
+    provider = MissingIdentityProvider()
+    core, builder, cost = _core(provider)  # type: ignore[arg-type]
+
+    result = core.run(_eligible())
+
+    assert isinstance(result, FailedOutcome)
+    assert result.reason == "internal_unavailable"
+    assert builder.calls == cost.calls == provider.calls == 0
+
+
+def test_concrete_adapter_identity_mismatch_has_zero_transport_dispatches():
+    transport_calls = 0
+
+    def handler(_request):
+        nonlocal transport_calls
+        transport_calls += 1
+        raise AssertionError("transport must not run")
+
+    adapter = OpenAIProviderAdapter(
+        credential_provider=lambda: pytest.fail("credential must not be requested"),
+        input_token_estimator=lambda _request: pytest.fail(
+            "estimator must not be called"
+        ),
+        policy=OpenAIAdapterPolicy(
+            model_id="adapter-model",
+            approved_model_ids=frozenset({"adapter-model"}),
+        ),
+        qualification_transport=httpx.MockTransport(handler),
+    )
+    core, builder, cost = _core(
+        adapter,  # type: ignore[arg-type]
+        generator=GeneratorIdentity("openai", "different-model"),
+    )
+
+    result = core.run(_eligible())
+
+    assert isinstance(result, FailedOutcome)
+    assert result.reason == "internal_unavailable"
+    assert builder.calls == cost.calls == transport_calls == 0
+
+
+def test_matching_provider_identity_is_preserved_in_completed_audit():
+    provider = FakeProvider(_available, identity=GENERATOR)
+    core, _, _ = _core(provider)
+
+    result = core.run(_eligible())
+
+    assert isinstance(result, CompletedOutcome)
+    assert result.audit["generator"] == {
+        "provider_id": provider.identity.provider_id,
+        "model_id": provider.identity.model_id,
+    }
 
 
 def test_refused_analysis_skips_prompt_cost_and_provider_and_builds_refused_audit():
@@ -387,7 +478,7 @@ def test_invalid_generator_identity_fails_closed_without_audit():
     result = core.run(_eligible())
 
     assert result == ServiceUnavailableOutcome()
-    assert provider.calls == 1
+    assert provider.calls == 0
     assert "credential" not in repr(result)
 
 
@@ -833,18 +924,37 @@ def test_concrete_adapter_preserves_phase18b_and_audit_authority(monkeypatch):
             },
         )
 
-    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+    now = datetime(2026, 8, 5, 12, 0, tzinfo=timezone.utc)
+    pricing = ProviderPricingRecord(
+        provider_id="openai",
+        model_id="offline-approved-model-snapshot",
+        input_usd_per_million_tokens=2.0,
+        output_usd_per_million_tokens=12.0,
+        currency="USD",
+        unit="per_million_tokens",
+        service_tier="default",
+        source_id="official-openai-pricing",
+        source_version="2026-07-30",
+        effective_at=now - timedelta(days=6),
+        verified_at=now - timedelta(hours=1),
+        expires_at=now + timedelta(days=1),
+        maximum_age_seconds=86_400,
+    )
+    transport = httpx.MockTransport(handler)
     adapter = OpenAIProviderAdapter(
-        client=client,
         credential_provider=lambda: "offline-only-secret",
         input_token_estimator=lambda _request: 100,
+        qualification_transport=transport,
+        utc_now=lambda: now,
         policy=OpenAIAdapterPolicy(
             enabled=True,
             model_id="offline-approved-model-snapshot",
             approved_model_ids=frozenset({"offline-approved-model-snapshot"}),
-            input_usd_per_million_tokens=2.0,
-            output_usd_per_million_tokens=12.0,
-            pricing_verified=True,
+            pricing=pricing,
+            approved_pricing_records=(pricing,),
+            approved_pricing_sources=frozenset(
+                {("official-openai-pricing", "2026-07-30")}
+            ),
         ),
     )
     core = ProviderOrchestrator(
@@ -906,7 +1016,7 @@ def test_concrete_adapter_preserves_phase18b_and_audit_authority(monkeypatch):
     try:
         outcome = core.run(_eligible())
     finally:
-        client.close()
+        transport.close()
 
     assert isinstance(outcome, CompletedOutcome)
     assert adapter_calls == transport_calls == validation_calls == completed_calls == 1

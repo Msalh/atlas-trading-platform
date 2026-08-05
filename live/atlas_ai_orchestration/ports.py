@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Protocol
 
+from atlas_ai_analysis import GeneratorIdentity
+
 from .models import JSONValue, TrustedProviderRequest
 
 
@@ -25,4 +27,7 @@ class CostPolicy(Protocol):
 
 
 class ProviderPort(Protocol):
+    @property
+    def identity(self) -> GeneratorIdentity: ...
+
     def invoke(self, request: TrustedProviderRequest) -> JSONValue: ...

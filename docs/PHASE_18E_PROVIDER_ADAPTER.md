@@ -25,20 +25,49 @@ strategy, risk, decision, audit, persistence, broker, or execution authority.
 | Decision | Required disposition |
 |---|---|
 | Initial provider target | OpenAI, offline adapter qualification only. Account access and operational entitlement remain unverified. |
-| Integration boundary | Direct non-streaming HTTP through `httpx.Client.send`. |
-| Dependency version and lock policy | `httpx==0.28.1`; runtime installation is prohibited. |
+| Integration boundary | Direct non-streaming HTTP through one adapter-owned `httpx.Client.send`. The production client is constructed internally; offline qualification may inject only an `httpx.BaseTransport`, never a configured client. |
+| Dependency version and lock policy | `httpx==0.28.1`; runtime installation is prohibited. No transitive lockfile or hashes exist, so reproducible deployment remains unclaimed and blocked pending transitive locking. |
 | Secret owner | Security/Platform for later operational enablement. Phase 18E reads no environment or credential store. |
 | Accepted model allowlist | Explicitly injected and non-empty. The exact immutable production model ID is **DEFERRED — INSUFFICIENT EVIDENCE**; `gpt-5.6-terra` is not treated as immutable or hard-coded. |
 | Request-byte ceiling | 65,536 serialized bytes. |
 | Response-byte ceiling | 131,072 streamed bytes. |
 | Transport timeout | 5-second connect, 45-second read, 60-second end-to-end deadline. |
 | Maximum input/output tokens | 16,384 input and 4,096 output. |
-| Estimated pre-call cost ceiling and units | USD 0.12 maximum standard token charge; fail closed on absent or stale pricing metadata. |
+| Estimated pre-call cost ceiling and units | USD 0.12 maximum standard/default token charge. An immutable pricing record is bound to the provider, exact model, rates, USD-per-million-token unit, service tier, approved source/version, effective time, verification time, expiry, and maximum age. Missing, conflicting, stale, future-effective, mismatched, unsupported, or over-ceiling metadata fails before transport. |
 | Decoded JSON-domain return type | Recursive `JSONValue`: exact JSON scalar, list, or string-keyed dictionary values without `Any`, coercion, envelope, or sentinel. |
 | Absent-candidate classification | Sanitized `ProviderUnavailableError`, routed by Phase 18D to `provider_unavailable`; no fabricated candidate. |
 
 Only the approved ceilings may be defaults. Provider/model identity, enablement,
 pricing verification, and credential supply remain explicit and fail closed.
+
+The request explicitly selects `service_tier: "default"`, the documented
+standard pricing/performance tier. It also selects explicit prompt-caching mode
+without marking any cache breakpoint. Current OpenAI guidance documents that
+implicit mode performs automatic caching and that explicit mode caches only
+marked reusable prefixes; it does not document a separate universal caching-off
+field. Operational enablement therefore remains blocked unless independent
+review confirms that the selected model/endpoint honors the no-breakpoint
+explicit-mode policy as no cache write, or approves the resulting retention and
+pricing behavior. The implementation makes no claim that caching is universally
+disabled.
+
+## Transport ownership and dispatch proof
+
+The adapter accepts no preconfigured `httpx.Client`, authentication object,
+event hook, mount, proxy, or redirect policy. Its owned client fixes
+`trust_env=False`, HTTP/2 off, redirects off, `auth=None`, empty event hooks, no
+mounts or proxy, explicit connect/read/write/pool timeouts, one connection, no
+keep-alive pool, and `httpx.HTTPTransport(retries=0)`. Offline tests inject only
+a counting or mock transport at the `BaseTransport` boundary.
+
+Qualification proves one application `httpx.Client.send` dispatch and one
+injected `transport.handle_request` invocation after acceptance, and zero
+transport invocations for pre-transport rejection. It does not claim one DNS,
+TCP, TLS, or socket operation inside the platform transport.
+
+Every response and client cleanup boundary translates hostile close failures to
+an existing empty typed adapter failure, removes cause/context, and preserves a
+more authoritative timeout or unavailable classification already selected.
 
 ## Existing Phase 18D boundary
 
@@ -59,6 +88,18 @@ JSON candidate must be returned without coercion. Phase 18D passes it exactly
 once to the real Phase 18B
 `validate_output()` boundary; an invalid envelope or invalid semantic content is
 therefore classified through the existing `invalid_output` route.
+
+The recursive `JSONValue` alias is shared from the Phase 18B model module, and
+`validate_output()` accepts that type directly. Phase 18B performs the top-level
+object rejection itself and remains the sole semantic authority; Phase 18D does
+not narrow, coerce, wrap, or fabricate candidates.
+
+`ProviderPort` also exposes a structural, non-secret `GeneratorIdentity`.
+Phase 18D compares it exactly with the audit generator before prompt building,
+cost evaluation, or provider invocation. Missing, malformed, provider-mismatched,
+or model-mismatched identity follows the existing sanitized
+`internal_unavailable` audit route with zero provider dispatches. The supplied
+audit identity is never rewritten, and the core has no concrete adapter check.
 
 Validly decoded JSON scalars, arrays, and JSON `null` fit this contract and pass
 unchanged to Phase 18B. Decoded JSON `null` is a candidate value and remains

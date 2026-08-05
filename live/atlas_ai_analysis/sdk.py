@@ -22,6 +22,7 @@ from .models import (
     EligibleAnalysis,
     FailureReason,
     GeneratorIdentity,
+    JSONValue,
     RefusedAnalysis,
     SnapshotVerification,
     ValidatedAnalysisOutput,
@@ -368,7 +369,7 @@ def validate_input(value: Mapping[str, Any], snapshot: Mapping[str, Any]) -> Non
 
 
 def validate_output(
-    value: Mapping[str, Any],
+    value: JSONValue,
     eligible: EligibleAnalysis,
 ) -> ValidatedAnalysisOutput:
     """Validate structural and semantic output against one eligible input."""
@@ -381,6 +382,8 @@ def validate_output(
         normalization_failed = True
     if normalization_failed:
         raise AIAnalysisValidationError("analysis output normalization failed")
+    if not isinstance(value, Mapping):
+        raise AIAnalysisValidationError("analysis output must be an object")
     _closed(value, _OUTPUT_KEYS, "analysis output")
     if value["schema_version"] != OUTPUT_SCHEMA_VERSION:
         raise AIAnalysisValidationError("unsupported analysis output schema")

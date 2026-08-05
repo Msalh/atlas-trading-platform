@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import inspect
 from collections.abc import Callable
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -18,11 +21,33 @@ from atlas_ai_orchestration.errors import (
 from atlas_ai_orchestration.openai_adapter import (
     OpenAIAdapterPolicy,
     OpenAIProviderAdapter,
+    ProviderPricingRecord,
 )
 
 MODEL = "offline-approved-model-snapshot"
 SECRET = "offline-secret-that-must-not-leak"
 EVIDENCE_MARKER = "private-evidence-that-must-not-leak"
+NOW = datetime(2026, 8, 5, 12, 0, tzinfo=timezone.utc)
+
+
+def _pricing(**changes: Any) -> ProviderPricingRecord:
+    values = {
+        "provider_id": "openai",
+        "model_id": MODEL,
+        "input_usd_per_million_tokens": 2.0,
+        "output_usd_per_million_tokens": 12.0,
+        "currency": "USD",
+        "unit": "per_million_tokens",
+        "service_tier": "default",
+        "source_id": "official-openai-pricing",
+        "source_version": "2026-07-30",
+        "effective_at": NOW - timedelta(days=6),
+        "verified_at": NOW - timedelta(hours=1),
+        "expires_at": NOW + timedelta(days=1),
+        "maximum_age_seconds": 86_400,
+    }
+    values.update(changes)
+    return ProviderPricingRecord(**values)
 
 
 def _traceback_locals(error: BaseException) -> str:
@@ -49,13 +74,16 @@ def _request(evidence: str = "{}") -> TrustedProviderRequest:
 
 
 def _policy(**changes: Any) -> OpenAIAdapterPolicy:
+    pricing = changes.pop("pricing", _pricing())
     values = {
         "enabled": True,
         "model_id": MODEL,
         "approved_model_ids": frozenset({MODEL}),
-        "input_usd_per_million_tokens": 2.0,
-        "output_usd_per_million_tokens": 12.0,
-        "pricing_verified": True,
+        "pricing": pricing,
+        "approved_pricing_records": (pricing,),
+        "approved_pricing_sources": frozenset(
+            {("official-openai-pricing", "2026-07-30")}
+        ),
     }
     values.update(changes)
     return OpenAIAdapterPolicy(**values)
@@ -83,16 +111,17 @@ def _adapter(
     credential: Callable[[], str] = lambda: SECRET,
     estimator: Callable[[TrustedProviderRequest], int] = lambda _request: 100,
     monotonic: Callable[[], float] | None = None,
-) -> tuple[OpenAIProviderAdapter, httpx.Client]:
-    client = httpx.Client(transport=httpx.MockTransport(handler), trust_env=False)
+) -> tuple[OpenAIProviderAdapter, httpx.MockTransport]:
+    transport = httpx.MockTransport(handler)
     adapter = OpenAIProviderAdapter(
-        client=client,
         credential_provider=credential,
         input_token_estimator=estimator,
         policy=policy or _policy(),
+        qualification_transport=transport,
+        utc_now=lambda: NOW,
         **({"monotonic": monotonic} if monotonic else {}),
     )
-    return adapter, client
+    return adapter, transport
 
 
 @pytest.mark.parametrize(
@@ -118,6 +147,8 @@ def test_decoded_json_domain_candidate_is_returned_unchanged(candidate):
         assert payload["model"] == MODEL
         assert payload["store"] is False
         assert payload["stream"] is False
+        assert payload["service_tier"] == "default"
+        assert payload["prompt_cache_options"] == {"mode": "explicit"}
         assert payload["max_output_tokens"] == 4096
         provider_input = json.loads(payload["input"])
         assert provider_input["analysis_output_id"] == _request().analysis_output_id
@@ -162,7 +193,7 @@ def test_counted_transport_symbol_runs_exactly_once(monkeypatch):
         (_policy(enabled=False), lambda _request: 1),
         (_policy(model_id="not-allowlisted"), lambda _request: 1),
         (_policy(approved_model_ids=MODEL), lambda _request: 1),
-        (_policy(pricing_verified=False), lambda _request: 1),
+        (_policy(pricing=None, approved_pricing_records=()), lambda _request: 1),
         (_policy(max_request_bytes=65_537), lambda _request: 1),
         (_policy(max_response_bytes=131_073), lambda _request: 1),
         (_policy(max_input_tokens=16_385), lambda _request: 1),
@@ -391,3 +422,185 @@ def test_sanitized_failure_traceback_does_not_retain_request_or_response_materia
     retained = _traceback_locals(captured.value)
     assert SECRET not in retained
     assert EVIDENCE_MARKER not in retained
+
+
+class CountingTransport(httpx.BaseTransport):
+    def __init__(self, response_factory):
+        self.calls = 0
+        self.response_factory = response_factory
+
+    def handle_request(self, request):
+        self.calls += 1
+        return self.response_factory(request)
+
+
+class HostileStream(httpx.SyncByteStream):
+    def __init__(self, chunks=(), raised=None):
+        self._chunks = chunks
+        self._raised = raised
+
+    def __iter__(self):
+        if self._raised is not None:
+            raise self._raised
+        yield from self._chunks
+
+    def close(self):
+        raise RuntimeError(SECRET)
+
+
+def _assert_clean(error: BaseException) -> None:
+    assert str(error) == ""
+    assert SECRET not in repr(error)
+    assert error.__cause__ is None
+    assert error.__context__ is None
+    assert SECRET not in _traceback_locals(error)
+    assert EVIDENCE_MARKER not in _traceback_locals(error)
+
+
+def test_adapter_does_not_accept_client_auth_hooks_mounts_proxy_or_http2():
+    parameters = inspect.signature(OpenAIProviderAdapter).parameters
+    assert "client" not in parameters
+    assert "auth" not in parameters
+    assert "event_hooks" not in parameters
+    assert "mounts" not in parameters
+    assert "proxy" not in parameters
+    assert "http2" not in parameters
+
+
+def test_adapter_owned_client_configuration_is_fixed(monkeypatch):
+    observed = {}
+    original = httpx.Client
+
+    def capturing_client(**kwargs):
+        observed.update(kwargs)
+        return original(**kwargs)
+
+    monkeypatch.setattr(httpx, "Client", capturing_client)
+    adapter, transport = _adapter(
+        lambda _request: httpx.Response(200, content=_provider_body({"ok": True}))
+    )
+    assert adapter.invoke(_request()) == {"ok": True}
+    assert observed["trust_env"] is False
+    assert observed["http2"] is False
+    assert observed["follow_redirects"] is False
+    assert observed["auth"] is None
+    assert observed["proxy"] is None
+    assert observed["mounts"] is None
+    assert observed["event_hooks"] == {"request": [], "response": []}
+    assert observed["limits"].max_connections == 1
+    assert observed["limits"].max_keepalive_connections == 0
+    transport.close()
+
+
+def test_production_transport_has_retries_disabled(monkeypatch):
+    marker = httpx.MockTransport(lambda _request: httpx.Response(500))
+    seen = []
+
+    def transport_factory(**kwargs):
+        seen.append(kwargs)
+        return marker
+
+    monkeypatch.setattr(httpx, "HTTPTransport", transport_factory)
+    adapter = OpenAIProviderAdapter(
+        credential_provider=lambda: SECRET,
+        input_token_estimator=lambda _request: 1,
+        policy=_policy(),
+        utc_now=lambda: NOW,
+    )
+    assert adapter._transport() is marker
+    assert seen == [{"retries": 0}]
+    marker.close()
+
+
+def test_one_send_is_one_transport_invocation_and_redirect_is_not_followed():
+    transport = CountingTransport(lambda request: httpx.Response(302, headers={"location": str(request.url)}))
+    adapter = OpenAIProviderAdapter(
+        credential_provider=lambda: SECRET,
+        input_token_estimator=lambda _request: 1,
+        policy=_policy(),
+        qualification_transport=transport,
+        utc_now=lambda: NOW,
+    )
+    with pytest.raises(ProviderPortError):
+        adapter.invoke(_request())
+    assert transport.calls == 1
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        _policy(pricing=None, approved_pricing_records=()),
+        _policy(pricing=_pricing(source_id="")),
+        _policy(pricing=_pricing(source_version="")),
+        _policy(pricing=_pricing(source_version="unapproved")),
+        _policy(pricing=_pricing(provider_id="other")),
+        _policy(pricing=_pricing(model_id="other")),
+        _policy(pricing=_pricing(service_tier="priority")),
+        _policy(pricing=_pricing(currency="EUR")),
+        _policy(pricing=_pricing(unit="per_token")),
+        _policy(pricing=_pricing(effective_at=NOW + timedelta(seconds=1))),
+        _policy(pricing=_pricing(verified_at=NOW - timedelta(days=2))),
+        _policy(pricing=_pricing(expires_at=NOW)),
+        _policy(
+            pricing=_pricing(input_usd_per_million_tokens=0.01),
+            approved_pricing_records=(_pricing(),),
+        ),
+        _policy(approved_pricing_records=(_pricing(), _pricing())),
+        _policy(pricing=_pricing(output_usd_per_million_tokens=22.0)),
+    ],
+)
+def test_invalid_or_untrusted_pricing_fails_before_transport(policy):
+    calls = 0
+
+    def handler(_request):
+        nonlocal calls
+        calls += 1
+        raise AssertionError
+
+    adapter, transport = _adapter(handler, policy=policy)
+    with pytest.raises(ProviderPortError):
+        adapter.invoke(_request())
+    assert calls == 0
+    transport.close()
+
+
+def test_pricing_ceiling_boundary_and_just_over_boundary():
+    boundary_rate = (120_000 - 16_384 * 2.0) / 4_096
+    accepted = _pricing(output_usd_per_million_tokens=boundary_rate)
+    adapter, transport = _adapter(
+        lambda _request: httpx.Response(200, content=_provider_body({"ok": True})),
+        policy=_policy(pricing=accepted, approved_pricing_records=(accepted,)),
+    )
+    assert adapter.invoke(_request()) == {"ok": True}
+    transport.close()
+    over = replace(accepted, output_usd_per_million_tokens=boundary_rate + 0.000001)
+    adapter, transport = _adapter(
+        lambda _request: pytest.fail("transport must not run"),
+        policy=_policy(pricing=over, approved_pricing_records=(over,)),
+    )
+    with pytest.raises(ProviderPortError):
+        adapter.invoke(_request())
+    transport.close()
+
+
+@pytest.mark.parametrize(
+    ("status", "stream", "expected"),
+    [
+        (200, HostileStream([_provider_body({"ok": True})]), ProviderPortError),
+        (500, HostileStream([b"ignored"]), ProviderUnavailableError),
+        (200, HostileStream([b"malformed"]), ProviderPortError),
+        (200, HostileStream([b"x" * 2_000]), ProviderUnavailableError),
+        (200, HostileStream(raised=httpx.ReadTimeout(SECRET)), ProviderTimeoutError),
+    ],
+)
+def test_hostile_response_close_is_sanitized_and_preserves_selected_failure(
+    status, stream, expected
+):
+    adapter, transport = _adapter(
+        lambda request: httpx.Response(status, stream=stream, request=request),
+        policy=_policy(max_response_bytes=1024),
+    )
+    with pytest.raises(expected) as captured:
+        adapter.invoke(_request(EVIDENCE_MARKER))
+    _assert_clean(captured.value)
+    transport.close()

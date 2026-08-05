@@ -118,8 +118,10 @@ def test_phase18e_adapter_has_only_approved_transport_and_internal_dependencies(
     imports = _imports(ADAPTER)
     allowed = {
         "__future__",
+        "atlas_ai_analysis",
         "collections.abc",
         "dataclasses",
+        "datetime",
         "errors",
         "httpx",
         "json",

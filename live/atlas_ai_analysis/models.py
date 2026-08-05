@@ -6,6 +6,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
+type JSONScalar = str | int | float | bool | None
+type JSONValue = JSONScalar | list[JSONValue] | dict[str, JSONValue]
+
 RefusalReason = Literal[
     "snapshot_stale",
     "snapshot_unavailable",

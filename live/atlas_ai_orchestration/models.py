@@ -6,10 +6,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from atlas_ai_analysis.models import FailureReason
-
-type JSONScalar = str | int | float | bool | None
-type JSONValue = JSONScalar | list[JSONValue] | dict[str, JSONValue]
+from atlas_ai_analysis.models import (
+    FailureReason,
+    JSONScalar as JSONScalar,
+    JSONValue as JSONValue,
+)
 
 
 @dataclass(frozen=True, slots=True)
