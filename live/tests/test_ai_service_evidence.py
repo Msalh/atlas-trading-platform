@@ -18,7 +18,12 @@ import atlas_snapshot
 from atlas_ai_analysis import AnalysisInputIdentity, EligibleAnalysis, RefusedAnalysis
 from atlas_snapshot import SnapshotRecordIdentity
 
-from atlas_ai_service import AIServiceOrchestrator, EvidenceClient, ServiceFailure
+from atlas_ai_service import (
+    AIServiceOrchestrator,
+    EvidenceClient,
+    EvidenceFetchError,
+    ServiceFailure,
+)
 
 ROOT = Path(__file__).parents[1]
 GOLDEN = ROOT / "specs" / "trader_now_snapshot" / "v1" / "golden"
@@ -195,9 +200,61 @@ def test_noncanonical_formatting_is_a_service_failure():
 
 
 def test_transport_exception_is_a_service_failure():
-    outcome = _orchestrator({"snap-1": ConnectionError("boom")}).evaluate(
+    secret_diagnostic = "credential=do-not-leak private-host.example:5432"
+    outcome = _orchestrator({"snap-1": ConnectionError(secret_diagnostic)}).evaluate(
         "missing-snapshot", PURPOSE, IDENTITY
     )
 
     assert isinstance(outcome, ServiceFailure)
     assert outcome.requested_snapshot_id == "missing-snapshot"
+    assert outcome.reason == "internal_unavailable"
+    assert outcome.detail == "evidence_unavailable"
+    assert secret_diagnostic not in repr(outcome)
+
+
+def test_evidence_client_discards_raw_transport_exception_chain():
+    secret_diagnostic = "credential=do-not-leak private-host.example:5432"
+    client = EvidenceClient(FakeTransport({"snap-1": ConnectionError(secret_diagnostic)}))
+
+    with pytest.raises(EvidenceFetchError) as captured:
+        client.fetch("snap-1")
+
+    assert str(captured.value) == "evidence transport unavailable"
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+    assert secret_diagnostic not in repr(captured.value)
+
+
+def test_evidence_client_discards_raw_parser_exception_chain():
+    client = EvidenceClient(FakeTransport({"snap-1": b'{"credential":"do-not-leak"'}))
+
+    with pytest.raises(EvidenceFetchError) as captured:
+        client.fetch("snap-1")
+
+    assert str(captured.value) == "evidence payload invalid"
+    assert captured.value.__cause__ is None
+    assert captured.value.__context__ is None
+    assert "credential" not in repr(captured.value)
+
+
+@pytest.mark.parametrize(
+    "payload, client_kwargs",
+    [
+        (object(), {}),
+        (b"sensitive-payload", {"max_bytes": 1}),
+        (b'{"credential":"do-not-leak"', {}),
+    ],
+)
+def test_invalid_evidence_failures_have_one_sanitized_service_detail(
+    payload, client_kwargs
+):
+    outcome = _orchestrator({"snap-1": payload}, **client_kwargs).evaluate(
+        "snap-1", PURPOSE, IDENTITY
+    )
+
+    assert isinstance(outcome, ServiceFailure)
+    assert outcome.reason == "internal_unavailable"
+    assert outcome.detail == "evidence_unavailable"
+    rendered = repr(outcome)
+    for prohibited in ("credential", "do-not-leak", "sensitive-payload", "object"):
+        assert prohibited not in rendered

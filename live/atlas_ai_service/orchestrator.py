@@ -28,11 +28,11 @@ class AIServiceOrchestrator:
     ) -> EvaluationOutcome:
         try:
             fetched = self._evidence_client.fetch(snapshot_id)
-        except EvidenceFetchError as exc:
+        except EvidenceFetchError:
             return ServiceFailure(
                 requested_snapshot_id=snapshot_id,
                 reason="internal_unavailable",
-                detail=str(exc),
+                detail="evidence_unavailable",
             )
 
         verification = SnapshotVerification(

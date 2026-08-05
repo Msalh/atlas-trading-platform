@@ -30,25 +30,27 @@ class EvidenceClient:
         self._max_bytes = max_bytes
 
     def fetch(self, snapshot_id: str) -> FetchedEvidence:
+        transport_failed = False
         try:
             raw = self._transport.fetch_snapshot(snapshot_id)
-        except Exception as exc:
-            raise EvidenceFetchError(f"evidence transport failed: {exc}") from exc
+        except Exception:
+            transport_failed = True
+        if transport_failed:
+            raise EvidenceFetchError("evidence transport unavailable")
 
         if not isinstance(raw, (bytes, bytearray, str)):
-            raise EvidenceFetchError(
-                f"evidence transport returned {type(raw).__name__}, expected bytes or str"
-            )
+            raise EvidenceFetchError("evidence payload type invalid")
         size = len(raw.encode("utf-8")) if isinstance(raw, str) else len(raw)
         if size > self._max_bytes:
-            raise EvidenceOversizeError(
-                f"evidence payload of {size} bytes exceeds the {self._max_bytes} byte cap"
-            )
+            raise EvidenceOversizeError("evidence payload exceeds configured limit")
 
+        parse_failed = False
         try:
             parsed = atlas_snapshot.parse(raw)
-        except atlas_snapshot.SnapshotValidationError as exc:
-            raise EvidenceFetchError(f"evidence payload failed to parse: {exc}") from exc
+        except atlas_snapshot.SnapshotValidationError:
+            parse_failed = True
+        if parse_failed:
+            raise EvidenceFetchError("evidence payload invalid")
 
         recomputed_digest = atlas_snapshot.digest(parsed)
         try:
