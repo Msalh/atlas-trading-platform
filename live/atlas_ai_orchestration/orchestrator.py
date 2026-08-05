@@ -17,12 +17,12 @@ from atlas_ai_service import ServiceFailure
 
 from .errors import ProviderTimeoutError, ProviderUnavailableError
 from .models import (
-    CompletedOutcome,
     FailedOutcome,
     OrchestrationOutcome,
     RefusedOutcome,
     ServiceUnavailableOutcome,
     TrustedProviderRequest,
+    _completed_outcome,
 )
 from .ports import (
     CostPolicy,
@@ -134,7 +134,7 @@ class ProviderOrchestrator:
                 )
             except Exception:
                 return self._failure(eligible, "internal_unavailable")
-            return CompletedOutcome(output=validated.value, audit=audit)
+            return _completed_outcome(validated, self._generator, audit)
 
         try:
             reason = validated.unavailable_reason

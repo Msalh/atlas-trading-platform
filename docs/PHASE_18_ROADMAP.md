@@ -1,10 +1,10 @@
 # Phase 18 AI Analysis Roadmap
 
-Status: Phase 18A, Phase 18B, Phase 18C, and Phase 18D are complete. This
-document authoritatively orders Phase 18E as the next work package, subject to
-the operational gates in `PHASE_18E_PROVIDER_ADAPTER.md`. It does not
-authorize provider access, deployment, persistence, an API, Railway work, R4,
-or operational certification.
+Status: Phase 18A through Phase 18E are independently certified offline-complete.
+This document authoritatively orders Phase 18F as the current offline work
+package. The operational gates in `PHASE_18E_PROVIDER_ADAPTER.md` remain closed.
+This roadmap does not authorize provider access, deployment, concrete
+persistence, an API, Railway work, R4, or operational certification.
 
 ## Completed foundations
 
@@ -222,7 +222,7 @@ checks must pass.
 
 ## Phase 18E — Offline Concrete Provider Adapter Contract and Qualification Harness
 
-Phase 18E is the next ordered Phase 18 work package. Its purpose is to place
+Phase 18E is independently certified offline-complete. Its purpose is to place
 exactly one concrete provider adapter behind the existing Phase 18D
 `ProviderPort` and qualify the adapter entirely offline. The authoritative
 design, entry blockers, security boundary, qualification matrix, and exit gates
@@ -243,11 +243,24 @@ pricing metadata, secret ownership, and runtime binding are independently
 verified. The implementation authorizes no credential, provider call, runtime
 integration, deployment, or operational certification.
 
+## Phase 18F — Offline Persistence Contract and Atomic Storage Port
+
+Phase 18F is the current offline work package. It accepts only the sanitized
+typed outcomes produced by Phase 18D, preserves the exact Phase 18B validated
+output capability, and defines one injected technology-neutral atomic storage
+operation. Completed output/audit pairs commit together or not at all; failed
+and refused outcomes persist audit only; pre-eligibility service failures remain
+ephemeral and cause no storage call. Its authoritative contract and acceptance
+gates are defined in `PHASE_18F_PERSISTENCE.md`.
+
+Phase 18F authorizes no concrete database, migration, HTTP or runtime wiring,
+credential, retention/deletion policy, deployment, or operational certification.
+
 ## Later work-package boundaries
 
-After Phase 18E, later explicitly approved phases may define:
+After the offline Phase 18F contract, later explicitly approved phases may define:
 
-1. persistence ports and atomic storage of validated output/audit records;
+1. a separately reviewed concrete persistence adapter and storage schema;
 2. service or HTTP APIs, authorization, request idempotency, and concurrency;
 3. deployment configuration and operational observability with sanitized logs;
 4. operational certification and rollback procedures.
