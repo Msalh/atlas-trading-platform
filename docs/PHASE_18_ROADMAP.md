@@ -1,8 +1,9 @@
 # Phase 18 AI Analysis Roadmap
 
-Status: Phase 18A through Phase 18E are independently certified offline-complete.
-This document authoritatively orders Phase 18F as the current offline work
-package. The operational gates in `PHASE_18E_PROVIDER_ADAPTER.md` remain closed.
+Status: Phase 18A through Phase 18F are independently certified offline-complete.
+Phase 18F closed at certified commit
+`fdf0a3a032dd6e06249d2c913e7e88c66b1a60b0`. The operational gates in
+`PHASE_18E_PROVIDER_ADAPTER.md` remain closed.
 This roadmap does not authorize provider access, deployment, concrete
 persistence, an API, Railway work, R4, or operational certification.
 
@@ -245,7 +246,8 @@ integration, deployment, or operational certification.
 
 ## Phase 18F — Offline Persistence Contract and Atomic Storage Port
 
-Phase 18F is the current offline work package. It accepts only the sanitized
+Phase 18F is independently certified and closed as an offline-complete,
+technology-neutral persistence contract. It accepts only the sanitized
 typed outcomes produced by Phase 18D, preserves the exact Phase 18B validated
 output capability, and defines one injected technology-neutral atomic storage
 operation. Completed output/audit pairs commit together or not at all; failed
@@ -255,6 +257,21 @@ gates are defined in `PHASE_18F_PERSISTENCE.md`.
 
 Phase 18F authorizes no concrete database, migration, HTTP or runtime wiring,
 credential, retention/deletion policy, deployment, or operational certification.
+
+It does not certify any concrete adapter's transactions, durability, locking,
+scheduler behavior, or rollback implementation. Concrete storage and operational
+enablement remain blocked.
+
+## Proposed Phase 18G — Concrete Persistence Adapter Design and Qualification Specification
+
+No post-18F phase name was previously authoritative. Phase 18G is therefore a
+roadmap proposal, not an approved implementation package. Its proposed scope is
+design-only and is defined in `PHASE_18G_PERSISTENCE_ADAPTER_DESIGN.md`.
+
+The proposal would turn the certified Phase 18F technology-neutral contract into
+a reviewed decision and qualification specification for one future concrete
+adapter. It authorizes no technology selection, schema, migration, adapter code,
+database access, retention/deletion mechanism, runtime binding, or deployment.
 
 ## Later work-package boundaries
 

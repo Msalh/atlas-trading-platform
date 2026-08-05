@@ -1,8 +1,8 @@
 # Phase 18E — Offline Concrete Provider Adapter Contract and Qualification Harness
 
-Status: offline implementation authorized. Phase 18E is ordered after the
-completed Phase 18D. Operational enablement remains blocked by the deferred
-immutable-model decision and the external gates listed below.
+Status: independently certified offline-complete and default-disabled. Phase 18E
+is ordered after the completed Phase 18D. Operational enablement remains blocked
+by the deferred immutable-model decision and the external gates listed below.
 
 This document authorizes isolated implementation and offline qualification only.
 It authorizes no credential use, provider or network call, runtime integration,

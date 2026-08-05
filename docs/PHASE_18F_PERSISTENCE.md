@@ -1,8 +1,11 @@
 # Phase 18F — Offline Persistence Contract and Atomic Storage Port
 
-Status: offline implementation work package. Independent certification is
-required before closure. This document authorizes no concrete storage, runtime
-attachment, deployment, or operational enablement.
+Status: independently certified offline-complete at commit
+`fdf0a3a032dd6e06249d2c913e7e88c66b1a60b0` following remediation
+recertification. Phase 18F is closed as a technology-neutral persistence
+contract. This does not certify any concrete adapter's transactions, durability,
+locking, scheduler behavior, or rollback implementation. Concrete storage and
+operational enablement remain blocked.
 
 ## Objective and authority
 
@@ -179,3 +182,12 @@ Concrete storage, migrations, retention/deletion, API/service integration,
 runtime attachment, deployment/observability, and operational certification are
 later, separately approved boundaries. Phase 18E operational blockers remain
 closed and are not changed by Phase 18F.
+
+### Certification history
+
+The initial independent decision was **NOT CERTIFIED — PHASE 18F REMEDIATION
+REQUIRED**. That historical result is preserved: it identified trusted-audit
+provenance and transactional-qualification gaps and led to bounded remediation.
+The remediated candidate
+`fdf0a3a032dd6e06249d2c913e7e88c66b1a60b0` subsequently passed independent
+remediation recertification and is the certified offline Phase 18F closure.
