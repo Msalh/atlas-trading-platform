@@ -12,9 +12,11 @@ items remain unchecked, and unknown ownership is a blocker.
       limits for the personal account/project.
 - [x] Personal Project Owner records the supplied pricing and USD 0.12 ceiling;
       revalidate no later than 2026-09-05 or on any pricing-policy change.
-- [ ] Personal Project Owner records dated acceptance of provider default
+- [x] Personal Project Owner records dated acceptance of provider default
       retention/data-use behavior, deletion, caching, and incident handling;
-      do not claim ZDR.
+      retain metadata no more than 30 days and do not claim ZDR.
+- [ ] Before any go/no-go, record the non-secret model-entitlement/limits check:
+      pass/fail, timestamp, owner role, model, and sanitized suitability only.
 - [x] Personal Project Owner records self-review and risk acceptance for the
       committed security/privacy controls.
 - [ ] Release/Platform records target environment, change window, approvers,

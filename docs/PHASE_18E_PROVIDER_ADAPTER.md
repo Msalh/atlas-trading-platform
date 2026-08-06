@@ -442,9 +442,9 @@ blocking. See [the evidence index](PHASE_18E_EVIDENCE_INDEX.md),
 | Gate | Status | Committed evidence | Missing artifact or decision | Responsible role | Acceptance criterion | Expiry/revalidation | Blocks enablement? |
 |---|---|---|---|---|---|---|---|
 | Secret ownership and custody | SATISFIED_BY_COMMITTED_EVIDENCE | Personal Project Owner approves Railway Variables as the future store, backend-service-only injection, 90-day rotation, incident-triggered rotation, one-hour revocation SLA, and no-value recording; committed runtime reads the key only for the adapter factory and tests/documentation prohibit leakage. | Actual Railway Variables configuration and service permissions remain a deployment-time check and are not inspected here. | Personal Project Owner | Documented custody design and committed service boundary are accepted; deployment verifies the named service and permissions without exposing a value. | Ownership, store, service, permission, or credential-process change. | No |
-| Provider account entitlement | REQUIRES_OPERATOR_CONFIRMATION | Owner attests personal account/project ownership; one bounded transport reached the selected model at the recorded time. | Current rate/usage limits and continuing entitlement confirmation remain required. | Personal Project Owner / Provider Account Owner | Non-secret entitlement and limit record is confirmed and revalidated. | Account, model, project, billing, policy, or access change. | Yes |
+| Provider account entitlement | REQUIRES_OPERATOR_CONFIRMATION | Owner attests active billing and usable payment method/balance; one bounded transport reached the selected model at the recorded time. | Current model entitlement, rate limits, usage limits, and restriction status remain unverified. | Personal Project Owner / Provider Account Owner | Non-secret deployment-time check records pass/fail, timestamp, owner role, model, and sanitized limit suitability. | Account, model, project, billing, policy, access, or limit change. | Yes |
 | Current pricing and renewal | SATISFIED_BY_COMMITTED_EVIDENCE | Owner is budget approver; supplied official prices are USD 2.00 input, USD 0.20 cached input, and USD 12.00 output per 1M tokens; application ceiling remains USD 0.12 per request. | None for this record; do not assume historical pricing remains current. | Personal Project Owner / Budget Owner | Pricing source and ceiling are recorded with renewal ownership. | Revalidate no later than 2026-09-05 and on model, tier, token-limit, caching, or official-price change. | No |
-| Retention and data controls | REQUIRES_EXTERNAL_APPROVAL | Personal single-user advisory scope, no intentional sensitive submissions, no raw local retention, bounded metadata only, and committed `store: false` request behavior are recorded. | Owner must still approve the 30-day abuse-monitoring/application-state exposure, deletion/incident procedure, and no-ZDR position as a formal data-control decision. | Personal Project Owner / Security and Privacy Owner | Dated data-control risk acceptance covers provider defaults and application handling. | Provider policy, endpoint, model, retention, or data-scope change. | Yes |
+| Retention and data controls | SATISFIED_BY_COMMITTED_EVIDENCE | Dated owner acceptance covers applicable default provider retention up to 30 days, no-ZDR/no-regional-processing claims, `store:false`, no local raw cache, immediate raw-diagnostic deletion, bounded metadata retention up to 30 days, prohibited sensitive inputs, deletion/incident ownership, and revalidation triggers. | Actual provider policy state and deployment storage configuration remain operational checks; no provider or Railway system is inspected here. | Personal Project Owner / Security and Privacy Owner | Dated acceptance and committed request/diagnostic controls satisfy the documented personal advisory boundary. | Model, endpoint, API behavior, data policy, retention, storage, caching, or data-flow change. | No |
 | Security and privacy review | SATISFIED_BY_COMMITTED_EVIDENCE | Owner self-review accepts committed least privilege, secret isolation boundary, untrusted-evidence/prompt-injection controls, sanitized logging, advisory-only behavior, and deterministic authority isolation. | None for the technical review; incident and credential-revocation procedure remains part of secret-custody follow-up. | Personal Project Owner / Security and Privacy Owner | Dated self-approval and risk acceptance references the committed controls. | Code, dependency, threat-model, data-flow, or policy change. | No |
 | Deployment approval | REQUIRES_EXTERNAL_APPROVAL | Runtime documentation states no deployment or production enablement is authorized. | Approvers, target environment, change window, pre-deployment checks, and explicit go/no-go record. | Release/Platform owner | Recorded approval names target and rollback plan. | Any release, environment, or configuration change. | Yes |
 | Rollback and kill switch | SATISFIED_BY_COMMITTED_EVIDENCE | Adapter is default-disabled; rollback is disablement/removal of the local factory binding; deterministic authority remains outside the adapter. | None for the documented offline boundary; production rollback rehearsal remains a later approval requirement. | Runtime owner | Disablement removes the binding and public behavior remains sanitized and deterministic. | Runtime binding or public-contract change. | No |
@@ -507,6 +507,43 @@ pricing changes.
 The committed adapter sends `store: false` and the adapter test asserts that
 field; this proves request construction only. It does not prove Zero Data
 Retention, regional processing, or any provider-side retention override.
+
+## Retention acceptance and billing attestation
+
+Record date: 2026-08-06.
+
+The Personal Project Owner self-approves the applicable default provider
+retention, which may be up to 30 days. Zero Data Retention, regional processing,
+and provider-side retention overrides are not claimed. `store: false` remains
+mandatory and is proven by the committed adapter and test; no local cache of
+provider prompts or responses is created or retained. Raw local provider
+diagnostics are deleted immediately after an authorized bounded operation. Only
+the already-approved sanitized counters and schema metadata may be retained,
+for no more than 30 days.
+
+The owner will not intentionally submit credentials, brokerage secrets, account
+identifiers, personal identifiers, or unnecessary sensitive information. The
+owner is the deletion and incident-response owner. On suspected exposure, the
+adapter remains or returns disabled, the credential is revoked within one hour,
+deletable local raw diagnostic data is removed, and only a sanitized incident
+record without provider content or secrets is created. This acceptance must be
+revalidated whenever the model, endpoint, API behavior, provider data policy,
+retention settings, storage/caching behavior, or application data flow changes.
+
+Billing attestation: “The Personal Project Owner attests that API billing is
+active and a valid payment method or usable balance is available.” This records
+no payment, balance, billing-account, organization, project, or account
+identifier. Active billing confirms neither continuing model entitlement nor
+current rate or usage limits. The prior one-shot transport is historical access
+evidence only.
+
+The smallest non-secret entitlement check before any future go/no-go is to record
+pass/fail, verification timestamp, verifying owner role, model name
+`gpt-5.6-terra`, and sanitized limit suitability for the approved manual
+operation: model access, sufficient rate limits, usage limits compatible with
+the approved budget and USD 0.12 request ceiling, and no billing suspension or
+account restriction. No account identifiers, balances, payment details,
+credentials, headers, request IDs, or raw dashboard content may be recorded.
 
 ## Railway custody and observability decisions
 
