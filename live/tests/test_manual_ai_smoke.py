@@ -20,7 +20,10 @@ from atlas.manual_ai_smoke import (
     OneShotDiagnosticError,
     main,
 )
-from atlas_ai_analysis.errors import OutputRejectionClassification
+from atlas_ai_analysis.errors import (
+    OutputRejectionClassification,
+    SemanticContradictionSubreason,
+)
 from atlas_ai_orchestration import (
     ProviderFailureClassification,
     ProviderFailureDiagnostics,
@@ -134,6 +137,14 @@ def test_every_phase18b_rejection_is_reported_as_one_closed_rule(rule):
     assert report.failure_stage == "authoritative_phase18b_validation"
     assert report.nonzero_phase18b_rule == rule.value
     assert sum(dict(report.phase18b_rule_counters).values()) == 1
+    if rule is OutputRejectionClassification.SEMANTIC_CONTRADICTION:
+        assert report.nonzero_semantic_contradiction_subreason == (
+            SemanticContradictionSubreason.CLASSIFICATION_AMBIGUOUS.value
+        )
+        assert sum(dict(report.semantic_contradiction_subreason_counters).values()) == 1
+    else:
+        assert report.nonzero_semantic_contradiction_subreason is None
+        assert sum(dict(report.semantic_contradiction_subreason_counters).values()) == 0
     assert report.diagnostic_status == "complete"
 
 
@@ -408,6 +419,28 @@ def test_cli_serialization_failure_uses_fixed_fallback(monkeypatch):
     assert service.calls == 1
     assert output == [smoke_module._FALLBACK_JSON + "\n"]
     assert SENTINEL not in output[0]
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        lambda value: value["semantic_contradiction_subreason_counters"].update(
+            unexpected=1
+        ),
+        lambda value: value["semantic_contradiction_subreason_counters"].update(
+            claim_state_unsupported=1, summary_state_unsupported=1
+        ),
+        lambda value: value.pop("semantic_contradiction_subreason_counters"),
+    ),
+)
+def test_bounded_serialization_rejects_invalid_subreason_counter_state(mutation):
+    runner, _ = _runner(result=ManualAIExplanation(status="available", summary="safe"))
+    report = runner.run(_source()).to_dict()
+    mutation(report)
+    output = []
+
+    assert smoke_module._emit_json(report, output.append) is False
+    assert output == [smoke_module._FALLBACK_JSON + "\n"]
 
 
 def test_preflight_is_boolean_only_and_never_constructs_or_sends():

@@ -42,6 +42,7 @@ from atlas_ai_analysis import (
     validate_output,
 )
 from atlas_ai_analysis._json import plain
+from atlas_ai_analysis.errors import SemanticContradictionSubreason
 from atlas_ai_analysis.models import JSONValue
 
 ROOT = Path(__file__).parents[1]
@@ -443,8 +444,12 @@ def test_strategy_state_contradiction_is_rejected():
     output = _golden("output.complete-current.json")
     output["claims"][0]["text"] = "The deterministic strategy rejected this setup."
 
-    with pytest.raises(AIAnalysisAuthorityError, match="contradicts"):
+    with pytest.raises(AIAnalysisAuthorityError, match="contradicts") as raised:
         validate_output(output, eligible)
+    assert (
+        raised.value.semantic_contradiction_subreason
+        is SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED
+    )
 
 
 @pytest.mark.parametrize("contradiction", ("rejected", "declined", "denied"))
@@ -455,8 +460,12 @@ def test_strategy_state_contradiction_synonyms_are_rejected(contradiction):
         f"The deterministic strategy {contradiction} this setup."
     )
 
-    with pytest.raises(AIAnalysisAuthorityError, match="contradicts"):
+    with pytest.raises(AIAnalysisAuthorityError, match="contradicts") as raised:
         validate_output(output, eligible)
+    assert (
+        raised.value.semantic_contradiction_subreason
+        is SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED
+    )
 
 
 def test_summary_cannot_bypass_deterministic_contradiction_detection():
@@ -464,8 +473,47 @@ def test_summary_cannot_bypass_deterministic_contradiction_detection():
     output = _golden("output.complete-current.json")
     output["summary"] = "The deterministic strategy rejected this setup."
 
-    with pytest.raises(AIAnalysisAuthorityError, match="contradicts"):
+    with pytest.raises(AIAnalysisAuthorityError, match="contradicts") as raised:
         validate_output(output, eligible)
+    assert (
+        raised.value.semantic_contradiction_subreason
+        is SemanticContradictionSubreason.SUMMARY_STATE_UNSUPPORTED
+    )
+
+
+def test_claim_state_support_omitted_is_distinct_from_unsupported():
+    eligible = _eligible()
+    output = _golden("output.complete-current.json")
+    output["claims"][0]["citations"] = [
+        "/evidence/strategy/decisions/0/confidence"
+    ]
+    output["claims"][0]["text"] = "The deterministic strategy is a candidate."
+
+    with pytest.raises(AIAnalysisAuthorityError) as raised:
+        validate_output(output, eligible)
+
+    assert (
+        raised.value.semantic_contradiction_subreason
+        is SemanticContradictionSubreason.CLAIM_STATE_SUPPORT_OMITTED
+    )
+
+
+@pytest.mark.parametrize("state", ("no-signal", "not-implemented", "absent"))
+def test_claim_state_unsupported_subreason_is_closed(state):
+    eligible = _eligible()
+    output = _golden("output.complete-current.json")
+    output["claims"][0]["text"] = f"The deterministic strategy is {state}."
+
+    with pytest.raises(AIAnalysisAuthorityError) as raised:
+        validate_output(output, eligible)
+
+    assert (
+        raised.value.semantic_contradiction_subreason
+        in {
+            SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED,
+            SemanticContradictionSubreason.CLAIM_STATE_SUPPORT_OMITTED,
+        }
+    )
 
 
 @pytest.mark.parametrize(

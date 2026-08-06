@@ -27,6 +27,15 @@ class OutputRejectionClassification(str, Enum):
     OTHER_SEMANTIC_REJECTION = "other_semantic_rejection"
 
 
+class SemanticContradictionSubreason(str, Enum):
+    """Closed, content-free detail for deterministic state contradictions."""
+
+    CLAIM_STATE_UNSUPPORTED = "claim_state_unsupported"
+    SUMMARY_STATE_UNSUPPORTED = "summary_state_unsupported"
+    CLAIM_STATE_SUPPORT_OMITTED = "claim_state_support_omitted"
+    CLASSIFICATION_AMBIGUOUS = "classification_ambiguous"
+
+
 class AIAnalysisError(ValueError):
     """Base class for Phase 18B contract failures."""
 
@@ -34,7 +43,7 @@ class AIAnalysisError(ValueError):
 class AIAnalysisValidationError(AIAnalysisError):
     """A value does not conform to a frozen AI analysis contract."""
 
-    __slots__ = ("_output_rejection",)
+    __slots__ = ("_output_rejection", "_semantic_contradiction_subreason")
 
     def __init__(
         self,
@@ -42,6 +51,7 @@ class AIAnalysisValidationError(AIAnalysisError):
         output_rejection: OutputRejectionClassification = (
             OutputRejectionClassification.OTHER_SEMANTIC_REJECTION
         ),
+        semantic_contradiction_subreason: SemanticContradictionSubreason | None = None,
     ) -> None:
         super().__init__(*args)
         self._output_rejection = (
@@ -49,10 +59,22 @@ class AIAnalysisValidationError(AIAnalysisError):
             if type(output_rejection) is OutputRejectionClassification
             else OutputRejectionClassification.OTHER_SEMANTIC_REJECTION
         )
+        self._semantic_contradiction_subreason = (
+            semantic_contradiction_subreason
+            if type(semantic_contradiction_subreason)
+            is SemanticContradictionSubreason
+            else None
+        )
 
     @property
     def output_rejection(self) -> OutputRejectionClassification:
         return self._output_rejection
+
+    @property
+    def semantic_contradiction_subreason(
+        self,
+    ) -> SemanticContradictionSubreason | None:
+        return self._semantic_contradiction_subreason
 
 
 class AIAnalysisCitationError(AIAnalysisValidationError):

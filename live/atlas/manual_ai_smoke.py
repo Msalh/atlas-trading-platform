@@ -17,7 +17,10 @@ from pathlib import Path
 from typing import Literal
 
 from atlas.manual_ai_advisory import ManualAIExplanationService
-from atlas_ai_analysis.errors import OutputRejectionClassification
+from atlas_ai_analysis.errors import (
+    OutputRejectionClassification,
+    SemanticContradictionSubreason,
+)
 from atlas_ai_orchestration import (
     ProviderFailureClassification,
     ProviderFailureDiagnostics,
@@ -54,24 +57,41 @@ _REPORT_KEYS = frozenset(
         "provider_transport_count",
         "failure_counters",
         "phase18b_rule_counters",
+        "semantic_contradiction_subreason_counters",
         "failure_stage",
         "nonzero_failure_category",
         "nonzero_phase18b_rule",
+        "nonzero_semantic_contradiction_subreason",
         "deterministic_authority_unchanged",
         "authoritative_output_fields_validated",
         "diagnostic_status",
         "snapshot_collected_before_teardown",
     }
 )
-_FALLBACK_JSON = (
-    '{"authoritative_output_fields_validated":0,'
-    '"deterministic_authority_unchanged":false,'
-    '"diagnostic_status":"failed_closed","failure_counters":{},'
-    '"failure_stage":null,"nonzero_failure_category":null,'
-    '"nonzero_phase18b_rule":null,"phase18b_rule_counters":{},'
-    '"provider_transport_count":0,"public_result":"analysis_unavailable",'
-    '"schema_version":"manual_ai_one_shot_diagnostic.v1",'
-    '"snapshot_collected_before_teardown":false}'
+_FALLBACK_JSON = json.dumps(
+    {
+        "authoritative_output_fields_validated": 0,
+        "deterministic_authority_unchanged": False,
+        "diagnostic_status": "failed_closed",
+        "failure_counters": {item.value: 0 for item in ProviderFailureClassification},
+        "failure_stage": None,
+        "nonzero_failure_category": None,
+        "nonzero_phase18b_rule": None,
+        "nonzero_semantic_contradiction_subreason": None,
+        "phase18b_rule_counters": {
+            item.value: 0 for item in OutputRejectionClassification
+        },
+        "provider_transport_count": 0,
+        "public_result": "analysis_unavailable",
+        "schema_version": "manual_ai_one_shot_diagnostic.v1",
+        "semantic_contradiction_subreason_counters": {
+            item.value: 0 for item in SemanticContradictionSubreason
+        },
+        "snapshot_collected_before_teardown": False,
+    },
+    ensure_ascii=True,
+    separators=(",", ":"),
+    sort_keys=True,
 )
 
 EXIT_COMPLETED = 0
@@ -92,9 +112,11 @@ class OneShotDiagnosticReport:
     provider_transport_count: int
     failure_counters: tuple[tuple[str, int], ...]
     phase18b_rule_counters: tuple[tuple[str, int], ...]
+    semantic_contradiction_subreason_counters: tuple[tuple[str, int], ...]
     failure_stage: str | None
     nonzero_failure_category: str | None
     nonzero_phase18b_rule: str | None
+    nonzero_semantic_contradiction_subreason: str | None
     deterministic_authority_unchanged: bool
     authoritative_output_fields_validated: int
     diagnostic_status: Literal["complete", "failed_closed"]
@@ -109,9 +131,15 @@ class OneShotDiagnosticReport:
             "provider_transport_count": self.provider_transport_count,
             "failure_counters": dict(self.failure_counters),
             "phase18b_rule_counters": dict(self.phase18b_rule_counters),
+            "semantic_contradiction_subreason_counters": dict(
+                self.semantic_contradiction_subreason_counters
+            ),
             "failure_stage": self.failure_stage,
             "nonzero_failure_category": self.nonzero_failure_category,
             "nonzero_phase18b_rule": self.nonzero_phase18b_rule,
+            "nonzero_semantic_contradiction_subreason": (
+                self.nonzero_semantic_contradiction_subreason
+            ),
             "deterministic_authority_unchanged": (
                 self.deterministic_authority_unchanged
             ),
@@ -175,35 +203,71 @@ class ManualAIOneShotRunner:
             transports = self._transport.snapshot()
             failures = self._diagnostics.snapshot()
             rules = self._diagnostics.phase18b_snapshot()
+            subreasons = self._diagnostics.semantic_contradiction_subreason_snapshot()
             failure_items = tuple((item.value, failures[item]) for item in ProviderFailureClassification)
             rule_items = tuple((item.value, rules[item]) for item in OutputRejectionClassification)
+            subreason_items = tuple(
+                (item.value, subreasons[item]) for item in SemanticContradictionSubreason
+            )
         except Exception:  # noqa: BLE001 - never disclose snapshot failures
             return _failed_snapshot(public_result, authority_unchanged)
 
         nonzero_failures = [item for item, count in failures.items() if count]
         nonzero_rules = [item for item, count in rules.items() if count]
+        nonzero_subreasons = [item for item, count in subreasons.items() if count]
         stage = _STAGES.get(nonzero_failures[0]) if len(nonzero_failures) == 1 else None
         if transports == 0 and not nonzero_failures:
             stage = "before_transport"
         completed = public_result == "completed"
+        single_rule = nonzero_rules[0] if len(nonzero_rules) == 1 else None
+        semantic_subreason_state = (
+            single_rule is OutputRejectionClassification.SEMANTIC_CONTRADICTION
+            and len(nonzero_subreasons) == 1
+            and sum(subreasons.values()) == 1
+        )
+        nonsemantic_rule_state = (
+            single_rule is not None
+            and single_rule is not OutputRejectionClassification.SEMANTIC_CONTRADICTION
+            and not nonzero_subreasons
+        )
+        no_rule_state = not nonzero_rules and not nonzero_subreasons
         coherent = (
             transports == 1
             and authority_unchanged
             and ((completed and validated_fields == 11) or (not completed and validated_fields == 0))
             and (
-                (completed and not nonzero_failures and not nonzero_rules)
+                (
+                    completed
+                    and not nonzero_failures
+                    and not nonzero_rules
+                    and not nonzero_subreasons
+                )
                 or (
                     not completed
                     and len(nonzero_failures) == 1
                     and sum(failures.values()) == 1
                     and len(nonzero_rules) <= 1
                     and sum(rules.values()) <= 1
-                    and stage is not None
                     and (
-                        nonzero_failures[0]
-                        is not ProviderFailureClassification.PHASE18B_INVALID_OUTPUT
-                        or len(nonzero_rules) == 1
+                        (
+                            nonzero_failures[0]
+                            is ProviderFailureClassification.PHASE18B_INVALID_OUTPUT
+                            and semantic_subreason_state
+                        )
+                        or (
+                            (
+                                nonzero_failures[0]
+                                is ProviderFailureClassification.PHASE18B_INVALID_OUTPUT
+                                and nonsemantic_rule_state
+                            )
+                            or (
+                                nonzero_failures[0]
+                                is not ProviderFailureClassification.PHASE18B_INVALID_OUTPUT
+                                and no_rule_state
+                            )
+                        )
                     )
+                    and stage is not None
                 )
             )
         )
@@ -212,12 +276,16 @@ class ManualAIOneShotRunner:
             provider_transport_count=transports,
             failure_counters=failure_items,
             phase18b_rule_counters=rule_items,
+            semantic_contradiction_subreason_counters=subreason_items,
             failure_stage=stage,
             nonzero_failure_category=(
                 nonzero_failures[0].value if len(nonzero_failures) == 1 else None
             ),
             nonzero_phase18b_rule=(
                 nonzero_rules[0].value if len(nonzero_rules) == 1 else None
+            ),
+            nonzero_semantic_contradiction_subreason=(
+                nonzero_subreasons[0].value if len(nonzero_subreasons) == 1 else None
             ),
             deterministic_authority_unchanged=authority_unchanged,
             authoritative_output_fields_validated=(
@@ -270,9 +338,13 @@ def _failed_snapshot(
         provider_transport_count=0,
         failure_counters=tuple((item.value, 0) for item in ProviderFailureClassification),
         phase18b_rule_counters=tuple((item.value, 0) for item in OutputRejectionClassification),
+        semantic_contradiction_subreason_counters=tuple(
+            (item.value, 0) for item in SemanticContradictionSubreason
+        ),
         failure_stage=None,
         nonzero_failure_category=None,
         nonzero_phase18b_rule=None,
+        nonzero_semantic_contradiction_subreason=None,
         deterministic_authority_unchanged=authority_unchanged,
         authoritative_output_fields_validated=0,
         diagnostic_status="failed_closed",
@@ -353,6 +425,41 @@ def _preflight(environment: Mapping[str, str]) -> dict[str, bool]:
 def _emit_json(value: Mapping[str, object], write: Callable[[str], object]) -> bool:
     try:
         if set(value) != _REPORT_KEYS:
+            raise ValueError
+        failure_counters = value["failure_counters"]
+        rule_counters = value["phase18b_rule_counters"]
+        subreason_counters = value["semantic_contradiction_subreason_counters"]
+        if not all(
+            isinstance(item, Mapping)
+            for item in (failure_counters, rule_counters, subreason_counters)
+        ):
+            raise ValueError
+        expected_failures = {item.value for item in ProviderFailureClassification}
+        expected_rules = {item.value for item in OutputRejectionClassification}
+        expected_subreasons = {item.value for item in SemanticContradictionSubreason}
+        if (
+            set(failure_counters) != expected_failures
+            or set(rule_counters) != expected_rules
+            or set(subreason_counters) != expected_subreasons
+            or any(
+                type(count) is not int or count < 0
+                for counters in (failure_counters, rule_counters, subreason_counters)
+                for count in counters.values()
+            )
+        ):
+            raise ValueError
+        semantic_count = rule_counters[OutputRejectionClassification.SEMANTIC_CONTRADICTION.value]
+        subreason_total = sum(subreason_counters.values())
+        if semantic_count == 0 and subreason_total != 0:
+            raise ValueError
+        if semantic_count == 1 and subreason_total != 1:
+            raise ValueError
+        if semantic_count > 1 or subreason_total > 1:
+            raise ValueError
+        nonzero_subreasons = [item for item, count in subreason_counters.items() if count]
+        if value["nonzero_semantic_contradiction_subreason"] != (
+            nonzero_subreasons[0] if len(nonzero_subreasons) == 1 else None
+        ):
             raise ValueError
         encoded = json.dumps(value, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
         write(encoded + "\n")

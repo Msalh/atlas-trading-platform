@@ -13,7 +13,10 @@ from atlas_ai_analysis import (
     refused_audit,
     validate_output,
 )
-from atlas_ai_analysis.errors import OutputRejectionClassification
+from atlas_ai_analysis.errors import (
+    OutputRejectionClassification,
+    SemanticContradictionSubreason,
+)
 from atlas_ai_analysis.models import FailureReason
 from atlas_ai_service import ServiceFailure
 
@@ -72,16 +75,18 @@ class ProviderOrchestrator:
                 pass
 
     def _record_phase18b_failure(
-        self, classification: OutputRejectionClassification
+        self,
+        classification: OutputRejectionClassification,
+        subreason: SemanticContradictionSubreason | None = None,
     ) -> None:
         if self._failure_diagnostics is None:
             return
         try:
-            self._failure_diagnostics.record_phase18b(classification)
+            self._failure_diagnostics.record_phase18b(classification, subreason)
         except Exception:
             try:
                 self._failure_diagnostics.record_phase18b(
-                    OutputRejectionClassification.OTHER_SEMANTIC_REJECTION
+                    OutputRejectionClassification.OTHER_SEMANTIC_REJECTION,
                 )
             except Exception:
                 pass
@@ -181,10 +186,12 @@ class ProviderOrchestrator:
             try:
                 classification = error.output_rejection
             except Exception:
-                classification = (
-                    OutputRejectionClassification.OTHER_SEMANTIC_REJECTION
-                )
-            self._record_phase18b_failure(classification)
+                classification = OutputRejectionClassification.OTHER_SEMANTIC_REJECTION
+            try:
+                subreason = error.semantic_contradiction_subreason
+            except Exception:
+                subreason = SemanticContradictionSubreason.CLASSIFICATION_AMBIGUOUS
+            self._record_phase18b_failure(classification, subreason)
             return self._failure(eligible, "invalid_output")
         except Exception:
             self._record_provider_failure(

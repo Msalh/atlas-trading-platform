@@ -23,7 +23,10 @@ from atlas_ai_analysis import (
     SnapshotVerification,
     project_input,
 )
-from atlas_ai_analysis.errors import OutputRejectionClassification
+from atlas_ai_analysis.errors import (
+    OutputRejectionClassification,
+    SemanticContradictionSubreason,
+)
 from atlas_ai_orchestration import (
     CompletedOutcome,
     DeterministicPromptBuilder,
@@ -506,6 +509,14 @@ def test_phase18b_rule_classification_is_typed_and_content_free(
     assert sum(provider_snapshot.values()) == 1
     assert semantic_snapshot[classification] == 1
     assert sum(semantic_snapshot.values()) == 1
+    subreason_snapshot = diagnostics.semantic_contradiction_subreason_snapshot()
+    if classification is OutputRejectionClassification.SEMANTIC_CONTRADICTION:
+        assert sum(subreason_snapshot.values()) == 1
+        assert subreason_snapshot[
+            SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED
+        ] == 1
+    else:
+        assert sum(subreason_snapshot.values()) == 0
     assert sentinel not in repr(diagnostics)
     assert sentinel not in repr(semantic_snapshot)
     assert sentinel not in repr(result)
@@ -682,6 +693,9 @@ def test_concurrent_counter_increments_are_exact_and_bounded():
     ] == 1_000
     assert sum(semantic_snapshot.values()) == 1_000
     assert set(semantic_snapshot) == set(OutputRejectionClassification)
+    subreason_snapshot = diagnostics.semantic_contradiction_subreason_snapshot()
+    assert subreason_snapshot[SemanticContradictionSubreason.CLASSIFICATION_AMBIGUOUS] == 1_000
+    assert sum(subreason_snapshot.values()) == 1_000
 
 
 def test_phase18b_classifier_failure_falls_back_without_exception_retention(

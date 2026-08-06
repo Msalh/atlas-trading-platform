@@ -16,6 +16,7 @@ from .errors import (
     AIAnalysisCitationError,
     AIAnalysisValidationError,
     OutputRejectionClassification,
+    SemanticContradictionSubreason,
 )
 from .models import (
     AnalysisAuditIdentity,
@@ -501,6 +502,7 @@ def _validate_output(
             value["summary"],
             [item[0] for item in deterministic_items],
             [item[1] for item in deterministic_items],
+            summary=True,
         )
     elif status == "unavailable":
         if value["summary"] is not None or claims or limitations:
@@ -776,6 +778,16 @@ def _audit(
 
 
 def _validate_claims(claims: Sequence[Any], eligible: EligibleAnalysis) -> None:
+    deterministic_values = [
+        item["value"]
+        for item in cast(
+            Sequence[Mapping[str, Any]], eligible.analysis_input["evidence_items"]
+        )
+        if any(
+            item["path"] == root or item["path"].startswith(f"{root}/")
+            for root in ("/evidence/strategy", "/evidence/risk", "/evidence/decision")
+        )
+    ]
     claim_ids: set[str] = set()
     for claim_value in claims:
         claim = _mapping(claim_value, "claim")
@@ -816,13 +828,21 @@ def _validate_claims(claims: Sequence[Any], eligible: EligibleAnalysis) -> None:
             raise AIAnalysisCitationError("material claim requires unique citations")
         cited_values = [resolve_citation(path, eligible) for path in citations]
         _validate_prohibited_text(text)
-        _validate_deterministic_claim(text, citations, cited_values)
+        _validate_deterministic_claim(
+            text,
+            citations,
+            cited_values,
+            eligible_values=deterministic_values,
+        )
 
 
 def _validate_deterministic_claim(
     text: str,
     citations: Sequence[str],
     cited_values: Sequence[Any],
+    *,
+    eligible_values: Sequence[Any] | None = None,
+    summary: bool = False,
 ) -> None:
     deterministic = any(
         path == root or path.startswith(f"{root}/")
@@ -849,10 +869,28 @@ def _validate_deterministic_claim(
         for canonical, patterns in _STATE_ALIASES.items()
         if any(pattern.search(text) for pattern in patterns)
     }
-    if not mentioned_terms <= cited_terms:
+    unsupported_terms = mentioned_terms - cited_terms
+    if unsupported_terms:
+        subreason = SemanticContradictionSubreason.CLASSIFICATION_AMBIGUOUS
+        if summary:
+            subreason = SemanticContradictionSubreason.SUMMARY_STATE_UNSUPPORTED
+        else:
+            eligible_terms = {
+                item.lower()
+                for value in (cited_values if eligible_values is None else eligible_values)
+                for item in _scalar_texts(value)
+                if item.lower() in _STATE_TERMS or item == "null"
+            }
+            globally_unsupported = unsupported_terms - eligible_terms
+            support_omitted = unsupported_terms & eligible_terms
+            if globally_unsupported and not support_omitted:
+                subreason = SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED
+            elif support_omitted and not globally_unsupported:
+                subreason = SemanticContradictionSubreason.CLAIM_STATE_SUPPORT_OMITTED
         raise AIAnalysisAuthorityError(
             "claim contradicts deterministic state",
             output_rejection=OutputRejectionClassification.SEMANTIC_CONTRADICTION,
+            semantic_contradiction_subreason=subreason,
         )
     cited_scalars = {item for value in cited_values for item in _scalar_texts(value)}
     for token in _DECIMAL_TOKEN.findall(text):
