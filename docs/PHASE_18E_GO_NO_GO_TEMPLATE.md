@@ -11,11 +11,11 @@ or raw diagnostics.
 | Target environment | `[operator entry]` |
 | Change window | `[operator entry]` |
 | Release approver | `[role and approval reference]` |
-| Security/Privacy approval | `[reference or BLOCKED]` |
+| Security/Privacy self-approval | `[dated owner reference]` |
 | Secret ownership approval | `[reference or BLOCKED; no value]` |
-| Account entitlement approval | `[reference or BLOCKED]` |
-| Pricing/budget approval | `[reference or BLOCKED]` |
-| Retention/data-control approval | `[reference or BLOCKED]` |
+| Account entitlement and limits | `[reference or BLOCKED]` |
+| Pricing/budget approval | `[owner reference; revalidate by 2026-09-05]` |
+| Retention/data-control approval | `[reference or BLOCKED; no ZDR claim]` |
 | Rollback owner and reference | `[reference]` |
 | Sanitized observability owner | `[reference or BLOCKED]` |
 | Adapter default-disabled check | `[true/false]` |
@@ -23,4 +23,6 @@ or raw diagnostics.
 | Final rationale | `[bounded summary only]` |
 
 `GO` is invalid while any required approval, confirmation, implementation, or
-revalidation is missing. This repository task records no approval.
+revalidation is missing. Personal self-approval may satisfy only organizational
+signature requirements; it cannot waive technical controls. This repository
+task records no deployment approval.

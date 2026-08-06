@@ -1,21 +1,24 @@
 # Phase 18E Operator Checklist — Evidence Collection Only
 
-This checklist cannot approve enablement. Leave every item unchecked until the
-named owner supplies the required evidence; unknown ownership is a blocker.
+This checklist cannot approve enablement. Checked items indicate only that the
+corresponding owner attestation is recorded in the evidence package; unresolved
+items remain unchecked, and unknown ownership is a blocker.
 
-- [ ] Security/Platform names the secret owner, approved secret store, injection
-      boundary, rotation owner, and revocation owner. Record no secret value.
-- [ ] Provider account owner confirms workspace ownership, model entitlement,
-      permitted organizational use, and rate/usage-limit responsibility.
-- [ ] Finance and Security/Platform revalidate the current pricing record and
-      approve the USD 0.12 ceiling before its expiry or any pricing change.
-- [ ] Privacy/Legal approves provider data-use, retention, caching, deletion,
-      and incident-handling controls.
-- [ ] Security/Privacy signs the threat/data-flow, least-privilege,
-      prompt-injection, and leakage-control review.
+- [ ] Personal Project Owner records the approved non-secret secret store,
+      injection boundary, rotation owner, and revocation procedure. Record no
+      secret value.
+- [ ] Personal Project Owner confirms current model entitlement and rate/usage
+      limits for the personal account/project.
+- [x] Personal Project Owner records the supplied pricing and USD 0.12 ceiling;
+      revalidate no later than 2026-09-05 or on any pricing-policy change.
+- [ ] Personal Project Owner records dated acceptance of provider default
+      retention/data-use behavior, deletion, caching, and incident handling;
+      do not claim ZDR.
+- [x] Personal Project Owner records self-review and risk acceptance for the
+      committed security/privacy controls.
 - [ ] Release/Platform records target environment, change window, approvers,
       pre-deployment checks, and an explicit go/no-go decision.
-- [ ] Operations assigns sanitized-counter alert thresholds, ownership, and
+- [ ] Personal Project Owner assigns sanitized-counter alert thresholds, ownership, and
       retention; verify only the fixed diagnostic schema is emitted.
 - [ ] Runtime owner rehearses disablement/rollback and confirms the public
       unavailable behavior and deterministic trading authority remain unchanged.

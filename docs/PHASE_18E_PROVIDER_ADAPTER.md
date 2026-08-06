@@ -441,11 +441,11 @@ blocking. See [the evidence index](PHASE_18E_EVIDENCE_INDEX.md),
 
 | Gate | Status | Committed evidence | Missing artifact or decision | Responsible role | Acceptance criterion | Expiry/revalidation | Blocks enablement? |
 |---|---|---|---|---|---|---|---|
-| Secret ownership and custody | REQUIRES_OPERATOR_CONFIRMATION | This document names Security/Platform as the later owner; the adapter reads no credential in offline qualification. | Approved secret store, injection boundary, rotation/revocation owner, and confirmation without recording a value. | Security/Platform | Written ownership and secret-store decision approved. | Ownership, store, or credential rotation change. | Yes |
-| Provider account entitlement | REQUIRES_OPERATOR_CONFIRMATION | OpenAI is the reviewed target and `gpt-5.6-terra` is the local allowlist value. | Account/workspace owner, model entitlement, organizational use, and rate/usage-limit owner confirmation. | Provider account owner | Entitlement and limits are confirmed for the intended organization. | Account, model, policy, or limit change. | Yes |
-| Current pricing and renewal | REQUIRES_OPERATOR_CONFIRMATION | Phase 3A pricing record is dated 2026-08-06 and expires 2026-09-05; authority ceiling is USD 0.12. | Budget approver and renewal/revalidation decision; historical pricing must not be assumed current. | Finance plus Security/Platform | Current record is revalidated before enablement and budget is approved. | 2026-09-05 expiry or any source/rate/model/tier change. | Yes |
-| Retention and data controls | REQUIRES_EXTERNAL_APPROVAL | Request policy uses `store: false`; committed docs prohibit payload and diagnostic retention. | Provider-side training/data-use and retention confirmation, application retention/deletion and incident owner, and caching disposition. | Privacy/Legal plus Security | Approved data-flow and retention decision covers provider and application boundaries. | Policy, endpoint, model, or retention-setting change. | Yes |
-| Security and privacy review | REQUIRES_EXTERNAL_APPROVAL | Trusted prompt, untrusted-evidence boundary, least-privilege adapter, and redaction tests are committed. | Threat/data-flow review, secret-leakage sign-off, prompt-injection review, and named approval authority. | Security/Privacy | Signed review accepts the bounded data flow and controls. | Code, dependency, threat model, or data-flow change. | Yes |
+| Secret ownership and custody | REQUIRES_OPERATOR_CONFIRMATION | Personal Project Owner is the stated owner; the adapter reads no credential in offline qualification. | Approved non-secret store, injection boundary, rotation/revocation owner, and revocation procedure remain unrecorded. | Personal Project Owner | Written custody decision names the store and procedures without recording a value. | Ownership, store, or credential-process change. | Yes |
+| Provider account entitlement | REQUIRES_OPERATOR_CONFIRMATION | Owner attests personal account/project ownership; one bounded transport reached the selected model at the recorded time. | Current rate/usage limits and continuing entitlement confirmation remain required. | Personal Project Owner / Provider Account Owner | Non-secret entitlement and limit record is confirmed and revalidated. | Account, model, project, billing, policy, or access change. | Yes |
+| Current pricing and renewal | SATISFIED_BY_COMMITTED_EVIDENCE | Owner is budget approver; supplied official prices are USD 2.00 input, USD 0.20 cached input, and USD 12.00 output per 1M tokens; application ceiling remains USD 0.12 per request. | None for this record; do not assume historical pricing remains current. | Personal Project Owner / Budget Owner | Pricing source and ceiling are recorded with renewal ownership. | Revalidate no later than 2026-09-05 and on model, tier, token-limit, caching, or official-price change. | No |
+| Retention and data controls | REQUIRES_EXTERNAL_APPROVAL | Personal single-user advisory scope, no intentional sensitive submissions, no raw local retention, bounded metadata only, and committed `store: false` request behavior are recorded. | Owner must still approve the 30-day abuse-monitoring/application-state exposure, deletion/incident procedure, and no-ZDR position as a formal data-control decision. | Personal Project Owner / Security and Privacy Owner | Dated data-control risk acceptance covers provider defaults and application handling. | Provider policy, endpoint, model, retention, or data-scope change. | Yes |
+| Security and privacy review | SATISFIED_BY_COMMITTED_EVIDENCE | Owner self-review accepts committed least privilege, secret isolation boundary, untrusted-evidence/prompt-injection controls, sanitized logging, advisory-only behavior, and deterministic authority isolation. | None for the technical review; incident and credential-revocation procedure remains part of secret-custody follow-up. | Personal Project Owner / Security and Privacy Owner | Dated self-approval and risk acceptance references the committed controls. | Code, dependency, threat-model, data-flow, or policy change. | No |
 | Deployment approval | REQUIRES_EXTERNAL_APPROVAL | Runtime documentation states no deployment or production enablement is authorized. | Approvers, target environment, change window, pre-deployment checks, and explicit go/no-go record. | Release/Platform owner | Recorded approval names target and rollback plan. | Any release, environment, or configuration change. | Yes |
 | Rollback and kill switch | SATISFIED_BY_COMMITTED_EVIDENCE | Adapter is default-disabled; rollback is disablement/removal of the local factory binding; deterministic authority remains outside the adapter. | None for the documented offline boundary; production rollback rehearsal remains a later approval requirement. | Runtime owner | Disablement removes the binding and public behavior remains sanitized and deterministic. | Runtime binding or public-contract change. | No |
 | Sanitized observability | REQUIRES_OPERATOR_CONFIRMATION | `manual_ai_one_shot_diagnostic.v1`, bounded counters, pre-teardown snapshot, and the successful one-shot metadata are committed/recorded without content. | Alert thresholds, operator owner, and diagnostic-retention decision. | Operations/Security | Operator runbook accepts only the fixed schema and forbidden-field policy. | Schema, alert, retention, or ownership change. | Yes |
@@ -471,3 +471,39 @@ The supplied result is retained here without provider content:
 No prompt, payload, response, evidence, header, request ID, credential, or raw
 diagnostic is preserved. This metadata is qualification evidence only and does
 not authorize provider activation, deployment, or trading.
+
+## Personal-owner decision record
+
+Record date: 2026-08-06.
+
+The operator states that this is a single-owner personal project for personal
+use, not a company, employer, client, team, or external-user service. The
+Personal Project Owner personally holds the provider-account, budget,
+security/privacy, deployment, release, and operations roles. This attestation
+records role ownership only; it does not record a name, account identifier, or
+secret.
+
+The owner accepts the following bounded risks and controls: no intentional
+submission of credentials, brokerage credentials, personal identifiers, or
+unnecessary sensitive data; no local raw prompt/response retention; only fixed
+schema metadata and bounded counters may be retained; provider data is not used
+for model training by default unless explicitly opted into; abuse-monitoring and
+Responses API application-state retention may each be up to 30 days by default;
+and Zero Data Retention is not claimed or enabled by this evidence.
+
+The owner self-approves the committed security/privacy controls and accepts that
+the AI remains advisory-only. Deterministic code remains the sole authority for
+entries, exits, sizing, risk, orders, and execution. This is not a deployment or
+production go/no-go approval.
+
+Pricing evidence supplied for this record identifies `gpt-5.6-terra` standard
+prices as USD 2.00 per 1M input tokens, USD 0.20 per 1M cached-input tokens, and
+USD 12.00 per 1M output tokens, sourced to
+<https://developers.openai.com/api/docs/models/gpt-5.6-terra>. The application
+ceiling remains USD 0.12 per request. Pricing must be revalidated by
+2026-09-05 and whenever model, tier, token limits, caching behavior, or official
+pricing changes.
+
+The committed adapter sends `store: false` and the adapter test asserts that
+field; this proves request construction only. It does not prove Zero Data
+Retention, regional processing, or any provider-side retention override.
