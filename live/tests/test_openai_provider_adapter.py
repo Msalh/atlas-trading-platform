@@ -14,6 +14,7 @@ from typing import Any
 import httpx
 import pytest
 
+import atlas_ai_analysis.sdk as analysis_sdk
 from atlas_ai_orchestration import ProviderFailureClassification, TrustedProviderRequest
 from atlas_ai_orchestration import openai_adapter as adapter_module
 from atlas_ai_orchestration.errors import (
@@ -198,6 +199,10 @@ def test_decoded_json_domain_candidate_is_returned_unchanged(candidate):
         assert payload["service_tier"] == "default"
         assert payload["prompt_cache_options"] == {"mode": "explicit"}
         assert payload["max_output_tokens"] == 4096
+        output_format = payload["text"]["format"]
+        assert output_format["type"] == "json_schema"
+        assert output_format["name"] == "ai_analysis_output_v1"
+        assert output_format["strict"] is True
         provider_input = json.loads(payload["input"])
         assert provider_input["analysis_output_id"] == _request().analysis_output_id
         assert provider_input["untrusted_evidence_json"] == "{}"
@@ -212,6 +217,49 @@ def test_decoded_json_domain_candidate_is_returned_unchanged(candidate):
     assert result == candidate
     assert type(result) is type(candidate)
     assert calls == 1
+
+
+def test_strict_structured_output_schema_is_closed_and_bound_to_request():
+    observed = {}
+
+    def handler(request):
+        observed.update(json.loads(request.content)["text"]["format"])
+        return httpx.Response(200, content=_provider_body({"ok": True}))
+
+    adapter, transport = _adapter(handler)
+    try:
+        assert adapter.invoke(_request()) == {"ok": True}
+    finally:
+        transport.close()
+
+    schema = observed["schema"]
+    assert observed["type"] == "json_schema"
+    assert observed["strict"] is True
+    assert schema["type"] == "object"
+    assert schema["additionalProperties"] is False
+    assert set(schema["required"]) == set(schema["properties"])
+    assert set(schema["properties"]) == set(analysis_sdk._OUTPUT_KEYS)
+    request = _request()
+    for field in (
+        "analysis_output_id",
+        "analysis_input_id",
+        "snapshot_id",
+        "evidence_digest",
+        "purpose",
+    ):
+        assert schema["properties"][field]["enum"] == [getattr(request, field)]
+    assert schema["properties"]["schema_version"]["enum"] == [
+        request.output_schema_version
+    ]
+    claim = schema["properties"]["claims"]["items"]
+    assert claim["type"] == "object"
+    assert claim["additionalProperties"] is False
+    assert set(claim["required"]) == set(claim["properties"])
+    assert set(schema["properties"]["limitations"]["items"]["enum"]) == set(
+        analysis_sdk.LIMITATIONS
+    )
+    failure_reason = schema["properties"]["unavailable_reason"]["anyOf"][0]
+    assert set(failure_reason["enum"]) == set(analysis_sdk.FAILURE_REASONS)
 
 
 def test_counted_transport_symbol_runs_exactly_once(monkeypatch):

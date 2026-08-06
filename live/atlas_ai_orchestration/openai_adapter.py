@@ -20,6 +20,38 @@ from .pricing_authority import ProviderPricingRecord, resolve_authoritative_pric
 
 _RESPONSES_ENDPOINT = "https://api.openai.com/v1/responses"
 _PROVIDER_ID = "openai"
+_OUTPUT_FORMAT_NAME = "ai_analysis_output_v1"
+_FAILURE_REASONS = (
+    "provider_timeout",
+    "provider_unavailable",
+    "invalid_output",
+    "missing_citation",
+    "deterministic_state_contradiction",
+    "prohibited_content",
+    "cost_limit",
+    "internal_unavailable",
+)
+_LIMITATIONS = (
+    "advisory_only",
+    "single_snapshot_only",
+    "delayed_evidence",
+    "risk_unavailable",
+    "decision_unavailable",
+    "insufficient_evidence",
+)
+_OUTPUT_KEYS = (
+    "schema_version",
+    "analysis_output_id",
+    "analysis_input_id",
+    "snapshot_id",
+    "evidence_digest",
+    "purpose",
+    "status",
+    "summary",
+    "claims",
+    "limitations",
+    "unavailable_reason",
+)
 
 
 class InputTokenEstimator(Protocol):
@@ -316,6 +348,7 @@ class OpenAIProviderAdapter:
                 "instructions": "\n".join(request.trusted_instructions),
                 "input": provider_input,
                 "max_output_tokens": policy.max_output_tokens,
+                "text": self._structured_output(request),
                 "service_tier": "default",
                 "prompt_cache_options": {"mode": "explicit"},
                 "store": False,
@@ -327,6 +360,76 @@ class OpenAIProviderAdapter:
         if len(body) > policy.max_request_bytes:
             raise ProviderPortError
         return body
+
+    @staticmethod
+    def _structured_output(request: TrustedProviderRequest) -> dict[str, object]:
+        nullable_string = {"anyOf": [{"type": "string"}, {"type": "null"}]}
+        claim = {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["claim_id", "kind", "text", "citations"],
+            "properties": {
+                "claim_id": {"type": "string"},
+                "kind": {
+                    "type": "string",
+                    "enum": ["explanation", "attention_guidance"],
+                },
+                "text": {"type": "string"},
+                "citations": {"type": "array", "items": {"type": "string"}},
+            },
+        }
+        schema = {
+            "type": "object",
+            "additionalProperties": False,
+            "required": list(_OUTPUT_KEYS),
+            "properties": {
+                "schema_version": {
+                    "type": "string",
+                    "enum": [request.output_schema_version],
+                },
+                "analysis_output_id": {
+                    "type": "string",
+                    "enum": [request.analysis_output_id],
+                },
+                "analysis_input_id": {
+                    "type": "string",
+                    "enum": [request.analysis_input_id],
+                },
+                "snapshot_id": {
+                    "type": "string",
+                    "enum": [request.snapshot_id],
+                },
+                "evidence_digest": {
+                    "type": "string",
+                    "enum": [request.evidence_digest],
+                },
+                "purpose": {"type": "string", "enum": [request.purpose]},
+                "status": {
+                    "type": "string",
+                    "enum": ["available", "unavailable"],
+                },
+                "summary": nullable_string,
+                "claims": {"type": "array", "items": claim},
+                "limitations": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": list(_LIMITATIONS)},
+                },
+                "unavailable_reason": {
+                    "anyOf": [
+                        {"type": "string", "enum": list(_FAILURE_REASONS)},
+                        {"type": "null"},
+                    ]
+                },
+            },
+        }
+        return {
+            "format": {
+                "type": "json_schema",
+                "name": _OUTPUT_FORMAT_NAME,
+                "strict": True,
+                "schema": schema,
+            }
+        }
 
     @staticmethod
     def _valid_pricing(
