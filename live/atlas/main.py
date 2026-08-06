@@ -82,6 +82,7 @@ from atlas.events.bus import EventBus
 from atlas.events.subscribers import log_event
 from atlas.events.types import ALL as ALL_EVENT_TYPES
 from atlas.logging_config import configure_logging
+from atlas.manual_ai_runtime import build_manual_ai_explanation_service
 from atlas.market_engine.repositories.postgres import PostgresMarketStateRepository
 from atlas.monitoring import MarketStateStalenessMonitor
 from atlas.rate_limit import limiter
@@ -257,9 +258,20 @@ async def lifespan(app: FastAPI):
         await pool.close()
         raise
 
+    # Phase 3: construction is default-disabled and performs no provider call.
+    # Attach only after every fallible startup dependency has completed so a
+    # partial startup cannot retain the manual-only service on application state.
+    manual_ai_service = build_manual_ai_explanation_service(settings)
+    if manual_ai_service is not None:
+        app.state.manual_ai_explanation_service = manual_ai_service
+    elif hasattr(app.state, "manual_ai_explanation_service"):
+        del app.state.manual_ai_explanation_service
+
     try:
         yield
     finally:
+        if hasattr(app.state, "manual_ai_explanation_service"):
+            del app.state.manual_ai_explanation_service
         staleness_task.cancel()
         try:
             await staleness_task

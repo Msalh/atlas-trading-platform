@@ -244,6 +244,12 @@ remains default-disabled, offline-qualified, and unattached. The record alone
 authorizes no credential, provider call, runtime integration, deployment, or
 operational certification.
 
+Phase 3 defines a separate local-only, default-disabled runtime factory in
+`PHASE_3_LOCAL_OPENAI_RUNTIME.md`. It may attach the certified adapter only to the
+existing manual advisory dependency after exact configuration and current pricing
+checks pass. This local binding grants no production, persistence, background,
+broker, order, execution, deployment, or general Phase 18E enablement authority.
+
 ## Phase 18F — Offline Persistence Contract and Atomic Storage Port
 
 Phase 18F is independently certified and closed as an offline-complete,

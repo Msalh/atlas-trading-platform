@@ -59,7 +59,35 @@ class Settings:
         # validate_for_startup() below. atlas.main:app (the real entrypoint) reads
         # this; scripts/dev_seed_server.py is a separate, intentionally-unauthenticated
         # local test harness that never calls validate_for_startup() at all.
-        self.environment = os.environ.get("ENVIRONMENT", "production").strip().lower()
+        raw_environment = os.environ.get("ENVIRONMENT", "production")
+        self.environment = raw_environment.strip().lower()
+        # Phase 3 local manual-advisory provider. Disabled, malformed, and
+        # non-development modes deliberately do not read the server-only key.
+        self.atlas_ai_provider_enabled = os.environ.get(
+            "ATLAS_AI_PROVIDER_ENABLED", ""
+        )
+        self.atlas_ai_provider_api_key = (
+            os.environ.get("ATLAS_AI_PROVIDER_API_KEY", "")
+            if raw_environment == "development"
+            and self.atlas_ai_provider_enabled == "true"
+            else ""
+        )
+        self.atlas_ai_provider_model = os.environ.get("ATLAS_AI_PROVIDER_MODEL", "")
+        self.atlas_ai_provider_timeout_seconds = os.environ.get(
+            "ATLAS_AI_PROVIDER_TIMEOUT_SECONDS", ""
+        )
+        self.atlas_ai_provider_max_request_bytes = os.environ.get(
+            "ATLAS_AI_PROVIDER_MAX_REQUEST_BYTES", ""
+        )
+        self.atlas_ai_provider_max_response_bytes = os.environ.get(
+            "ATLAS_AI_PROVIDER_MAX_RESPONSE_BYTES", ""
+        )
+        self.atlas_ai_provider_max_output_tokens = os.environ.get(
+            "ATLAS_AI_PROVIDER_MAX_OUTPUT_TOKENS", ""
+        )
+        self.atlas_ai_provider_max_estimated_cost = os.environ.get(
+            "ATLAS_AI_PROVIDER_MAX_ESTIMATED_COST", ""
+        )
         # Sprint 9: shared API key required on every non-webhook, non-health endpoint
         # (see atlas/api/security.py). Single shared secret, not per-user - this
         # remains a single-user tool, not a multi-tenant system.
