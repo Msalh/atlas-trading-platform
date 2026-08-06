@@ -1,0 +1,23 @@
+name: phase18g-local-qualification
+
+services:
+  postgres-phase18g:
+    image: postgres@sha256:7958605b474b3d264a969cb3a123d6aa00ad1e1fe9da8a69984dabb704d93317
+    environment:
+      POSTGRES_DB: atlas_ai_test
+      POSTGRES_USER: atlas_ai_test_admin
+      POSTGRES_PASSWORD: phase18g-local-disposable-only
+    ports:
+      - "127.0.0.1:55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U atlas_ai_test_admin -d atlas_ai_test"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    tmpfs:
+      - /var/lib/postgresql/data
+    networks:
+      - phase18g-isolated
+
+networks:
+  phase18g-isolated: {}

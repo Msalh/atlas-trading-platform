@@ -1,9 +1,10 @@
 # Phase 18G — Concrete PostgreSQL Persistence Adapter Architecture
 
-Status: architecture decisions approved for documentation. Implementation has
-not started and is not authorized. No database, schema, migration, adapter,
-retention process, backup, runtime attachment, or deployment exists by virtue of
-this decision.
+Status: the narrow PostgreSQL adapter, schema, and migration implementation is a
+locally qualified candidate. Qualification used only the disposable container
+defined in this repository. No production database, retention process, backup,
+runtime attachment, deployment, or operational certification exists by virtue
+of this implementation.
 
 ## Objective
 
@@ -438,12 +439,62 @@ qualification, failure-injection, cleanup, and redaction procedures.
 8. Separately authorize deployment, sanitized observability, rollback rehearsal,
    and operational certification.
 
+## Local implementation and ordinary qualification record
+
+The narrow implementation authorization selected PostgreSQL 17.10 and the
+official Linux image
+`postgres@sha256:7958605b474b3d264a969cb3a123d6aa00ad1e1fe9da8a69984dabb704d93317`.
+The repository-compatible dependency pins are `psycopg[binary,pool]==3.3.4`
+and `psycopg-pool==3.3.1`; their published metadata supports Python 3.12.
+
+The implementation is isolated in `atlas_ai_persistence_postgres` and
+`ai_persistence_migrations`. It provides one synchronous, insert-only
+`AtomicPersistencePort` adapter, one checksum-bound migration runner, and one
+physical persistence-record table. The adapter uses one explicit
+`READ COMMITTED` transaction and one insert attempt. Exact replay reads and
+compares the complete trusted fingerprint; conflicts fail closed. It performs
+no retry, persistence semantic validation, runtime registration, provider call,
+or retention deletion.
+
+### Trusted-record to physical-field mapping
+
+| Trusted source | Physical field | Authority and constraint |
+|---|---|---|
+| audit operation ID | `analysis_audit_id` | Primary identity; exact UUID |
+| completed output ID | `analysis_output_id` | Nullable; unique when present |
+| audit outcome | `outcome` | Closed to completed, failed, or refused |
+| audit input/snapshot identities | `analysis_input_id`, `snapshot_id` | Exact trusted identities; completed input required |
+| audit evidence/purpose | `evidence_digest`, `purpose` | Exact trusted projections |
+| frozen contract versions | three contract-version columns | Exact frozen version checks |
+| trusted generator identity | `provider_id`, `model_id` | Required only for completed records |
+| audit event time | `audit_recorded_at` | Authoritative retention clock; no deletion authority |
+| exact audit bytes and digest | `audit_payload`, `audit_digest` | Binary bytes retained unchanged; digest compared before connection |
+| exact output bytes and digest | `output_payload`, `output_digest` | Nullable audit-only shape; unchanged when completed |
+| adapter constants | schema/profile columns | Closed physical schema and canonicalization versions |
+| database | `committed_at` | Operational commit time only; never replaces audit time |
+
+The disposable environment is defined by `compose.phase18g.yml`. It is
+digest-pinned, publishes PostgreSQL only on loopback, stores database files on
+`tmpfs`, uses synthetic qualification-only credentials, and creates no named or
+persistent volume. Ordinary qualification covered empty bootstrap, migration
+checksum drift, least-privilege runtime access, completed and audit-only commits,
+exact replay, identity and payload collision rejection, concurrent writers,
+rollback visibility, immutable rows, canonical-byte preservation, and sanitized
+failure translation. The complete local backend suite passed with 2,898 tests,
+four established skips, and one established framework deprecation warning.
+
+This evidence does not cover process termination, network interruption,
+lost-acknowledgement injection, rollback failure, crash/restart durability,
+backup/restore, or RPO/RTO measurement. Those destructive and operational gates
+remain separately unauthorized. Retention deletion and legal-hold policy also
+remain unresolved; no deletion mechanism was implemented.
+
 ## Authorization boundary
 
 Human approval is required for every unresolved decision and transition above.
-This architecture package authorizes no implementation, test environment,
-infrastructure access, credential use, migration, retention execution, runtime
-attachment, deployment, or operational action.
+The completed local implementation authorization grants no production database
+access, retention execution, backup/restore, runtime attachment, deployment, or
+operational action.
 
 Concrete adapter implementation, adapter certification, runtime dependency
 injection, API exposure, Phase 18E activation, deployment, and operational

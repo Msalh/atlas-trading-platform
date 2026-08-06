@@ -264,16 +264,18 @@ enablement remain blocked.
 
 ## Phase 18G — Concrete PostgreSQL Persistence Adapter Architecture
 
-Phase 18G is approved as an architecture decision package only. Implementation
-has not started and remains separately unauthorized. Its design is defined in
-`PHASE_18G_PERSISTENCE_ADAPTER_DESIGN.md`.
+Phase 18G now has a locally implemented and ordinary-container-qualified
+PostgreSQL adapter candidate. Its design and qualification boundary are defined
+in `PHASE_18G_PERSISTENCE_ADAPTER_DESIGN.md`.
 
 The approved default topology is a dedicated, isolated PostgreSQL database with
 12-month record retention, RPO no greater than one hour, and RTO no greater than
 four hours. These are product architecture decisions, not evidence that a
 database, schema, migration, retention mechanism, backup, adapter, or runtime
-exists. Phase 18G authorizes no implementation, database access, runtime binding,
-Phase 18E activation, deployment, or operational certification.
+exists in production. The candidate authorizes no production database access,
+retention execution, runtime binding, Phase 18E activation, deployment, or
+operational certification. Destructive fault injection, durability,
+backup/restore, and RPO/RTO evidence remain separate gates.
 
 ## Later work-package boundaries
 
