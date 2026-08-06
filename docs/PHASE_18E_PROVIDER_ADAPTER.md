@@ -441,14 +441,14 @@ blocking. See [the evidence index](PHASE_18E_EVIDENCE_INDEX.md),
 
 | Gate | Status | Committed evidence | Missing artifact or decision | Responsible role | Acceptance criterion | Expiry/revalidation | Blocks enablement? |
 |---|---|---|---|---|---|---|---|
-| Secret ownership and custody | REQUIRES_OPERATOR_CONFIRMATION | Personal Project Owner is the stated owner; the adapter reads no credential in offline qualification. | Approved non-secret store, injection boundary, rotation/revocation owner, and revocation procedure remain unrecorded. | Personal Project Owner | Written custody decision names the store and procedures without recording a value. | Ownership, store, or credential-process change. | Yes |
+| Secret ownership and custody | SATISFIED_BY_COMMITTED_EVIDENCE | Personal Project Owner approves Railway Variables as the future store, backend-service-only injection, 90-day rotation, incident-triggered rotation, one-hour revocation SLA, and no-value recording; committed runtime reads the key only for the adapter factory and tests/documentation prohibit leakage. | Actual Railway Variables configuration and service permissions remain a deployment-time check and are not inspected here. | Personal Project Owner | Documented custody design and committed service boundary are accepted; deployment verifies the named service and permissions without exposing a value. | Ownership, store, service, permission, or credential-process change. | No |
 | Provider account entitlement | REQUIRES_OPERATOR_CONFIRMATION | Owner attests personal account/project ownership; one bounded transport reached the selected model at the recorded time. | Current rate/usage limits and continuing entitlement confirmation remain required. | Personal Project Owner / Provider Account Owner | Non-secret entitlement and limit record is confirmed and revalidated. | Account, model, project, billing, policy, or access change. | Yes |
 | Current pricing and renewal | SATISFIED_BY_COMMITTED_EVIDENCE | Owner is budget approver; supplied official prices are USD 2.00 input, USD 0.20 cached input, and USD 12.00 output per 1M tokens; application ceiling remains USD 0.12 per request. | None for this record; do not assume historical pricing remains current. | Personal Project Owner / Budget Owner | Pricing source and ceiling are recorded with renewal ownership. | Revalidate no later than 2026-09-05 and on model, tier, token-limit, caching, or official-price change. | No |
 | Retention and data controls | REQUIRES_EXTERNAL_APPROVAL | Personal single-user advisory scope, no intentional sensitive submissions, no raw local retention, bounded metadata only, and committed `store: false` request behavior are recorded. | Owner must still approve the 30-day abuse-monitoring/application-state exposure, deletion/incident procedure, and no-ZDR position as a formal data-control decision. | Personal Project Owner / Security and Privacy Owner | Dated data-control risk acceptance covers provider defaults and application handling. | Provider policy, endpoint, model, retention, or data-scope change. | Yes |
 | Security and privacy review | SATISFIED_BY_COMMITTED_EVIDENCE | Owner self-review accepts committed least privilege, secret isolation boundary, untrusted-evidence/prompt-injection controls, sanitized logging, advisory-only behavior, and deterministic authority isolation. | None for the technical review; incident and credential-revocation procedure remains part of secret-custody follow-up. | Personal Project Owner / Security and Privacy Owner | Dated self-approval and risk acceptance references the committed controls. | Code, dependency, threat-model, data-flow, or policy change. | No |
 | Deployment approval | REQUIRES_EXTERNAL_APPROVAL | Runtime documentation states no deployment or production enablement is authorized. | Approvers, target environment, change window, pre-deployment checks, and explicit go/no-go record. | Release/Platform owner | Recorded approval names target and rollback plan. | Any release, environment, or configuration change. | Yes |
 | Rollback and kill switch | SATISFIED_BY_COMMITTED_EVIDENCE | Adapter is default-disabled; rollback is disablement/removal of the local factory binding; deterministic authority remains outside the adapter. | None for the documented offline boundary; production rollback rehearsal remains a later approval requirement. | Runtime owner | Disablement removes the binding and public behavior remains sanitized and deterministic. | Runtime binding or public-contract change. | No |
-| Sanitized observability | REQUIRES_OPERATOR_CONFIRMATION | `manual_ai_one_shot_diagnostic.v1`, bounded counters, pre-teardown snapshot, and the successful one-shot metadata are committed/recorded without content. | Alert thresholds, operator owner, and diagnostic-retention decision. | Operations/Security | Operator runbook accepts only the fixed schema and forbidden-field policy. | Schema, alert, retention, or ownership change. | Yes |
+| Sanitized observability | SATISFIED_BY_COMMITTED_EVIDENCE | Personal Project Owner owns operations; committed `manual_ai_one_shot_diagnostic.v1` enforces bounded counters, fixed metadata, one-call coherence, pre-teardown capture, and content-free serialization. | Actual alert wiring and retention configuration remain deployment-time checks; no Railway or production system is inspected here. | Personal Project Owner / Operations and Observability Owner | Retain only permitted metadata for at most 30 days; alert on transport/rejection/count/cost/teardown/authority violations using USD 0.10 warning and USD 0.12 hard ceiling; public contracts remain unchanged. | Schema, alert, retention, cost, ownership, or authority-boundary change. | No |
 
 ### Successful controlled one-shot metadata
 
@@ -507,3 +507,38 @@ pricing changes.
 The committed adapter sends `store: false` and the adapter test asserts that
 field; this proves request construction only. It does not prove Zero Data
 Retention, regional processing, or any provider-side retention override.
+
+## Railway custody and observability decisions
+
+The Personal Project Owner approves Railway Variables as the future runtime
+secret location. The credential is to be injected only into the backend service
+that owns and executes the AI adapter. It must never be stored in Git,
+repository files, documentation, application output, diagnostic artifacts, or
+logs. The owner holds secret, rotation, revocation, operations, and observability
+responsibility. Routine rotation is every 90 days; immediate rotation is
+required after suspected exposure, unauthorized access, relevant permission
+change, or compromise of the Railway project, service, or account. Maximum
+revocation SLA after discovery or reasonable suspicion is one hour. Temporary
+PowerShell handling used for the bounded smoke is not the production solution.
+
+This is an approved future design, not proof that Railway Variables are
+currently configured. No Railway account, project, service identifier, variable
+name beyond the committed configuration contract, permission state, or secret
+value is recorded. Deployment-time verification must confirm the backend service
+scope and permissions without printing or retrieving the value.
+
+The Personal Project Owner owns sanitized observability. Retention is limited to
+30 days for schema/version metadata, timestamps, result category, bounded
+counters, validation totals, deterministic-authority flags, and teardown/snapshot
+lifecycle flags already allowed by `manual_ai_one_shot_diagnostic.v1`. Credentials,
+prompts, responses, payloads, evidence, headers, authorization values, provider
+request IDs, account identifiers, and raw diagnostics are forbidden.
+
+Alerts are required for any provider transport failure; any validation, contract,
+citation, semantic, numeric, authority, or binding rejection; transport count
+above the operation's authorized count; estimated cost greater than or equal to
+USD 0.10; failure to collect the snapshot before teardown; and any evidence that
+deterministic authority changed or the AI path attempted to influence entries,
+exits, sizing, risk, orders, or execution. USD 0.12 remains the hard application
+ceiling. Alert wiring and actual retention configuration are deployment-time
+checks, not evidence supplied by this documentation task.

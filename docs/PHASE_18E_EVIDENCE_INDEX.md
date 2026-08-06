@@ -13,6 +13,7 @@ Status: preparation only. Phase 18E remains closed.
 | Personal-owner decisions | Phase 18E adapter document’s personal-owner record | Owner role attestation and risk acceptance; does not replace missing technical custody, entitlement-limit, data-control, observability, or deployment decisions. |
 | Official model pricing | <https://developers.openai.com/api/docs/models/gpt-5.6-terra> | Supplied current price facts only; revalidation remains due by 2026-09-05. |
 | Provider data controls | <https://developers.openai.com/api/docs/guides/your-data> | Supplied default training/retention facts; ZDR is not claimed. |
+| Railway custody and observability decisions | Phase 18E adapter document’s Railway custody section | Approved future design only; actual Railway configuration, permissions, alert wiring, and retention configuration require deployment-time verification. |
 
 The status matrix and unresolved decisions are maintained in
 [PHASE_18E_PROVIDER_ADAPTER.md](PHASE_18E_PROVIDER_ADAPTER.md), which is the

@@ -4,9 +4,10 @@ This checklist cannot approve enablement. Checked items indicate only that the
 corresponding owner attestation is recorded in the evidence package; unresolved
 items remain unchecked, and unknown ownership is a blocker.
 
-- [ ] Personal Project Owner records the approved non-secret secret store,
-      injection boundary, rotation owner, and revocation procedure. Record no
-      secret value.
+- [x] Personal Project Owner records Railway Variables as the future store,
+      backend-service-only injection, 90-day rotation, incident triggers, and a
+      one-hour revocation SLA. Record no secret value; deployment must still
+      verify service scope and permissions.
 - [ ] Personal Project Owner confirms current model entitlement and rate/usage
       limits for the personal account/project.
 - [x] Personal Project Owner records the supplied pricing and USD 0.12 ceiling;
@@ -18,8 +19,9 @@ items remain unchecked, and unknown ownership is a blocker.
       committed security/privacy controls.
 - [ ] Release/Platform records target environment, change window, approvers,
       pre-deployment checks, and an explicit go/no-go decision.
-- [ ] Personal Project Owner assigns sanitized-counter alert thresholds, ownership, and
-      retention; verify only the fixed diagnostic schema is emitted.
+- [x] Personal Project Owner assigns sanitized-counter alert thresholds, maximum
+      30-day retention, and forbidden-field policy: alert at USD 0.10, hard-stop
+      at USD 0.12, and on transport/rejection/count/teardown/authority violations.
 - [ ] Runtime owner rehearses disablement/rollback and confirms the public
       unavailable behavior and deterministic trading authority remain unchanged.
 - [ ] Confirm the adapter remains default-disabled until every blocking item is
