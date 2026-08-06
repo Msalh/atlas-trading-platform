@@ -3,20 +3,28 @@
 from dataclasses import replace
 
 import pytest
-from fastapi.testclient import TestClient
-
 from atlas.api.deps import get_trader_now_application
 from atlas.api.security import require_api_key
+from atlas.api.v1.trader_now import get_manual_ai_explanation_service
 from atlas.application import InvalidCompositionTimeError
 from atlas.config import settings
 from atlas.main import app
+from atlas.manual_ai_advisory import ManualAIExplanation
 from atlas.trader_now.errors import RiskCompositionAlignmentError
 from atlas.trader_now.models import Availability, AvailabilityStatus
+from fastapi.testclient import TestClient
+
 from tests.test_trader_now_response import legacy_trader_now
 
 PATH = (
     "/api/v1/trader-now?symbol=MNQ&timeframe=5m&strategy_id=displacement_volume_context"
 )
+MANUAL_PATH = "/api/v1/trader-now/manual-advisory"
+MANUAL_BODY = {
+    "symbol": "MNQ",
+    "timeframe": "5m",
+    "strategy_id": "displacement_volume_context",
+}
 
 
 class FakeApplication:
@@ -59,6 +67,60 @@ def test_authenticated_success_calls_facade_once_with_exact_query_values(route_c
     ]
     assert response.json()["schema_version"] == "trader_now_response.v2"
     assert response.json()["domain_schema_version"] == "trader_now.v2"
+
+
+def test_manual_advisory_is_one_composition_and_default_ai_is_unavailable(route_client):
+    client, fake = route_client
+    response = client.post(MANUAL_PATH, json=MANUAL_BODY)
+    assert response.status_code == 200
+    assert fake.calls == [MANUAL_BODY]
+    assert response.json()["schema_version"] == "manual_advisory_response.v1"
+    assert response.json()["trader_now"]["schema_version"] == "trader_now_response.v2"
+    assert response.json()["ai_explanation"] == {
+        "status": "unavailable",
+        "summary": None,
+        "claims": [],
+        "limitations": [],
+        "reason": "analysis_unavailable",
+    }
+
+
+def test_manual_advisory_projects_only_sanitized_validated_explanation(route_client):
+    client, _ = route_client
+
+    class FakeAI:
+        def explain(self, _response):
+            return ManualAIExplanation(
+                status="available",
+                summary="Grounded summary.",
+                claims=({"claim_id": "claim-1", "kind": "explanation", "text": "Grounded claim.", "citations": ("/evidence/trust",)},),
+                limitations=("advisory_only",),
+            )
+
+    app.dependency_overrides[get_manual_ai_explanation_service] = lambda: FakeAI()
+    try:
+        response = client.post(MANUAL_PATH, json=MANUAL_BODY)
+    finally:
+        app.dependency_overrides.pop(get_manual_ai_explanation_service, None)
+    assert response.status_code == 200
+    assert response.json()["ai_explanation"]["summary"] == "Grounded summary."
+    assert "credential" not in response.text.lower()
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {**MANUAL_BODY, "symbol": "ES"},
+        {**MANUAL_BODY, "timeframe": "1m"},
+        {**MANUAL_BODY, "strategy_id": "other"},
+        {**MANUAL_BODY, "prompt": "override"},
+    ],
+)
+def test_manual_advisory_rejects_non_allowlisted_identity_or_fields(route_client, body):
+    client, fake = route_client
+    response = client.post(MANUAL_PATH, json=body)
+    assert response.status_code == 422
+    assert fake.calls == []
 
 
 @pytest.mark.parametrize("authorization", [None, "Bearer wrong-key"])

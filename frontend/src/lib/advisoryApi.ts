@@ -1,4 +1,4 @@
-import { proxyGet } from "@/lib/proxyClient";
+import { proxyPost } from "@/lib/proxyClient";
 
 export type AdvisoryState = "long_candidate" | "short_candidate" | "no_candidate" | "unavailable";
 
@@ -16,6 +16,18 @@ export interface AdvisoryView {
   sessionPhase: string | null;
   volatilityRegime: string | null;
   reason: string | null;
+}
+
+export interface AIExplanationView {
+  status: "available" | "unavailable";
+  summary: string | null;
+  claims: ReadonlyArray<{ claimId: string; kind: string; text: string; citations: readonly string[] }>;
+  limitations: readonly string[];
+}
+
+export interface ManualAdvisoryView {
+  advisory: AdvisoryView;
+  explanation: AIExplanationView;
 }
 
 type JsonObject = Record<string, unknown>;
@@ -48,6 +60,29 @@ function isTraderNowResponse(value: unknown): value is JsonObject {
     object(root.market) !== null &&
     object(root.strategy) !== null
   );
+}
+
+function isAIExplanation(value: unknown): boolean {
+  const root = object(value);
+  if (!root || (root.status !== "available" && root.status !== "unavailable")) return false;
+  if (root.status === "unavailable") {
+    return root.summary === null && root.reason === "analysis_unavailable" &&
+      Array.isArray(root.claims) && root.claims.length === 0 &&
+      Array.isArray(root.limitations) && root.limitations.length === 0;
+  }
+  return typeof root.summary === "string" && root.summary.length > 0 &&
+    root.reason === null && Array.isArray(root.claims) && root.claims.every((item) => {
+      const claim = object(item);
+      return typeof claim?.claim_id === "string" && typeof claim.kind === "string" &&
+        typeof claim.text === "string" && Array.isArray(claim.citations) &&
+        claim.citations.every((citation) => typeof citation === "string" && citation.startsWith("/evidence/"));
+    }) && Array.isArray(root.limitations) && root.limitations.every((item) => typeof item === "string");
+}
+
+function isManualAdvisoryResponse(value: unknown): value is JsonObject {
+  const root = object(value);
+  return root?.schema_version === "manual_advisory_response.v1" &&
+    isTraderNowResponse(root.trader_now) && isAIExplanation(root.ai_explanation);
 }
 
 function unavailable(root: JsonObject, reason: string): AdvisoryView {
@@ -168,11 +203,25 @@ export function projectAdvisory(root: JsonObject): AdvisoryView {
   };
 }
 
-export async function fetchLatestAdvisory(): Promise<AdvisoryView> {
-  const response = await proxyGet(
-    "trader-now",
+export async function fetchLatestAdvisory(): Promise<ManualAdvisoryView> {
+  const response = await proxyPost(
+    "trader-now/manual-advisory",
     { symbol: "MNQ", timeframe: "5m", strategy_id: "displacement_volume_context" },
-    isTraderNowResponse,
+    isManualAdvisoryResponse,
   );
-  return projectAdvisory(response);
+  const explanation = object(response.ai_explanation)!;
+  return {
+    advisory: projectAdvisory(object(response.trader_now)!),
+    explanation: {
+      status: explanation.status as "available" | "unavailable",
+      summary: string(explanation.summary),
+      claims: (explanation.claims as JsonObject[]).map((claim) => ({
+        claimId: claim.claim_id as string,
+        kind: claim.kind as string,
+        text: claim.text as string,
+        citations: claim.citations as string[],
+      })),
+      limitations: explanation.limitations as string[],
+    },
+  };
 }

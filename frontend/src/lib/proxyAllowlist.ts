@@ -56,6 +56,9 @@ export const ALLOWED_PROXY_ROUTES: Readonly<Record<string, ProxyRouteConfig>> = 
   // composition. The browser supplies only the closed identity tuple; the BFF
   // continues to own the backend credential.
   "trader-now": { GET: { params: ["symbol", "timeframe", "strategy_id"] } },
+  "trader-now/manual-advisory": {
+    POST: { bodyFields: ["symbol", "timeframe", "strategy_id"] },
+  },
   "research/re1/summary": { GET: { params: [] } },
   "research/re2/summary": { GET: { params: [] } },
   "research/dataset-health": { GET: { params: [] } },

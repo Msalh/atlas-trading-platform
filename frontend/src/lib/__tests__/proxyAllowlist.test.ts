@@ -76,6 +76,17 @@ describe("isAllowedProxyPath", () => {
     );
   });
 
+  it("projects only the fixed manual advisory identity fields", () => {
+    expect(isAllowedProxyPath("trader-now/manual-advisory")).toBe(true);
+    expect(isAllowedProxyMethod("trader-now/manual-advisory", "POST")).toBe(true);
+    expect(isAllowedProxyMethod("trader-now/manual-advisory", "GET")).toBe(false);
+    expect(projectAllowedBody("trader-now/manual-advisory", {
+      symbol: "MNQ", timeframe: "5m", strategy_id: "displacement_volume_context",
+      prompt: "leak", model: "override", provider: "override", credential: "secret",
+      api_key: "secret", arbitrary: "drop-me",
+    })).toEqual({ symbol: "MNQ", timeframe: "5m", strategy_id: "displacement_volume_context" });
+  });
+
   it("allows analytics/summary, analytics/equity-curve, and analytics/breakdown - Sprint 11A Group 4's Analytics reads", () => {
     expect(isAllowedProxyPath("analytics/summary")).toBe(true);
     expect(isAllowedProxyMethod("analytics/summary", "GET")).toBe(true);
@@ -109,11 +120,15 @@ describe("isAllowedProxyPath", () => {
     expect(isAllowedProxyPath("Research/Re1/Summary")).toBe(false);
   });
 
-  it("only the two approved Group 7 report triggers declare POST", () => {
+  it("only the approved manual advisory and Group 7 triggers declare POST", () => {
     const pathsWithPost = Object.entries(ALLOWED_PROXY_ROUTES)
       .filter(([, config]) => config.POST != null)
       .map(([path]) => path);
-    expect(pathsWithPost).toEqual(["ai/reports/daily", "ai/reports/weekly"]);
+    expect(pathsWithPost).toEqual([
+      "trader-now/manual-advisory",
+      "ai/reports/daily",
+      "ai/reports/weekly",
+    ]);
   });
 
   it("allows only the exact AI paths and methods with declared query params", () => {

@@ -42,6 +42,20 @@ function trustedResponse() {
   };
 }
 
+function manualResponse(aiAvailable = false) {
+  return {
+    schema_version: "manual_advisory_response.v1",
+    trader_now: trustedResponse(),
+    ai_explanation: aiAvailable ? {
+      status: "available", summary: "The verified strategy state contains a short candidate.",
+      claims: [{ claim_id: "claim-1", kind: "explanation", text: "The candidate is grounded in the supplied strategy evidence.", citations: ["/evidence/strategy/decisions/0/disposition"] }],
+      limitations: ["advisory_only", "single_snapshot_only"], reason: null,
+    } : {
+      status: "unavailable", summary: null, claims: [], limitations: [], reason: "analysis_unavailable",
+    },
+  };
+}
+
 describe("AdvisoryAnalysisCard", () => {
   const originalFetch = global.fetch;
   afterEach(() => {
@@ -50,7 +64,7 @@ describe("AdvisoryAnalysisCard", () => {
   });
 
   it("does not fetch until the user requests analysis, then renders the approved projection", async () => {
-    global.fetch = vi.fn(async () => new Response(JSON.stringify(trustedResponse()), { status: 200 })) as typeof fetch;
+    global.fetch = vi.fn(async () => new Response(JSON.stringify(manualResponse(true)), { status: 200 })) as typeof fetch;
     renderCard();
 
     expect(global.fetch).not.toHaveBeenCalled();
@@ -58,13 +72,32 @@ describe("AdvisoryAnalysisCard", () => {
 
     await waitFor(() => expect(screen.getByText("Sell")).toBeInTheDocument());
     expect(global.fetch).toHaveBeenCalledTimes(1);
-    expect(String(vi.mocked(global.fetch).mock.calls[0][0])).toContain(
-      "symbol=MNQ&timeframe=5m&strategy_id=displacement_volume_context",
-    );
+    expect(String(vi.mocked(global.fetch).mock.calls[0][0])).toBe("/api/proxy/trader-now/manual-advisory");
+    expect(vi.mocked(global.fetch).mock.calls[0][1]).toMatchObject({ method: "POST" });
     expect(screen.getByText("21,234.25")).toBeInTheDocument();
+    expect(screen.getByText("21,250")).toBeInTheDocument();
+    expect(screen.getByText("21,200")).toBeInTheDocument();
     expect(screen.getByText("Entry (confirmation close)")).toBeInTheDocument();
     expect(screen.queryByText("Short candidate")).not.toBeInTheDocument();
     expect(screen.getByText(/Advisory \/ paper-only/)).toBeInTheDocument();
+    expect(screen.getByText("AI-assisted explanation")).toBeInTheDocument();
+    expect(screen.getByText(/Evidence: \/evidence\/strategy\/decisions\/0\/disposition/)).toBeInTheDocument();
+  });
+
+  it("does not start a concurrent request when the pending button is clicked again", async () => {
+    let resolveResponse!: (response: Response) => void;
+    global.fetch = vi.fn(() => new Promise<Response>((resolve) => { resolveResponse = resolve; })) as typeof fetch;
+    renderCard();
+
+    const button = screen.getByRole("button", { name: "Analyze latest state" });
+    fireEvent.click(button);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Analyzing…" })).toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: "Analyzing…" }));
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    resolveResponse(new Response(JSON.stringify(manualResponse()), { status: 200 }));
+    await waitFor(() => expect(screen.getByText("Sell")).toBeInTheDocument());
+    expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
   it("renders a safe failure without advisory values", async () => {
@@ -83,7 +116,9 @@ describe("AdvisoryAnalysisCard", () => {
   ])("maps the internal %s candidate to the user-facing %s action", async (direction, label) => {
     const body = trustedResponse();
     body.strategy.decisions[0].direction = direction;
-    global.fetch = vi.fn(async () => new Response(JSON.stringify(body), { status: 200 })) as typeof fetch;
+    const envelope = manualResponse();
+    envelope.trader_now = body;
+    global.fetch = vi.fn(async () => new Response(JSON.stringify(envelope), { status: 200 })) as typeof fetch;
     renderCard();
     fireEvent.click(screen.getByRole("button", { name: "Analyze latest state" }));
     await waitFor(() => expect(screen.getByText(label)).toBeInTheDocument());
@@ -92,7 +127,9 @@ describe("AdvisoryAnalysisCard", () => {
   it("maps no candidate to No Trade and keeps Unavailable separate", async () => {
     const noTrade = trustedResponse();
     noTrade.strategy.decisions = [];
-    global.fetch = vi.fn(async () => new Response(JSON.stringify(noTrade), { status: 200 })) as typeof fetch;
+    const noTradeEnvelope = manualResponse();
+    noTradeEnvelope.trader_now = noTrade;
+    global.fetch = vi.fn(async () => new Response(JSON.stringify(noTradeEnvelope), { status: 200 })) as typeof fetch;
     const first = renderCard();
     fireEvent.click(screen.getByRole("button", { name: "Analyze latest state" }));
     await waitFor(() => expect(screen.getByText("No Trade")).toBeInTheDocument());
@@ -101,10 +138,22 @@ describe("AdvisoryAnalysisCard", () => {
 
     const unavailable = trustedResponse();
     unavailable.source_trust.freshness.status = "stale";
-    global.fetch = vi.fn(async () => new Response(JSON.stringify(unavailable), { status: 200 })) as typeof fetch;
+    const unavailableEnvelope = manualResponse();
+    unavailableEnvelope.trader_now = unavailable;
+    global.fetch = vi.fn(async () => new Response(JSON.stringify(unavailableEnvelope), { status: 200 })) as typeof fetch;
     renderCard();
     fireEvent.click(screen.getByRole("button", { name: "Analyze latest state" }));
     await waitFor(() => expect(screen.getByText("Unavailable")).toBeInTheDocument());
     expect(screen.queryByText("No Trade")).not.toBeInTheDocument();
+  });
+
+  it("keeps deterministic values when the optional AI explanation is unavailable", async () => {
+    global.fetch = vi.fn(async () => new Response(JSON.stringify(manualResponse()), { status: 200 })) as typeof fetch;
+    renderCard();
+    fireEvent.click(screen.getByRole("button", { name: "Analyze latest state" }));
+    await waitFor(() => expect(screen.getByText("Sell")).toBeInTheDocument());
+    expect(screen.getByText("Deterministic advisory")).toBeInTheDocument();
+    expect(screen.getByText(/AI explanation is unavailable/)).toBeInTheDocument();
+    expect(screen.getByText("21,234.25")).toBeInTheDocument();
   });
 });
