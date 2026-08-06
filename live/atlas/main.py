@@ -48,11 +48,8 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+from atlas.ai_persistence_runtime import build_ai_persistence_runtime
 from atlas.alerting import ClaudeFailureTracker, alert_on_forward_failure
-from atlas.application.trader_now_production import (
-    TraderNowProductionConfig,
-    build_trader_now_application,
-)
 from atlas.api.security import require_api_key
 from atlas.api.v1 import (
     activity,
@@ -67,12 +64,16 @@ from atlas.api.v1 import (
     risk,
     rule_engine,
     setup_engine,
-    status,
     stats,
+    status,
     stream,
     trader_now,
     trades,
     webhook,
+)
+from atlas.application.trader_now_production import (
+    TraderNowProductionConfig,
+    build_trader_now_application,
 )
 from atlas.config import settings
 from atlas.db import create_pool
@@ -242,14 +243,30 @@ async def lifespan(app: FastAPI):
         )
     )
 
-    yield
-
-    staleness_task.cancel()
+    # Phase 18H-1 composes only the persistence boundary. Disabled mode reads
+    # no persistence DSN and opens no second pool. Required-mode construction
+    # is bounded startup work; no provider or persistence operation runs here.
     try:
-        await staleness_task
-    except asyncio.CancelledError:
-        pass
-    await pool.close()
+        app.state.ai_persistence_runtime = build_ai_persistence_runtime(settings)
+    except Exception:
+        staleness_task.cancel()
+        try:
+            await staleness_task
+        except asyncio.CancelledError:
+            pass
+        await pool.close()
+        raise
+
+    try:
+        yield
+    finally:
+        staleness_task.cancel()
+        try:
+            await staleness_task
+        except asyncio.CancelledError:
+            pass
+        app.state.ai_persistence_runtime.close()
+        await pool.close()
 
 
 # Sprint 9: FastAPI's auto-generated /docs, /redoc, /openapi.json reveal the full API

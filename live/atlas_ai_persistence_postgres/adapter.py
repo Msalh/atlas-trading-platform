@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
-from typing import Any, Final, NoReturn, cast
+from typing import Any, ContextManager, Final, NoReturn, cast
 
 import psycopg
 from psycopg import errors
@@ -36,7 +36,8 @@ class PostgresAtomicPersistenceAdapter:
     """Store one closed Phase 18F record in one explicit transaction."""
 
     def __init__(
-        self, connection_factory: Callable[[], psycopg.Connection[Any]]
+        self,
+        connection_factory: Callable[[], ContextManager[psycopg.Connection[Any]]],
     ) -> None:
         self._connection_factory = connection_factory
 
@@ -67,9 +68,7 @@ class PostgresAtomicPersistenceAdapter:
 
     def _store_atomic(self, record: PersistenceRecord) -> PersistenceReceipt:
         values = self._values(record)
-        connection: psycopg.Connection[Any] | None = None
-        try:
-            connection = self._connection_factory()
+        with self._connection_factory() as connection:
             with connection.transaction():
                 connection.execute("SET TRANSACTION ISOLATION LEVEL READ COMMITTED")
                 inserted = connection.execute(
@@ -106,12 +105,6 @@ class PostgresAtomicPersistenceAdapter:
                         raise PersistenceConflictError()
                     disposition = "replayed"
             return PersistenceReceipt(record.operation_id, disposition)
-        finally:
-            if connection is not None:
-                try:
-                    connection.close()
-                except Exception:  # noqa: BLE001,S110 - close failure cannot replace outcome
-                    pass
 
     @classmethod
     def _values(cls, record: PersistenceRecord) -> dict[str, Any]:

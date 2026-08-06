@@ -289,3 +289,16 @@ After the offline Phase 18F contract, later explicitly approved phases may defin
 Those phases must preserve the Phase 18A contracts and Phase 18B validation
 authority. Local Phase 18E completion is engineering evidence only and is not an
 operational certification claim.
+
+## Phase 18H-1 — Offline Persistence Runtime Wiring
+
+Phase 18H-1 has a local implementation candidate that composes the Phase 18G
+adapter and Phase 18F coordinator behind a default-disabled, fail-closed runtime
+boundary. Its configuration, pool lifecycle, schema/checksum and privilege
+verification, additive readiness state, CI qualification, and authorization
+limits are defined in `PHASE_18H_RUNTIME_WIRING.md`.
+
+It adds no analysis caller and does not construct or invoke Phase 18E. Production
+provider selection, PostgreSQL provisioning, credentials, migration, deployment,
+destructive durability and recovery certification, retention/legal-hold work,
+and operational enablement remain separate phases.

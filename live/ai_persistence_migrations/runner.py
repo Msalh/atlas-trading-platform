@@ -12,13 +12,17 @@ _LOCK_CLASS = 1807
 _LOCK_ID = 18
 
 
+def expected_ai_persistence_migrations() -> dict[str, str]:
+    """Return the code-owned immutable migration filename/checksum contract."""
+    paths = tuple(sorted(MIGRATIONS.glob("[0-9][0-9][0-9][0-9]_*.sql")))
+    return {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in paths}
+
+
 def run_ai_persistence_migrations(database_url: str) -> None:
     if not database_url:
         raise RuntimeError("AI persistence database URL is required")
     paths = tuple(sorted(MIGRATIONS.glob("[0-9][0-9][0-9][0-9]_*.sql")))
-    expected = {
-        path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in paths
-    }
+    expected = expected_ai_persistence_migrations()
     with psycopg.connect(database_url) as connection, connection.transaction():
         connection.execute(
             "SELECT pg_advisory_xact_lock(%s, %s)", (_LOCK_CLASS, _LOCK_ID)

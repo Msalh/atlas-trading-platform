@@ -11,6 +11,7 @@ why the two are kept separate). Sprint 10 adds `uptime_seconds`/`started_at` onl
 enough for a monitoring dashboard to detect an unexpected restart without needing to
 duplicate /status's connectivity checks here.
 """
+import asyncio
 import logging
 from datetime import datetime, timezone
 
@@ -30,14 +31,18 @@ async def health(request: Request, repository: TradeRepository = Depends(get_rep
     started_at = getattr(request.app.state, "started_at", None)
     uptime_seconds = (datetime.now(timezone.utc) - started_at).total_seconds() if started_at else None
 
+    persistence_runtime = getattr(request.app.state, "ai_persistence_runtime", None)
+    if persistence_runtime is None:
+        persistence = {"status": "disabled", "required": False}
+    else:
+        await asyncio.to_thread(persistence_runtime.refresh_readiness)
+        persistence = persistence_runtime.public_state()
+
+    database_ok = False
     try:
         await repository.ping()
-        return {
-            "ok": True,
-            "database": {"ok": True, "reason": None, "detail": "ok"},
-            "started_at": started_at.isoformat() if started_at else None,
-            "uptime_seconds": uptime_seconds,
-        }
+        database_ok = True
+        database = {"ok": True, "reason": None, "detail": "ok"}
     except Exception:
         # Same sanitization contract as GET /status (atlas/api/v1/status.py): a raw
         # Postgres exception commonly embeds the DSN itself (host, port, sometimes the
@@ -47,16 +52,19 @@ async def health(request: Request, repository: TradeRepository = Depends(get_rep
         # sensitive place to leak connection details than an authenticated endpoint
         # would be. The real exception goes to the server's own log stream only.
         logger.exception("database ping failed in GET /health")
-        return JSONResponse(
-            {
-                "ok": False,
-                "database": {
-                    "ok": False,
-                    "reason": "ping_failed",
-                    "detail": "database ping failed - see server logs for details",
-                },
-                "started_at": started_at.isoformat() if started_at else None,
-                "uptime_seconds": uptime_seconds,
-            },
-            status_code=503,
-        )
+        database = {
+            "ok": False,
+            "reason": "ping_failed",
+            "detail": "database ping failed - see server logs for details",
+        }
+    persistence_ok = persistence["status"] in {"disabled", "ready"}
+    body = {
+        "ok": database_ok and persistence_ok,
+        "database": database,
+        "ai_persistence": persistence,
+        "started_at": started_at.isoformat() if started_at else None,
+        "uptime_seconds": uptime_seconds,
+    }
+    if body["ok"]:
+        return body
+    return JSONResponse(body, status_code=503)

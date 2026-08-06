@@ -13,6 +13,32 @@ from typing import Optional
 class Settings:
     def __init__(self):
         self.database_url = os.environ.get("DATABASE_URL", "")
+        # Phase 18H-1: AI persistence is a separate database boundary.  The
+        # secret DSN is deliberately not read at all while the feature is
+        # disabled, and is never allowed to fall back to DATABASE_URL.
+        self.atlas_ai_persistence_mode = os.environ.get(
+            "ATLAS_AI_PERSISTENCE_MODE", "disabled"
+        ).strip().lower()
+        self.atlas_ai_persistence_database_url = (
+            os.environ.get("ATLAS_AI_PERSISTENCE_DATABASE_URL", "")
+            if self.atlas_ai_persistence_mode == "required"
+            else ""
+        )
+        self.atlas_ai_persistence_connect_timeout_seconds = os.environ.get(
+            "ATLAS_AI_PERSISTENCE_CONNECT_TIMEOUT_SECONDS", "5"
+        )
+        self.atlas_ai_persistence_pool_min_size = os.environ.get(
+            "ATLAS_AI_PERSISTENCE_POOL_MIN_SIZE", "1"
+        )
+        self.atlas_ai_persistence_pool_max_size = os.environ.get(
+            "ATLAS_AI_PERSISTENCE_POOL_MAX_SIZE", "4"
+        )
+        self.atlas_ai_persistence_pool_acquisition_timeout_seconds = os.environ.get(
+            "ATLAS_AI_PERSISTENCE_POOL_ACQUISITION_TIMEOUT_SECONDS", "5"
+        )
+        self.atlas_ai_persistence_local_disposable_test = os.environ.get(
+            "ATLAS_AI_PERSISTENCE_LOCAL_DISPOSABLE_TEST", "false"
+        ).strip().lower()
         self.webhook_secret = os.environ.get("WEBHOOK_SECRET", "")
         # Sprint 3 (Market Engine): a SEPARATE shared secret from WEBHOOK_SECRET,
         # protecting POST /api/v1/market-state. Deliberately not reused from the

@@ -93,6 +93,12 @@ class _FailingConnection:
     def transaction(self):
         return nullcontext()
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        self.close()
+
     def execute(self, statement, parameters=None):
         raise OperationalError("postgresql://secret-user:secret@secret-host/db")
 
