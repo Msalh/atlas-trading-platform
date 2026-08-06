@@ -5,6 +5,8 @@ from __future__ import annotations
 from enum import Enum
 from threading import Lock
 
+from atlas_ai_analysis.errors import OutputRejectionClassification
+
 
 class ProviderFailureClassification(str, Enum):
     CONNECTIVITY = "connectivity"
@@ -21,10 +23,13 @@ class ProviderFailureClassification(str, Enum):
 class ProviderFailureDiagnostics:
     """Bounded in-memory counters; no provider material is accepted or retained."""
 
-    __slots__ = ("_counts", "_lock")
+    __slots__ = ("_counts", "_lock", "_phase18b_counts")
 
     def __init__(self) -> None:
         self._counts = {classification: 0 for classification in ProviderFailureClassification}
+        self._phase18b_counts = {
+            classification: 0 for classification in OutputRejectionClassification
+        }
         self._lock = Lock()
 
     def record(self, classification: ProviderFailureClassification) -> None:
@@ -41,3 +46,18 @@ class ProviderFailureDiagnostics:
 
         with self._lock:
             return dict(self._counts)
+
+    def record_phase18b(self, classification: OutputRejectionClassification) -> None:
+        selected = (
+            classification
+            if type(classification) is OutputRejectionClassification
+            else OutputRejectionClassification.OTHER_SEMANTIC_REJECTION
+        )
+        with self._lock:
+            self._phase18b_counts[selected] += 1
+
+    def phase18b_snapshot(self) -> dict[OutputRejectionClassification, int]:
+        """Return detached, bounded Phase 18B rule counters for local inspection."""
+
+        with self._lock:
+            return dict(self._phase18b_counts)

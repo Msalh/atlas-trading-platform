@@ -23,6 +23,7 @@ from atlas_ai_analysis import (
     SnapshotVerification,
     project_input,
 )
+from atlas_ai_analysis.errors import OutputRejectionClassification
 from atlas_ai_orchestration import (
     CompletedOutcome,
     DeterministicPromptBuilder,
@@ -422,6 +423,7 @@ def test_success_does_not_increment_diagnostics():
 
     assert isinstance(result, CompletedOutcome)
     assert sum(diagnostics.snapshot().values()) == 0
+    assert sum(diagnostics.phase18b_snapshot().values()) == 0
 
 
 def test_phase18b_rejection_records_only_sanitized_category():
@@ -446,6 +448,154 @@ def test_phase18b_rejection_records_only_sanitized_category():
     assert "invalid-output-sentinel" not in repr(result)
 
 
+@pytest.mark.parametrize(
+    ("classification", "mutate"),
+    (
+        (
+            OutputRejectionClassification.INVALID_CITATION_REFERENCE,
+            lambda value: value["claims"][0].update(
+                citations=["/evidence/not-in-the-analysis-input"]
+            ),
+        ),
+        (
+            OutputRejectionClassification.SEMANTIC_CONTRADICTION,
+            lambda value: value["claims"][0].update(
+                text="The deterministic strategy state is rejected."
+            ),
+        ),
+        (
+            OutputRejectionClassification.DETERMINISTIC_FIELD_MISMATCH,
+            lambda value: value["claims"][0].update(
+                text="Recompute the deterministic strategy state."
+            ),
+        ),
+        (
+            OutputRejectionClassification.NUMERIC_INVENTION,
+            lambda value: value["claims"][0].update(
+                text="The deterministic confidence is 0.82."
+            ),
+        ),
+        (
+            OutputRejectionClassification.PROHIBITED_AUTHORITY_CONTENT,
+            lambda value: value["claims"][0].update(text="Buy now at market."),
+        ),
+    ),
+)
+def test_phase18b_rule_classification_is_typed_and_content_free(
+    classification, mutate
+):
+    sentinel = "provider-content-must-not-be-retained"
+    diagnostics = ProviderFailureDiagnostics()
+
+    def invalid(request):
+        value = _available(request)
+        value["summary"] = f"Valid summary {sentinel}"
+        mutate(value)
+        return value
+
+    core, _, _ = _core(FakeProvider(invalid), diagnostics=diagnostics)
+    result = core.run(_eligible())
+
+    assert isinstance(result, FailedOutcome)
+    assert result.reason == "invalid_output"
+    provider_snapshot = diagnostics.snapshot()
+    semantic_snapshot = diagnostics.phase18b_snapshot()
+    assert provider_snapshot[
+        ProviderFailureClassification.PHASE18B_INVALID_OUTPUT
+    ] == 1
+    assert sum(provider_snapshot.values()) == 1
+    assert semantic_snapshot[classification] == 1
+    assert sum(semantic_snapshot.values()) == 1
+    assert sentinel not in repr(diagnostics)
+    assert sentinel not in repr(semantic_snapshot)
+    assert sentinel not in repr(result)
+
+
+@pytest.mark.parametrize(
+    "case",
+    (
+        "empty_summary",
+        "long_summary",
+        "no_claims",
+        "too_many_claims",
+        "available_reason",
+        "missing_advisory",
+        "duplicate_limitation",
+        "invalid_claim_id",
+        "duplicate_claim_id",
+        "empty_claim_text",
+        "long_claim_text",
+        "unavailable_narrative",
+    ),
+)
+def test_remaining_cross_field_rules_classify_as_other_semantic_rejection(case):
+    diagnostics = ProviderFailureDiagnostics()
+
+    def invalid(request):
+        value = _available(request)
+        if case == "empty_summary":
+            value["summary"] = ""
+        elif case == "long_summary":
+            value["summary"] = "x" * 4001
+        elif case == "no_claims":
+            value["claims"] = []
+        elif case == "too_many_claims":
+            value["claims"] = [copy.deepcopy(value["claims"][0]) for _ in range(33)]
+        elif case == "available_reason":
+            value["unavailable_reason"] = "invalid_output"
+        elif case == "missing_advisory":
+            value["limitations"].remove("advisory_only")
+        elif case == "duplicate_limitation":
+            value["limitations"].append("advisory_only")
+        elif case == "invalid_claim_id":
+            value["claims"][0]["claim_id"] = "invalid"
+        elif case == "duplicate_claim_id":
+            value["claims"][1]["claim_id"] = value["claims"][0]["claim_id"]
+        elif case == "empty_claim_text":
+            value["claims"][0]["text"] = ""
+        elif case == "long_claim_text":
+            value["claims"][0]["text"] = "x" * 2001
+        elif case == "unavailable_narrative":
+            value.update(
+                status="unavailable",
+                unavailable_reason="invalid_output",
+            )
+        return value
+
+    core, _, _ = _core(FakeProvider(invalid), diagnostics=diagnostics)
+    result = core.run(_eligible())
+
+    assert isinstance(result, FailedOutcome)
+    semantic_snapshot = diagnostics.phase18b_snapshot()
+    assert semantic_snapshot[
+        OutputRejectionClassification.OTHER_SEMANTIC_REJECTION
+    ] == 1
+    assert sum(semantic_snapshot.values()) == 1
+
+
+@pytest.mark.parametrize(
+    "citations",
+    ([], [PATHS[1], PATHS[1]], [PATHS[1]] * 17),
+)
+def test_citation_cardinality_rules_classify_as_invalid_reference(citations):
+    diagnostics = ProviderFailureDiagnostics()
+
+    def invalid(request):
+        value = _available(request)
+        value["claims"][0]["citations"] = citations
+        return value
+
+    core, _, _ = _core(FakeProvider(invalid), diagnostics=diagnostics)
+    result = core.run(_eligible())
+
+    assert isinstance(result, FailedOutcome)
+    semantic_snapshot = diagnostics.phase18b_snapshot()
+    assert semantic_snapshot[
+        OutputRejectionClassification.INVALID_CITATION_REFERENCE
+    ] == 1
+    assert sum(semantic_snapshot.values()) == 1
+
+
 def test_diagnostic_snapshot_is_detached_with_fixed_enum_keys():
     diagnostics = ProviderFailureDiagnostics()
     snapshot = diagnostics.snapshot()
@@ -456,6 +606,14 @@ def test_diagnostic_snapshot_is_detached_with_fixed_enum_keys():
     diagnostics.record(object())
     assert diagnostics.snapshot()[ProviderFailureClassification.UNKNOWN] == 1
     assert set(diagnostics.snapshot()) == set(ProviderFailureClassification)
+    semantic_snapshot = diagnostics.phase18b_snapshot()
+    assert set(semantic_snapshot) == set(OutputRejectionClassification)
+    semantic_snapshot[OutputRejectionClassification.NUMERIC_INVENTION] = 99
+    assert sum(diagnostics.phase18b_snapshot().values()) == 0
+    diagnostics.record_phase18b(object())
+    assert diagnostics.phase18b_snapshot()[
+        OutputRejectionClassification.OTHER_SEMANTIC_REJECTION
+    ] == 1
 
 
 def test_concurrent_counter_increments_are_exact_and_bounded():
@@ -472,6 +630,52 @@ def test_concurrent_counter_increments_are_exact_and_bounded():
     assert snapshot[ProviderFailureClassification.CONNECTIVITY] == 2_000
     assert sum(snapshot.values()) == 2_000
     assert set(snapshot) == set(ProviderFailureClassification)
+
+    def record_semantic_many(_worker):
+        for _ in range(125):
+            diagnostics.record_phase18b(
+                OutputRejectionClassification.SEMANTIC_CONTRADICTION
+            )
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        list(executor.map(record_semantic_many, range(8)))
+
+    semantic_snapshot = diagnostics.phase18b_snapshot()
+    assert semantic_snapshot[
+        OutputRejectionClassification.SEMANTIC_CONTRADICTION
+    ] == 1_000
+    assert sum(semantic_snapshot.values()) == 1_000
+    assert set(semantic_snapshot) == set(OutputRejectionClassification)
+
+
+def test_phase18b_classifier_failure_falls_back_without_exception_retention(
+    monkeypatch,
+):
+    sentinel = "classifier-exception-content-must-not-be-retained"
+
+    class HostileValidationError(analysis_sdk.AIAnalysisValidationError):
+        @property
+        def output_rejection(self):
+            raise RuntimeError(sentinel)
+
+    def fail_validation(_candidate, _eligible):
+        raise HostileValidationError(sentinel)
+
+    monkeypatch.setattr(orchestration_module, "validate_output", fail_validation)
+    diagnostics = ProviderFailureDiagnostics()
+    core, _, _ = _core(FakeProvider(_available), diagnostics=diagnostics)
+
+    result = core.run(_eligible())
+
+    assert isinstance(result, FailedOutcome)
+    snapshot = diagnostics.phase18b_snapshot()
+    assert snapshot[
+        OutputRejectionClassification.OTHER_SEMANTIC_REJECTION
+    ] == 1
+    assert sum(snapshot.values()) == 1
+    assert sentinel not in repr(diagnostics)
+    assert sentinel not in repr(snapshot)
+    assert sentinel not in repr(result)
 
 
 def test_hostile_exception_classification_falls_back_to_unknown_without_retention():
@@ -647,15 +851,20 @@ def test_delayed_evidence_limitation_is_enforced(include_limitation):
     provider = FakeProvider(
         lambda request: _delayed_available(request, include_limitation)
     )
-    core, _, _ = _core(provider)
+    diagnostics = ProviderFailureDiagnostics()
+    core, _, _ = _core(provider, diagnostics=diagnostics)
 
     result = core.run(eligible)
 
     if include_limitation:
         assert isinstance(result, CompletedOutcome)
+        assert sum(diagnostics.phase18b_snapshot().values()) == 0
     else:
         assert isinstance(result, FailedOutcome)
         assert result.reason == "invalid_output"
+        assert diagnostics.phase18b_snapshot()[
+            OutputRejectionClassification.OTHER_SEMANTIC_REJECTION
+        ] == 1
 
 
 def test_trusted_prompt_is_deterministic_and_delimits_injection_like_evidence():

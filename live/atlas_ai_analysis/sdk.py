@@ -15,6 +15,7 @@ from .errors import (
     AIAnalysisAuthorityError,
     AIAnalysisCitationError,
     AIAnalysisValidationError,
+    OutputRejectionClassification,
 )
 from .models import (
     AnalysisAuditIdentity,
@@ -746,7 +747,12 @@ def _validate_deterministic_claim(
     if not deterministic:
         return
     if any(pattern.search(text) for pattern in _RECOMPUTATION_PATTERNS):
-        raise AIAnalysisAuthorityError("deterministic state recomputation is prohibited")
+        raise AIAnalysisAuthorityError(
+            "deterministic state recomputation is prohibited",
+            output_rejection=(
+                OutputRejectionClassification.DETERMINISTIC_FIELD_MISMATCH
+            ),
+        )
     cited_terms = {
         item.lower()
         for value in cited_values
@@ -759,18 +765,27 @@ def _validate_deterministic_claim(
         if any(pattern.search(text) for pattern in patterns)
     }
     if not mentioned_terms <= cited_terms:
-        raise AIAnalysisAuthorityError("claim contradicts deterministic state")
+        raise AIAnalysisAuthorityError(
+            "claim contradicts deterministic state",
+            output_rejection=OutputRejectionClassification.SEMANTIC_CONTRADICTION,
+        )
     cited_scalars = {item for value in cited_values for item in _scalar_texts(value)}
     for token in _DECIMAL_TOKEN.findall(text):
         if token not in cited_scalars:
             raise AIAnalysisAuthorityError(
-                "claim recomputes or invents a deterministic numeric value"
+                "claim recomputes or invents a deterministic numeric value",
+                output_rejection=OutputRejectionClassification.NUMERIC_INVENTION,
             )
 
 
 def _validate_prohibited_text(text: str) -> None:
     if any(pattern.search(text) for pattern in _PROHIBITED_PATTERNS):
-        raise AIAnalysisAuthorityError("output contains prohibited authority or action")
+        raise AIAnalysisAuthorityError(
+            "output contains prohibited authority or action",
+            output_rejection=(
+                OutputRejectionClassification.PROHIBITED_AUTHORITY_CONTENT
+            ),
+        )
 
 
 def _scalar_texts(value: Any) -> Iterable[str]:

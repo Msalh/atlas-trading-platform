@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from atlas_ai_analysis import (
+    AIAnalysisValidationError,
     AnalysisAuditIdentity,
     EligibleAnalysis,
     GeneratorIdentity,
@@ -12,6 +13,7 @@ from atlas_ai_analysis import (
     refused_audit,
     validate_output,
 )
+from atlas_ai_analysis.errors import OutputRejectionClassification
 from atlas_ai_analysis.models import FailureReason
 from atlas_ai_service import ServiceFailure
 
@@ -65,6 +67,21 @@ class ProviderOrchestrator:
             try:
                 self._failure_diagnostics.record(
                     ProviderFailureClassification.UNKNOWN
+                )
+            except Exception:
+                pass
+
+    def _record_phase18b_failure(
+        self, classification: OutputRejectionClassification
+    ) -> None:
+        if self._failure_diagnostics is None:
+            return
+        try:
+            self._failure_diagnostics.record_phase18b(classification)
+        except Exception:
+            try:
+                self._failure_diagnostics.record_phase18b(
+                    OutputRejectionClassification.OTHER_SEMANTIC_REJECTION
                 )
             except Exception:
                 pass
@@ -157,9 +174,24 @@ class ProviderOrchestrator:
 
         try:
             validated = validate_output(candidate, eligible)
+        except AIAnalysisValidationError as error:
+            self._record_provider_failure(
+                ProviderFailureClassification.PHASE18B_INVALID_OUTPUT
+            )
+            try:
+                classification = error.output_rejection
+            except Exception:
+                classification = (
+                    OutputRejectionClassification.OTHER_SEMANTIC_REJECTION
+                )
+            self._record_phase18b_failure(classification)
+            return self._failure(eligible, "invalid_output")
         except Exception:
             self._record_provider_failure(
                 ProviderFailureClassification.PHASE18B_INVALID_OUTPUT
+            )
+            self._record_phase18b_failure(
+                OutputRejectionClassification.OTHER_SEMANTIC_REJECTION
             )
             return self._failure(eligible, "invalid_output")
 

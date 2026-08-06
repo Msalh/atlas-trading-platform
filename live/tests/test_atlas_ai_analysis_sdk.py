@@ -924,6 +924,7 @@ def test_package_dependency_boundary_is_pure_and_one_way():
         "collections",
         "dataclasses",
         "decimal",
+        "enum",
         "json",
         "re",
         "types",
