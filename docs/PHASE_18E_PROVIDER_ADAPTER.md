@@ -428,3 +428,46 @@ represented as immutable.
 
 The Phase 18E implementation and this definition must be reviewed together and
 committed as one bounded Phase 18E set.
+
+## Operational-gate evidence package (enablement remains closed)
+
+This section is an evidence index, not an approval. It records only committed
+design evidence and supplied bounded one-shot metadata. Unknown ownership,
+external approval, current entitlement, and deployment decisions remain
+blocking. See [the evidence index](PHASE_18E_EVIDENCE_INDEX.md),
+[the operator checklist](PHASE_18E_OPERATOR_CHECKLIST.md),
+[the go/no-go template](PHASE_18E_GO_NO_GO_TEMPLATE.md), and
+[the rollback checklist](PHASE_18E_ROLLBACK_CHECKLIST.md).
+
+| Gate | Status | Committed evidence | Missing artifact or decision | Responsible role | Acceptance criterion | Expiry/revalidation | Blocks enablement? |
+|---|---|---|---|---|---|---|---|
+| Secret ownership and custody | REQUIRES_OPERATOR_CONFIRMATION | This document names Security/Platform as the later owner; the adapter reads no credential in offline qualification. | Approved secret store, injection boundary, rotation/revocation owner, and confirmation without recording a value. | Security/Platform | Written ownership and secret-store decision approved. | Ownership, store, or credential rotation change. | Yes |
+| Provider account entitlement | REQUIRES_OPERATOR_CONFIRMATION | OpenAI is the reviewed target and `gpt-5.6-terra` is the local allowlist value. | Account/workspace owner, model entitlement, organizational use, and rate/usage-limit owner confirmation. | Provider account owner | Entitlement and limits are confirmed for the intended organization. | Account, model, policy, or limit change. | Yes |
+| Current pricing and renewal | REQUIRES_OPERATOR_CONFIRMATION | Phase 3A pricing record is dated 2026-08-06 and expires 2026-09-05; authority ceiling is USD 0.12. | Budget approver and renewal/revalidation decision; historical pricing must not be assumed current. | Finance plus Security/Platform | Current record is revalidated before enablement and budget is approved. | 2026-09-05 expiry or any source/rate/model/tier change. | Yes |
+| Retention and data controls | REQUIRES_EXTERNAL_APPROVAL | Request policy uses `store: false`; committed docs prohibit payload and diagnostic retention. | Provider-side training/data-use and retention confirmation, application retention/deletion and incident owner, and caching disposition. | Privacy/Legal plus Security | Approved data-flow and retention decision covers provider and application boundaries. | Policy, endpoint, model, or retention-setting change. | Yes |
+| Security and privacy review | REQUIRES_EXTERNAL_APPROVAL | Trusted prompt, untrusted-evidence boundary, least-privilege adapter, and redaction tests are committed. | Threat/data-flow review, secret-leakage sign-off, prompt-injection review, and named approval authority. | Security/Privacy | Signed review accepts the bounded data flow and controls. | Code, dependency, threat model, or data-flow change. | Yes |
+| Deployment approval | REQUIRES_EXTERNAL_APPROVAL | Runtime documentation states no deployment or production enablement is authorized. | Approvers, target environment, change window, pre-deployment checks, and explicit go/no-go record. | Release/Platform owner | Recorded approval names target and rollback plan. | Any release, environment, or configuration change. | Yes |
+| Rollback and kill switch | SATISFIED_BY_COMMITTED_EVIDENCE | Adapter is default-disabled; rollback is disablement/removal of the local factory binding; deterministic authority remains outside the adapter. | None for the documented offline boundary; production rollback rehearsal remains a later approval requirement. | Runtime owner | Disablement removes the binding and public behavior remains sanitized and deterministic. | Runtime binding or public-contract change. | No |
+| Sanitized observability | REQUIRES_OPERATOR_CONFIRMATION | `manual_ai_one_shot_diagnostic.v1`, bounded counters, pre-teardown snapshot, and the successful one-shot metadata are committed/recorded without content. | Alert thresholds, operator owner, and diagnostic-retention decision. | Operations/Security | Operator runbook accepts only the fixed schema and forbidden-field policy. | Schema, alert, retention, or ownership change. | Yes |
+
+### Successful controlled one-shot metadata
+
+The supplied result is retained here without provider content:
+
+| Field | Value |
+|---|---|
+| Schema version | `manual_ai_one_shot_diagnostic.v1` |
+| HEAD | `f125f94ec7e2897035333749687b2c39148f27a4` |
+| Exit code | `0` |
+| Public result | `completed` |
+| Provider transport count | `1` |
+| Authoritative fields validated | `11` |
+| Failure counters | all `0` |
+| Phase 18B rule counters | all `0` |
+| Semantic subreason counters | all `0` |
+| Deterministic authority unchanged | `true` |
+| Snapshot before teardown | `true` |
+
+No prompt, payload, response, evidence, header, request ID, credential, or raw
+diagnostic is preserved. This metadata is qualification evidence only and does
+not authorize provider activation, deployment, or trading.
