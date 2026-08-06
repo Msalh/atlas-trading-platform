@@ -42,7 +42,10 @@ from atlas_ai_analysis import (
     validate_output,
 )
 from atlas_ai_analysis._json import plain
-from atlas_ai_analysis.errors import SemanticContradictionSubreason
+from atlas_ai_analysis.errors import (
+    OutputRejectionClassification,
+    SemanticContradictionSubreason,
+)
 from atlas_ai_analysis.models import JSONValue
 
 ROOT = Path(__file__).parents[1]
@@ -513,6 +516,70 @@ def test_claim_state_unsupported_subreason_is_closed(state):
             SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED,
             SemanticContradictionSubreason.CLAIM_STATE_SUPPORT_OMITTED,
         }
+    )
+
+
+@pytest.mark.parametrize(
+    ("term", "expected"),
+    (
+        ("candidate", SemanticContradictionSubreason.CLAIM_STATE_SUPPORT_OMITTED),
+        ("rejected", SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED),
+        ("no_signal", SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED),
+        ("no-signal", SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED),
+        ("no signal", SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED),
+        ("approved", SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED),
+        (
+            "not_implemented",
+            SemanticContradictionSubreason.CLAIM_STATE_SUPPORT_OMITTED,
+        ),
+        (
+            "not-implemented",
+            SemanticContradictionSubreason.CLAIM_STATE_SUPPORT_OMITTED,
+        ),
+        (
+            "not implemented",
+            SemanticContradictionSubreason.CLAIM_STATE_SUPPORT_OMITTED,
+        ),
+        ("available", SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED),
+        ("unavailable", SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED),
+        ("null", SemanticContradictionSubreason.CLAIM_STATE_SUPPORT_OMITTED),
+        ("declined", SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED),
+        ("denied", SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED),
+        ("absent", SemanticContradictionSubreason.CLAIM_STATE_SUPPORT_OMITTED),
+    ),
+)
+def test_complete_semantic_state_term_and_alias_matrix(term, expected):
+    eligible = _eligible()
+    output = _golden("output.complete-current.json")
+    output["claims"][0]["citations"] = [
+        "/evidence/strategy/decisions/0/confidence"
+    ]
+    output["claims"][0]["text"] = f"The deterministic strategy state is {term}."
+
+    with pytest.raises(AIAnalysisAuthorityError) as raised:
+        validate_output(output, eligible)
+
+    assert raised.value.output_rejection is OutputRejectionClassification.SEMANTIC_CONTRADICTION
+    assert raised.value.semantic_contradiction_subreason is expected
+
+
+def test_mixed_supported_and_unsupported_terms_are_ambiguous():
+    eligible = _eligible()
+    output = _golden("output.complete-current.json")
+    output["claims"][0]["citations"] = [
+        "/evidence/strategy/decisions/0/confidence"
+    ]
+    output["claims"][0]["text"] = (
+        "The deterministic strategy state is candidate and rejected."
+    )
+
+    with pytest.raises(AIAnalysisAuthorityError) as raised:
+        validate_output(output, eligible)
+
+    assert raised.value.output_rejection is OutputRejectionClassification.SEMANTIC_CONTRADICTION
+    assert (
+        raised.value.semantic_contradiction_subreason
+        is SemanticContradictionSubreason.CLASSIFICATION_AMBIGUOUS
     )
 
 
