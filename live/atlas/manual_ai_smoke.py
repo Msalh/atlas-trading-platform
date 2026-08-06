@@ -1,14 +1,19 @@
-"""Internal same-process observability for one manual AI smoke invocation.
+"""Internal same-process observability and CLI for one manual AI smoke invocation.
 
-This module has no CLI entry point and exposes no HTTP route.  It accepts only
-already-composed runtime objects and emits a fixed, content-free report.
+This module exposes no HTTP route.  Its CLI owns one fixed canonical input and
+emits only a bounded, content-free report.
 """
 
 from __future__ import annotations
 
 import copy
-from collections.abc import Mapping
+import json
+import os
+import re
+import sys
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 from atlas.manual_ai_advisory import ManualAIExplanationService
@@ -18,6 +23,9 @@ from atlas_ai_orchestration import (
     ProviderFailureDiagnostics,
     ProviderTransportDiagnostics,
 )
+
+if __name__ == "__main__":
+    sys.modules.setdefault("atlas.manual_ai_smoke", sys.modules[__name__])
 
 _STAGES = {
     ProviderFailureClassification.CONNECTIVITY: "during_transport",
@@ -31,6 +39,47 @@ _STAGES = {
         "authoritative_phase18b_validation"
     ),
 }
+_CANONICAL_INPUT = (
+    Path(__file__).resolve().parents[1]
+    / "specs"
+    / "trader_now_snapshot"
+    / "v1"
+    / "golden"
+    / "complete-current-candidate.canonical.json"
+)
+_REPORT_KEYS = frozenset(
+    {
+        "schema_version",
+        "public_result",
+        "provider_transport_count",
+        "failure_counters",
+        "phase18b_rule_counters",
+        "failure_stage",
+        "nonzero_failure_category",
+        "nonzero_phase18b_rule",
+        "deterministic_authority_unchanged",
+        "authoritative_output_fields_validated",
+        "diagnostic_status",
+        "snapshot_collected_before_teardown",
+    }
+)
+_FALLBACK_JSON = (
+    '{"authoritative_output_fields_validated":0,'
+    '"deterministic_authority_unchanged":false,'
+    '"diagnostic_status":"failed_closed","failure_counters":{},'
+    '"failure_stage":null,"nonzero_failure_category":null,'
+    '"nonzero_phase18b_rule":null,"phase18b_rule_counters":{},'
+    '"provider_transport_count":0,"public_result":"analysis_unavailable",'
+    '"schema_version":"manual_ai_one_shot_diagnostic.v1",'
+    '"snapshot_collected_before_teardown":false}'
+)
+
+EXIT_COMPLETED = 0
+EXIT_ANALYSIS_UNAVAILABLE = 2
+EXIT_PREFLIGHT_BLOCKED = 3
+EXIT_INTERNAL_FAIL_CLOSED = 4
+_INTEGER_TEXT = re.compile(r"(?:0|[1-9][0-9]*)\Z", re.ASCII)
+_DECIMAL_TEXT = re.compile(r"(?:0|[1-9][0-9]*)(?:\.[0-9]+)?\Z", re.ASCII)
 
 
 class OneShotDiagnosticError(RuntimeError):
@@ -229,3 +278,146 @@ def _failed_snapshot(
         diagnostic_status="failed_closed",
         snapshot_collected_before_teardown=False,
     )
+
+
+def _canonical_input() -> Mapping[str, object]:
+    sealed = json.loads(_CANONICAL_INPUT.read_text(encoding="utf-8"))
+    if type(sealed) is not dict or type(sealed.get("evidence")) is not dict:
+        raise OneShotDiagnosticError("canonical input unavailable") from None
+    source: dict[str, object] = {
+        "schema_version": "trader_now_response.v2",
+        "domain_schema_version": "trader_now.v2",
+    }
+    source.update(sealed["evidence"])
+    return source
+
+
+def _runtime_runner() -> ManualAIOneShotRunner | None:
+    from atlas.config import settings
+    from atlas.manual_ai_runtime import build_manual_ai_one_shot_runner
+
+    return build_manual_ai_one_shot_runner(settings)
+
+
+def _preflight(environment: Mapping[str, str]) -> dict[str, bool]:
+    def positive_int(name: str, maximum: int) -> bool:
+        try:
+            value = environment.get(name, "")
+            return (
+                _INTEGER_TEXT.fullmatch(value) is not None
+                and 0 < int(value) <= maximum
+            )
+        except Exception:  # noqa: BLE001 - booleans only
+            return False
+
+    def bounded_number(name: str, minimum: float, maximum: float) -> bool:
+        try:
+            value = environment.get(name, "")
+            if _DECIMAL_TEXT.fullmatch(value) is None:
+                return False
+            parsed = float(value)
+            return minimum <= parsed <= maximum
+        except Exception:  # noqa: BLE001 - booleans only
+            return False
+
+    return {
+        "environment_ok": environment.get("ENVIRONMENT") == "development",
+        "provider_enabled_ok": (
+            environment.get("ATLAS_AI_PROVIDER_ENABLED") == "true"
+        ),
+        "api_key_present": bool(environment.get("ATLAS_AI_PROVIDER_API_KEY")),
+        "model_ok": (
+            environment.get("ATLAS_AI_PROVIDER_MODEL") == "gpt-5.6-terra"
+        ),
+        "timeout_ok": bounded_number(
+            "ATLAS_AI_PROVIDER_TIMEOUT_SECONDS", 0.000001, 60.0
+        ),
+        "request_limit_ok": positive_int(
+            "ATLAS_AI_PROVIDER_MAX_REQUEST_BYTES", 65_536
+        ),
+        "response_limit_ok": positive_int(
+            "ATLAS_AI_PROVIDER_MAX_RESPONSE_BYTES", 131_072
+        ),
+        "output_tokens_ok": positive_int(
+            "ATLAS_AI_PROVIDER_MAX_OUTPUT_TOKENS", 4_096
+        ),
+        "cost_ceiling_ok": bounded_number(
+            "ATLAS_AI_PROVIDER_MAX_ESTIMATED_COST", 0.081920, 0.12
+        ),
+        "canonical_input_present": _CANONICAL_INPUT.is_file(),
+        "provider_retries_disabled": True,
+        "http_transport_retries_disabled": True,
+    }
+
+
+def _emit_json(value: Mapping[str, object], write: Callable[[str], object]) -> bool:
+    try:
+        if set(value) != _REPORT_KEYS:
+            raise ValueError
+        encoded = json.dumps(value, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
+        write(encoded + "\n")
+        return True
+    except Exception:  # noqa: BLE001 - fixed fallback only
+        try:
+            write(_FALLBACK_JSON + "\n")
+        except Exception:  # noqa: BLE001 - no safe output channel remains
+            pass
+        return False
+
+
+def _emit_preflight(value: Mapping[str, bool], write: Callable[[str], object]) -> bool:
+    try:
+        if not value or any(type(item) is not bool for item in value.values()):
+            raise ValueError
+        write(json.dumps(value, separators=(",", ":"), sort_keys=True) + "\n")
+        return True
+    except Exception:  # noqa: BLE001 - preflight must disclose nothing else
+        return False
+
+
+def main(
+    argv: list[str] | None = None,
+    *,
+    environment: Mapping[str, str] | None = None,
+    runner_factory: Callable[[], ManualAIOneShotRunner | None] = _runtime_runner,
+    input_loader: Callable[[], Mapping[str, object]] = _canonical_input,
+    write: Callable[[str], object] = sys.stdout.write,
+) -> int:
+    """Run the fixed CLI contract once, without accepting provider-controlled input."""
+
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if arguments == ["--preflight"]:
+        checks = _preflight(os.environ if environment is None else environment)
+        emitted = _emit_preflight(checks, write)
+        return (
+            EXIT_COMPLETED
+            if emitted and all(checks.values())
+            else EXIT_PREFLIGHT_BLOCKED
+        )
+    if arguments:
+        _emit_json(_failed_snapshot("analysis_unavailable", False).to_dict(), write)
+        return EXIT_INTERNAL_FAIL_CLOSED
+
+    try:
+        source = input_loader()
+        runner = runner_factory()
+        if type(runner) is not ManualAIOneShotRunner:
+            raise OneShotDiagnosticError("runtime unavailable")
+        report = runner.run(source)
+        if type(report) is not OneShotDiagnosticReport:
+            raise OneShotDiagnosticError("snapshot unavailable")
+        rendered = report.to_dict()
+    except Exception:  # noqa: BLE001 - never disclose operational diagnostics
+        rendered = _failed_snapshot("analysis_unavailable", False).to_dict()
+        _emit_json(rendered, write)
+        return EXIT_INTERNAL_FAIL_CLOSED
+
+    if not _emit_json(rendered, write) or report.diagnostic_status != "complete":
+        return EXIT_INTERNAL_FAIL_CLOSED
+    if report.public_result == "completed":
+        return EXIT_COMPLETED
+    return EXIT_ANALYSIS_UNAVAILABLE
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
