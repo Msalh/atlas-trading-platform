@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { FreshnessBadge } from "@/components/FreshnessBadge";
+import { AdvisoryAnalysisCard } from "@/components/AdvisoryAnalysisCard";
 import { RuleEngineFactsPanel } from "@/components/RuleEngineFactsPanel";
 import { SetupEngineViewer } from "@/components/SetupEngineViewer";
 import { TIMEFRAMES } from "@/lib/ruleEngineApi";
@@ -65,6 +66,7 @@ export default function MarketViewPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <AdvisoryAnalysisCard />
         <RuleEngineFactsPanel />
         <SetupEngineViewer />
       </div>

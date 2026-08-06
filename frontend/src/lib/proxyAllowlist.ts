@@ -52,6 +52,10 @@ export const ALLOWED_PROXY_ROUTES: Readonly<Record<string, ProxyRouteConfig>> = 
   "rule-engine/latest": { GET: { params: ["symbol", "timeframe"] } },
   "setup-engine/latest": { GET: { params: ["symbol", "timeframe"] } },
   "setup-engine/episodes/live": { GET: { params: ["symbol", "timeframe", "window"] } },
+  // Phase 18 simple advisory: the existing authenticated, read-only TraderNow
+  // composition. The browser supplies only the closed identity tuple; the BFF
+  // continues to own the backend credential.
+  "trader-now": { GET: { params: ["symbol", "timeframe", "strategy_id"] } },
   "research/re1/summary": { GET: { params: [] } },
   "research/re2/summary": { GET: { params: [] } },
   "research/dataset-health": { GET: { params: [] } },
