@@ -1,8 +1,9 @@
 # Phase 18E — Offline Concrete Provider Adapter Contract and Qualification Harness
 
 Status: independently certified offline-complete and default-disabled. Phase 18E
-is ordered after the completed Phase 18D. Operational enablement remains blocked
-by the deferred immutable-model decision and the external gates listed below.
+is ordered after the completed Phase 18D. Phase 3A adds one independently
+reviewable, expiring pricing record; runtime binding and provider calls remain
+separately blocked.
 
 This document authorizes isolated implementation and offline qualification only.
 It authorizes no credential use, provider or network call, runtime integration,
@@ -28,12 +29,12 @@ strategy, risk, decision, audit, persistence, broker, or execution authority.
 | Integration boundary | Direct non-streaming HTTP through one adapter-owned `httpx.Client.send`. The production client is constructed internally; offline qualification may inject only an `httpx.BaseTransport`, never a configured client. |
 | Dependency version and lock policy | `httpx==0.28.1`; runtime installation is prohibited. No transitive lockfile or hashes exist, so reproducible deployment remains unclaimed and blocked pending transitive locking. |
 | Secret owner | Security/Platform for later operational enablement. Phase 18E reads no environment or credential store. |
-| Accepted model allowlist | Explicitly injected and non-empty. The exact immutable production model ID is **DEFERRED — INSUFFICIENT EVIDENCE**; `gpt-5.6-terra` is not treated as immutable or hard-coded. |
+| Accepted model allowlist | Explicitly injected and non-empty. Phase 3 policy accepts exactly `gpt-5.6-terra` for a local manual experiment without claiming immutability; production approval remains deferred. |
 | Request-byte ceiling | 65,536 serialized bytes. |
 | Response-byte ceiling | 131,072 streamed bytes. |
 | Transport timeout | 5-second connect, 45-second read, 60-second end-to-end deadline. |
 | Maximum input/output tokens | 16,384 input and 4,096 output. |
-| Estimated pre-call cost ceiling and units | USD 0.12 maximum standard/default token charge. A package-owned pricing catalog binds an immutable record to an opaque reference, provider, exact model, rates, USD-per-million-token unit, service tier, independently approved source/version, catalog version/digest, effective time, verification time, expiry, and maximum age. The catalog rejects every duplicate exact provider/model/service-tier identity, including semantic duplicates under different references. The authority gate always calculates cost with package-owned maxima of 16,384 input and 4,096 output tokens using deterministic decimal arithmetic; caller request limits cannot reduce it. Missing, conflicting, stale, future-effective, mismatched, unsupported, integrity-invalid, or over-ceiling metadata fails before prompt construction, credentials, client creation, or transport. The operational catalog is intentionally empty until separately approved provenance exists. |
+| Estimated pre-call cost ceiling and units | USD 0.12 maximum standard/default token charge. A package-owned pricing catalog binds an integrity-protected record to an opaque reference, provider, exact model, rates, USD-per-million-token unit, service tier, independently approved source/version, catalog version/digest, effective time, verification time, expiry, and maximum age. The catalog rejects every duplicate exact provider/model/service-tier identity, including semantic duplicates under different references. The authority gate always calculates cost with package-owned maxima of 16,384 input and 4,096 output tokens using deterministic decimal arithmetic; caller request limits cannot reduce it. Missing, conflicting, stale, future-effective, mismatched, unsupported, integrity-invalid, or over-ceiling metadata fails before prompt construction, credentials, client creation, or transport. Phase 3A approves one dated default-tier `gpt-5.6-terra` record observed 2026-08-06 and expiring 2026-09-05; it is reviewable pricing evidence, not a permanently immutable price. |
 | Decoded JSON-domain return type | Recursive `JSONValue`: exact JSON scalar, list, or string-keyed dictionary values without `Any`, coercion, envelope, or sentinel. |
 | Absent-candidate classification | Sanitized `ProviderUnavailableError`, routed by Phase 18D to `provider_unavailable`; no fabricated candidate. |
 
@@ -46,11 +47,19 @@ symbol only through pytest monkeypatch with a fixed qualification catalog. That
 test-only replacement is not accepted by the adapter constructor or policy and
 is not exposed by any runtime factory or configuration loader.
 
+Cached-input pricing is not represented by the existing catalog schema or cost
+equation, so Phase 3A does not add or claim the separately quoted cached-input
+rate. Standard input and output rates remain the conservative authority inputs.
+
 Caller-configurable token limits remain bounded request controls only. They may
 lower the size of a particular offline-qualified request, but never replace or
-reduce the fixed authority-level 16,384/4,096 calculation. Phase 18E remains
-offline-only pending another independent recertification; real pricing
-provenance and immutable-model approval remain operational blockers.
+reduce the fixed authority-level 16,384/4,096 calculation. The Phase 3A record
+uses the official OpenAI pricing announcement at
+`https://openai.com/index/advancing-the-price-performance-frontier-with-gpt-5-6/`,
+observed 2026-08-06. Resolution fails closed at its 2026-09-05 review deadline.
+The authority rejects both a declared maximum age and a verified-to-expiry
+window greater than 2,592,000 seconds, even when a changed catalog has a newly
+computed digest.
 
 The request explicitly selects `service_tier: "default"`, the documented
 standard pricing/performance tier. It also selects explicit prompt-caching mode
@@ -409,11 +418,13 @@ runtime.
 
 ## Operational enablement gate
 
-Offline implementation completion does not authorize construction in a runtime.
-Enablement remains blocked until independent evidence approves an exact immutable
-model identifier, OpenAI account entitlement, retention/ZDR controls, current
-pricing metadata, Security/Platform secret ownership, and the reviewed runtime
-factory. The alias `gpt-5.6-terra` is not treated as immutable.
+Offline implementation completion and the Phase 3A pricing record do not by
+themselves authorize construction in a runtime. A separately reviewed Phase 3
+factory may use exactly `gpt-5.6-terra` only for the approved local manual
+experiment. Production enablement remains blocked on model policy, OpenAI account
+entitlement, retention controls, current pricing renewal, Security/Platform
+secret ownership, and separate deployment approval. The identifier is not
+represented as immutable.
 
 The Phase 18E implementation and this definition must be reviewed together and
 committed as one bounded Phase 18E set.

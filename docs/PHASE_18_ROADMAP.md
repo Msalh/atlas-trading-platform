@@ -236,13 +236,13 @@ a package-controlled integrity-bound catalog; callers select only an exact
 reference. Catalog validation rejects every duplicate exact
 provider/model/service-tier identity. Its USD $0.12 authority gate always uses
 package-owned 16,384-input/4,096-output maxima, independent of caller request
-limits. The operational catalog remains empty and fail-closed pending approved
-pricing provenance. It remains default-disabled,
-offline-qualified, and unattached. Operational enablement is separately blocked
-until an immutable model identifier, account entitlement, retention/ZDR,
-pricing metadata, secret ownership, and runtime binding are independently
-verified. The implementation authorizes no credential, provider call, runtime
-integration, deployment, or operational certification.
+limits. Phase 3A adds exactly one integrity-bound, dated default-tier pricing
+record for `gpt-5.6-terra`, observed 2026-08-06 and expiring 2026-09-05. The
+record is reviewable evidence, not a permanently immutable price, and every
+unknown, changed, mismatched, or expired record still fails closed. The adapter
+remains default-disabled, offline-qualified, and unattached. The record alone
+authorizes no credential, provider call, runtime integration, deployment, or
+operational certification.
 
 ## Phase 18F — Offline Persistence Contract and Atomic Storage Port
 

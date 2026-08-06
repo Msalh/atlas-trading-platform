@@ -6,7 +6,7 @@ import hashlib
 import json
 import math
 from dataclasses import asdict, dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 
@@ -30,14 +30,40 @@ class ProviderPricingRecord:
 
 
 _OPERATIONAL_CATALOG_VERSION = "openai-pricing-catalog.v1"
-_OPERATIONAL_RECORDS: tuple[ProviderPricingRecord, ...] = ()
-_OPERATIONAL_APPROVED_SOURCES: frozenset[tuple[str, str]] = frozenset()
+_OPERATIONAL_RECORDS: tuple[ProviderPricingRecord, ...] = (
+    ProviderPricingRecord(
+        reference_id="openai-gpt-5.6-terra-default-2026-08-06",
+        catalog_version=_OPERATIONAL_CATALOG_VERSION,
+        provider_id="openai",
+        model_id="gpt-5.6-terra",
+        input_usd_per_million_tokens=2.0,
+        output_usd_per_million_tokens=12.0,
+        currency="USD",
+        unit="per_million_tokens",
+        service_tier="default",
+        source_id="https://openai.com/index/advancing-the-price-performance-frontier-with-gpt-5-6/",
+        source_version="observed-2026-08-06",
+        effective_at=datetime(2026, 7, 30, tzinfo=timezone.utc),
+        verified_at=datetime(2026, 8, 6, tzinfo=timezone.utc),
+        expires_at=datetime(2026, 9, 5, tzinfo=timezone.utc),
+        maximum_age_seconds=2_592_000,
+    ),
+)
+_OPERATIONAL_APPROVED_SOURCES: frozenset[tuple[str, str]] = frozenset(
+    {
+        (
+            "https://openai.com/index/advancing-the-price-performance-frontier-with-gpt-5-6/",
+            "observed-2026-08-06",
+        )
+    }
+)
 _OPERATIONAL_CATALOG_SHA256 = (
-    "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    "d9f1b6ae02e4da9f1e06dc46afcc02084a0922a96f12180bac22fd29829cef9a"
 )
 _AUTHORITY_MAX_INPUT_TOKENS = 16_384
 _AUTHORITY_MAX_OUTPUT_TOKENS = 4_096
 _AUTHORITY_MAX_COST_USD = Decimal("0.12")
+_AUTHORITY_MAX_RECORD_VALIDITY_SECONDS = 2_592_000
 _TOKENS_PER_MILLION = Decimal(1_000_000)
 
 
@@ -155,7 +181,12 @@ def _resolve_catalog(
         )
         and all(type(value) is datetime and value.tzinfo is not None for value in timestamps)
         and type(record.maximum_age_seconds) is int
-        and record.maximum_age_seconds > 0
+        and 0
+        < record.maximum_age_seconds
+        <= _AUTHORITY_MAX_RECORD_VALIDITY_SECONDS
+        and 0
+        < (record.expires_at - record.verified_at).total_seconds()
+        <= _AUTHORITY_MAX_RECORD_VALIDITY_SECONDS
         and record.effective_at <= record.verified_at <= now < record.expires_at
         and (now - record.verified_at).total_seconds() <= record.maximum_age_seconds
         and _within_authority_cost_ceiling(record)
@@ -172,7 +203,7 @@ def resolve_authoritative_pricing(
     reference_id: str,
     now: datetime,
 ) -> ProviderPricingRecord | None:
-    """Resolve only package-owned operational pricing; empty until approved."""
+    """Resolve only the package-owned, dated operational pricing record."""
 
     return _resolve_catalog(
         records=_OPERATIONAL_RECORDS,

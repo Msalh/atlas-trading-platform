@@ -13,6 +13,7 @@ from typing import Any
 
 import httpx
 import pytest
+
 from atlas_ai_orchestration import TrustedProviderRequest
 from atlas_ai_orchestration import openai_adapter as adapter_module
 from atlas_ai_orchestration.errors import (
@@ -25,6 +26,10 @@ from atlas_ai_orchestration.openai_adapter import (
     OpenAIProviderAdapter,
 )
 from atlas_ai_orchestration.pricing_authority import (
+    _OPERATIONAL_APPROVED_SOURCES,
+    _OPERATIONAL_CATALOG_SHA256,
+    _OPERATIONAL_CATALOG_VERSION,
+    _OPERATIONAL_RECORDS,
     ProviderPricingRecord,
     _catalog_digest,
     _resolve_catalog,
@@ -38,6 +43,8 @@ NOW = datetime(2026, 8, 5, 12, 0, tzinfo=timezone.utc)
 REFERENCE = "offline-approved-pricing-reference"
 CATALOG_VERSION = "offline-qualification-catalog.v1"
 APPROVED_SOURCE = ("official-openai-pricing", "2026-07-30")
+OPERATIONAL_MODEL = "gpt-5.6-terra"
+OPERATIONAL_REFERENCE = "openai-gpt-5.6-terra-default-2026-08-06"
 
 
 def _pricing(**changes: Any) -> ProviderPricingRecord:
@@ -651,11 +658,132 @@ def test_policy_caller_cannot_supply_or_redefine_pricing_authority(monkeypatch):
     _assert_pricing_rejected_before_side_effects(monkeypatch)
 
 
-def test_production_authority_cannot_use_offline_qualification_catalog(monkeypatch):
-    monkeypatch.setattr(
-        adapter_module, "resolve_authoritative_pricing", resolve_authoritative_pricing
+def test_operational_pricing_resolves_exact_identity_before_expiry_without_transport(
+    monkeypatch,
+):
+    calls = 0
+
+    def send(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        raise AssertionError
+
+    monkeypatch.setattr(httpx.Client, "send", send)
+    record = resolve_authoritative_pricing(
+        provider_id="openai",
+        model_id=OPERATIONAL_MODEL,
+        service_tier="default",
+        reference_id=OPERATIONAL_REFERENCE,
+        now=datetime(2026, 8, 6, 12, tzinfo=timezone.utc),
     )
-    _assert_pricing_rejected_before_side_effects(monkeypatch)
+
+    assert record is _OPERATIONAL_RECORDS[0]
+    assert _catalog_digest(_OPERATIONAL_RECORDS) == _OPERATIONAL_CATALOG_SHA256
+    assert calls == 0
+
+
+@pytest.mark.parametrize(
+    ("model_id", "service_tier", "reference_id", "now"),
+    [
+        (
+            OPERATIONAL_MODEL,
+            "default",
+            OPERATIONAL_REFERENCE,
+            datetime(2026, 9, 5, tzinfo=timezone.utc),
+        ),
+        (
+            "other-model",
+            "default",
+            OPERATIONAL_REFERENCE,
+            datetime(2026, 8, 6, 12, tzinfo=timezone.utc),
+        ),
+        (
+            OPERATIONAL_MODEL,
+            "priority",
+            OPERATIONAL_REFERENCE,
+            datetime(2026, 8, 6, 12, tzinfo=timezone.utc),
+        ),
+        (
+            OPERATIONAL_MODEL,
+            "default",
+            "missing-reference",
+            datetime(2026, 8, 6, 12, tzinfo=timezone.utc),
+        ),
+    ],
+)
+def test_operational_pricing_fails_closed_for_expiry_or_identity_mismatch(
+    model_id, service_tier, reference_id, now
+):
+    assert (
+        resolve_authoritative_pricing(
+            provider_id="openai",
+            model_id=model_id,
+            service_tier=service_tier,
+            reference_id=reference_id,
+            now=now,
+        )
+        is None
+    )
+
+
+def test_operational_pricing_mutation_empty_catalog_and_digest_mismatch_fail_closed():
+    record = _OPERATIONAL_RECORDS[0]
+    changed = (replace(record, input_usd_per_million_tokens=2.01),)
+    common = {
+        "approved_sources": _OPERATIONAL_APPROVED_SOURCES,
+        "expected_catalog_version": _OPERATIONAL_CATALOG_VERSION,
+        "provider_id": "openai",
+        "model_id": OPERATIONAL_MODEL,
+        "service_tier": "default",
+        "reference_id": OPERATIONAL_REFERENCE,
+        "now": datetime(2026, 8, 6, 12, tzinfo=timezone.utc),
+    }
+    assert (
+        _resolve_catalog(
+            records=changed,
+            expected_catalog_sha256=_OPERATIONAL_CATALOG_SHA256,
+            **common,
+        )
+        is None
+    )
+    assert (
+        _resolve_catalog(
+            records=_OPERATIONAL_RECORDS,
+            expected_catalog_sha256="0" * 64,
+            **common,
+        )
+        is None
+    )
+    assert (
+        _resolve_catalog(
+            records=(),
+            expected_catalog_sha256=_catalog_digest(()),
+            **common,
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    "record",
+    [
+        _pricing(maximum_age_seconds=2_592_001),
+        _pricing(expires_at=NOW + timedelta(days=30, seconds=1)),
+    ],
+)
+def test_catalog_rejects_validity_beyond_thirty_days_with_regenerated_digest(record):
+    resolver = _qualification_resolver((record,))
+
+    assert (
+        resolver(
+            provider_id="openai",
+            model_id=MODEL,
+            service_tier="default",
+            reference_id=REFERENCE,
+            now=NOW,
+        )
+        is None
+    )
 
 
 def test_catalog_integrity_duplicate_and_source_approval_fail_closed(monkeypatch):
