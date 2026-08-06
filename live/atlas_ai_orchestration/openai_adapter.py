@@ -13,7 +13,7 @@ from typing import Protocol
 import httpx
 from atlas_ai_analysis import GeneratorIdentity
 
-from .diagnostics import ProviderFailureClassification
+from .diagnostics import ProviderFailureClassification, ProviderTransportDiagnostics
 from .errors import ProviderPortError, ProviderTimeoutError, ProviderUnavailableError
 from .models import JSONValue, TrustedProviderRequest
 from .pricing_authority import ProviderPricingRecord, resolve_authoritative_pricing
@@ -97,6 +97,7 @@ class OpenAIProviderAdapter:
         input_token_estimator: InputTokenEstimator,
         policy: OpenAIAdapterPolicy,
         qualification_transport: httpx.BaseTransport | None = None,
+        transport_diagnostics: ProviderTransportDiagnostics | None = None,
         monotonic: Callable[[], float] = time.monotonic,
         utc_now: Callable[[], datetime] = _utc_now,
     ) -> None:
@@ -104,6 +105,7 @@ class OpenAIProviderAdapter:
         self._input_token_estimator = input_token_estimator
         self._policy = policy
         self._qualification_transport = qualification_transport
+        self._transport_diagnostics = transport_diagnostics
         self._monotonic = monotonic
         self._utc_now = utc_now
 
@@ -229,6 +231,8 @@ class OpenAIProviderAdapter:
         raw = bytearray()
         response: httpx.Response | None = None
         try:
+            if self._transport_diagnostics is not None:
+                self._transport_diagnostics.record_attempt()
             response = client.send(request, stream=True, follow_redirects=False)
             if not 200 <= response.status_code < 300:
                 if response.status_code == 429:

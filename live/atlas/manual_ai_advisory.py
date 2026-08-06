@@ -63,10 +63,20 @@ class ManualAIExplanationService:
         self._clock = clock
 
     def explain(self, trader_now_response: Mapping[str, Any]) -> ManualAIExplanation:
+        explanation, _validated_fields = self._explain_with_validation_count(
+            trader_now_response
+        )
+        return explanation
+
+    def _explain_with_validation_count(
+        self, trader_now_response: Mapping[str, Any]
+    ) -> tuple[ManualAIExplanation, int]:
+        """Internal one-shot view; the public projection remains unchanged."""
+
         try:
             evidence_paths = _manual_evidence_paths(trader_now_response)
             if evidence_paths is None:
-                return unavailable_explanation()
+                return unavailable_explanation(), 0
             snapshot_id = self._identity_factory()
             snapshot = project(
                 trader_now_response,
@@ -82,16 +92,19 @@ class ManualAIExplanationService:
             )
             outcome = self._provider_orchestrator.run(evidence)
             if not isinstance(outcome, CompletedOutcome):
-                return unavailable_explanation()
+                return unavailable_explanation(), 0
             output = outcome.output
-            return ManualAIExplanation(
-                status="available",
-                summary=output["summary"],
-                claims=tuple(output["claims"]),
-                limitations=tuple(output["limitations"]),
+            return (
+                ManualAIExplanation(
+                    status="available",
+                    summary=output["summary"],
+                    claims=tuple(output["claims"]),
+                    limitations=tuple(output["limitations"]),
+                ),
+                len(output),
             )
         except Exception:  # noqa: BLE001 - fail closed without retaining diagnostics
-            return unavailable_explanation()
+            return unavailable_explanation(), 0
 
 
 def unavailable_explanation() -> ManualAIExplanation:

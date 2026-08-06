@@ -11,12 +11,14 @@ from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Final, Protocol
 
 from atlas.manual_ai_advisory import ManualAIExplanationService
+from atlas.manual_ai_smoke import ManualAIOneShotRunner
 from atlas_ai_analysis import GeneratorIdentity
 from atlas_ai_orchestration import (
     DeterministicPromptBuilder,
     ProviderFailureDiagnostics,
     ProviderOrchestrator,
     ProviderPort,
+    ProviderTransportDiagnostics,
     TrustedProviderRequest,
 )
 from atlas_ai_orchestration.openai_adapter import (
@@ -52,6 +54,7 @@ class AdapterFactory(Protocol):
         input_token_estimator: Callable[[TrustedProviderRequest], int],
         utc_now: Callable[[], datetime],
         policy: OpenAIAdapterPolicy,
+        transport_diagnostics: ProviderTransportDiagnostics | None = None,
     ) -> ProviderPort: ...
 
 
@@ -193,6 +196,8 @@ def build_manual_ai_explanation_service(
     *,
     adapter_factory: AdapterFactory = OpenAIProviderAdapter,
     clock: Callable[[], datetime] = _now,
+    failure_diagnostics: ProviderFailureDiagnostics | None = None,
+    transport_diagnostics: ProviderTransportDiagnostics | None = None,
 ) -> ManualAIExplanationService | None:
     """Build the one manual-only service, or return no attachment fail-closed."""
 
@@ -208,6 +213,7 @@ def build_manual_ai_explanation_service(
             credential_provider=lambda: credential,
             input_token_estimator=_estimate_input_tokens,
             utc_now=clock,
+            transport_diagnostics=transport_diagnostics,
             policy=OpenAIAdapterPolicy(
                 enabled=True,
                 model_id=config.model_id,
@@ -240,7 +246,7 @@ def build_manual_ai_explanation_service(
             audit_id_factory=identifier,
             clock=timestamp,
             generator=identity,
-            failure_diagnostics=ProviderFailureDiagnostics(),
+            failure_diagnostics=failure_diagnostics or ProviderFailureDiagnostics(),
         )
         return ManualAIExplanationService(
             provider_orchestrator=orchestrator,
@@ -249,3 +255,29 @@ def build_manual_ai_explanation_service(
         )
     except Exception:  # noqa: BLE001 - configuration details remain private
         return None
+
+
+def build_manual_ai_one_shot_runner(
+    settings: Settings,
+    *,
+    adapter_factory: AdapterFactory = OpenAIProviderAdapter,
+    clock: Callable[[], datetime] = _now,
+) -> ManualAIOneShotRunner | None:
+    """Build an internal same-process live-smoke runner; never used by HTTP."""
+
+    failures = ProviderFailureDiagnostics()
+    transports = ProviderTransportDiagnostics()
+    service = build_manual_ai_explanation_service(
+        settings,
+        adapter_factory=adapter_factory,
+        clock=clock,
+        failure_diagnostics=failures,
+        transport_diagnostics=transports,
+    )
+    if service is None:
+        return None
+    return ManualAIOneShotRunner(
+        service=service,
+        diagnostics=failures,
+        transport_diagnostics=transports,
+    )

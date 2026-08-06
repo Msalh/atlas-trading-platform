@@ -61,3 +61,21 @@ class ProviderFailureDiagnostics:
 
         with self._lock:
             return dict(self._phase18b_counts)
+
+
+class ProviderTransportDiagnostics:
+    """Content-free count of actual provider transport attempts."""
+
+    __slots__ = ("_attempts", "_lock")
+
+    def __init__(self) -> None:
+        self._attempts = 0
+        self._lock = Lock()
+
+    def record_attempt(self) -> None:
+        with self._lock:
+            self._attempts += 1
+
+    def snapshot(self) -> int:
+        with self._lock:
+            return self._attempts

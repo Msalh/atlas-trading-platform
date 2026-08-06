@@ -23,6 +23,7 @@ from atlas.manual_ai_runtime import (
     _estimate_input_tokens,
     _RuntimeCostPolicy,
     build_manual_ai_explanation_service,
+    build_manual_ai_one_shot_runner,
 )
 from atlas_ai_analysis import GeneratorIdentity
 from atlas_ai_orchestration import TrustedProviderRequest
@@ -208,6 +209,21 @@ def test_enabled_configuration_constructs_one_exact_manual_service_without_invoc
     assert SECRET not in repr(service)
     assert SECRET not in repr(adapter)
     assert SECRET not in repr(adapter.policy)
+
+
+def test_one_shot_builder_shares_sanitized_counters_without_invocation():
+    runner = build_manual_ai_one_shot_runner(
+        _settings(), adapter_factory=CapturingAdapter, clock=lambda: NOW
+    )
+
+    assert runner is not None
+    assert len(CapturingAdapter.instances) == 1
+    adapter = CapturingAdapter.instances[0]
+    assert adapter.calls == 0
+    assert adapter.kwargs["transport_diagnostics"] is runner._transport
+    assert runner._diagnostics.snapshot() == {
+        item: 0 for item in runner._diagnostics.snapshot()
+    }
 
 
 def test_each_runtime_service_owns_fresh_nonpersistent_diagnostics():

@@ -15,7 +15,11 @@ import httpx
 import pytest
 
 import atlas_ai_analysis.sdk as analysis_sdk
-from atlas_ai_orchestration import ProviderFailureClassification, TrustedProviderRequest
+from atlas_ai_orchestration import (
+    ProviderFailureClassification,
+    ProviderTransportDiagnostics,
+    TrustedProviderRequest,
+)
 from atlas_ai_orchestration import openai_adapter as adapter_module
 from atlas_ai_orchestration.errors import (
     ProviderPortError,
@@ -160,6 +164,7 @@ def _adapter(
     credential: Callable[[], str] = lambda: SECRET,
     estimator: Callable[[TrustedProviderRequest], int] = lambda _request: 100,
     monotonic: Callable[[], float] | None = None,
+    transport_diagnostics: ProviderTransportDiagnostics | None = None,
 ) -> tuple[OpenAIProviderAdapter, httpx.MockTransport]:
     transport = httpx.MockTransport(handler)
     adapter = OpenAIProviderAdapter(
@@ -167,10 +172,37 @@ def _adapter(
         input_token_estimator=estimator,
         policy=policy or _policy(),
         qualification_transport=transport,
+        transport_diagnostics=transport_diagnostics,
         utc_now=lambda: NOW,
         **({"monotonic": monotonic} if monotonic else {}),
     )
     return adapter, transport
+
+
+def test_transport_diagnostics_count_only_actual_send_attempts():
+    diagnostics = ProviderTransportDiagnostics()
+    adapter, transport = _adapter(
+        lambda _request: httpx.Response(200, content=_provider_body({"ok": True})),
+        transport_diagnostics=diagnostics,
+    )
+    try:
+        assert adapter.invoke(_request()) == {"ok": True}
+    finally:
+        transport.close()
+    assert diagnostics.snapshot() == 1
+
+    blocked_diagnostics = ProviderTransportDiagnostics()
+    blocked, blocked_transport = _adapter(
+        lambda _request: pytest.fail("pre-transport rejection must not send"),
+        credential=lambda: "",
+        transport_diagnostics=blocked_diagnostics,
+    )
+    try:
+        with pytest.raises(ProviderPortError):
+            blocked.invoke(_request())
+    finally:
+        blocked_transport.close()
+    assert blocked_diagnostics.snapshot() == 0
 
 
 @pytest.mark.parametrize(
