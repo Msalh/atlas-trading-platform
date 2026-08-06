@@ -374,6 +374,26 @@ def validate_output(
     eligible: EligibleAnalysis,
 ) -> ValidatedAnalysisOutput:
     """Validate structural and semantic output against one eligible input."""
+    try:
+        return _validate_output(value, eligible)
+    except AIAnalysisValidationError as error:
+        if (
+            error.output_rejection
+            is not OutputRejectionClassification.OTHER_SEMANTIC_REJECTION
+        ):
+            raise
+        raise AIAnalysisValidationError(
+            *error.args,
+            output_rejection=(
+                OutputRejectionClassification.OUTPUT_CONTRACT_VIOLATION
+            ),
+        ) from None
+
+
+def _validate_output(
+    value: JSONValue,
+    eligible: EligibleAnalysis,
+) -> ValidatedAnalysisOutput:
     normalization_failed = False
     try:
         value = cast(Mapping[str, Any], _trusted_output_value(value))
@@ -402,28 +422,64 @@ def validate_output(
         ("purpose", analysis_input["purpose"]),
     ):
         if value[field] != expected:
-            raise AIAnalysisValidationError(f"output {field} mismatch")
+            raise AIAnalysisValidationError(
+                f"output {field} mismatch",
+                output_rejection=(
+                    OutputRejectionClassification.TRUSTED_BINDING_MISMATCH
+                ),
+            )
 
     status = value["status"]
     claims = value["claims"]
     limitations = value["limitations"]
     if not isinstance(claims, (tuple, list)) or not isinstance(limitations, (tuple, list)):
-        raise AIAnalysisValidationError("claims and limitations must be arrays")
-    if len(limitations) > 16 or len(limitations) != len(set(limitations)) or any(
-        item not in LIMITATIONS for item in limitations
+        raise AIAnalysisValidationError(
+            "claims and limitations must be arrays",
+            output_rejection=(
+                OutputRejectionClassification.OUTPUT_CONTRACT_VIOLATION
+            ),
+        )
+    if (
+        len(limitations) > 16
+        or any(not isinstance(item, str) or item not in LIMITATIONS for item in limitations)
+        or len(limitations) != len(set(cast(Sequence[str], limitations)))
     ):
-        raise AIAnalysisValidationError("invalid or duplicate limitation")
+        raise AIAnalysisValidationError(
+            "invalid or duplicate limitation",
+            output_rejection=OutputRejectionClassification.INVALID_LIMITATIONS,
+        )
     if status == "available":
         if not isinstance(value["summary"], str) or not 1 <= len(value["summary"]) <= 4000:
-            raise AIAnalysisValidationError("available output requires a summary")
+            raise AIAnalysisValidationError(
+                "available output requires a summary",
+                output_rejection=OutputRejectionClassification.INVALID_SUMMARY,
+            )
         if not 1 <= len(claims) <= 32:
-            raise AIAnalysisValidationError("available output requires 1 to 32 claims")
+            raise AIAnalysisValidationError(
+                "available output requires 1 to 32 claims",
+                output_rejection=OutputRejectionClassification.INVALID_CLAIM_COUNT,
+            )
         if value["unavailable_reason"] is not None:
-            raise AIAnalysisValidationError("available output cannot have unavailable_reason")
+            raise AIAnalysisValidationError(
+                "available output cannot have unavailable_reason",
+                output_rejection=(
+                    OutputRejectionClassification.INVALID_AVAILABILITY_CONTRACT
+                ),
+            )
         if "advisory_only" not in limitations:
-            raise AIAnalysisValidationError("available output must be advisory_only")
+            raise AIAnalysisValidationError(
+                "available output must be advisory_only",
+                output_rejection=(
+                    OutputRejectionClassification.MISSING_ADVISORY_LIMITATION
+                ),
+            )
         if eligible.freshness == "delayed" and "delayed_evidence" not in limitations:
-            raise AIAnalysisValidationError("delayed evidence limitation is required")
+            raise AIAnalysisValidationError(
+                "delayed evidence limitation is required",
+                output_rejection=(
+                    OutputRejectionClassification.MISSING_DELAYED_LIMITATION
+                ),
+            )
         _validate_claims(claims, eligible)
         _validate_prohibited_text(value["summary"])
         deterministic_items = [
@@ -449,12 +505,25 @@ def validate_output(
     elif status == "unavailable":
         if value["summary"] is not None or claims or limitations:
             raise AIAnalysisValidationError(
-                "unavailable output cannot contain narrative, claims, or limitations"
+                "unavailable output cannot contain narrative, claims, or limitations",
+                output_rejection=(
+                    OutputRejectionClassification.INVALID_UNAVAILABLE_CONTRACT
+                ),
             )
         if value["unavailable_reason"] not in FAILURE_REASONS:
-            raise AIAnalysisValidationError("unavailable output requires a failure reason")
+            raise AIAnalysisValidationError(
+                "unavailable output requires a failure reason",
+                output_rejection=(
+                    OutputRejectionClassification.INVALID_UNAVAILABLE_CONTRACT
+                ),
+            )
     else:
-        raise AIAnalysisValidationError("invalid output status")
+        raise AIAnalysisValidationError(
+            "invalid output status",
+            output_rejection=(
+                OutputRejectionClassification.OUTPUT_CONTRACT_VIOLATION
+            ),
+        )
     return _validated_analysis_output(value)
 
 
@@ -713,20 +782,36 @@ def _validate_claims(claims: Sequence[Any], eligible: EligibleAnalysis) -> None:
         _closed(claim, frozenset({"claim_id", "kind", "text", "citations"}), "claim")
         claim_id = claim["claim_id"]
         if not isinstance(claim_id, str) or not _CLAIM_ID.fullmatch(claim_id):
-            raise AIAnalysisValidationError("invalid claim_id")
+            raise AIAnalysisValidationError(
+                "invalid claim_id",
+                output_rejection=OutputRejectionClassification.INVALID_CLAIM_ID,
+            )
         if claim_id in claim_ids:
-            raise AIAnalysisValidationError("claim IDs must be unique")
+            raise AIAnalysisValidationError(
+                "claim IDs must be unique",
+                output_rejection=OutputRejectionClassification.DUPLICATE_CLAIM_ID,
+            )
         claim_ids.add(claim_id)
-        if claim["kind"] not in {"explanation", "attention_guidance"}:
-            raise AIAnalysisValidationError("invalid claim kind")
+        if not isinstance(claim["kind"], str) or claim["kind"] not in {
+            "explanation",
+            "attention_guidance",
+        }:
+            raise AIAnalysisValidationError(
+                "invalid claim kind",
+                output_rejection=OutputRejectionClassification.INVALID_CLAIM_KIND,
+            )
         text = claim["text"]
         if not isinstance(text, str) or not 1 <= len(text) <= 2000:
-            raise AIAnalysisValidationError("invalid claim text")
+            raise AIAnalysisValidationError(
+                "invalid claim text",
+                output_rejection=OutputRejectionClassification.INVALID_CLAIM_TEXT,
+            )
         citations = claim["citations"]
         if (
             not isinstance(citations, (tuple, list))
             or not 1 <= len(citations) <= 16
-            or len(citations) != len(set(citations))
+            or any(not isinstance(path, str) for path in citations)
+            or len(citations) != len(set(cast(Sequence[str], citations)))
         ):
             raise AIAnalysisCitationError("material claim requires unique citations")
         cited_values = [resolve_citation(path, eligible) for path in citations]

@@ -255,6 +255,14 @@ def test_strict_structured_output_schema_is_closed_and_bound_to_request():
     assert claim["type"] == "object"
     assert claim["additionalProperties"] is False
     assert set(claim["required"]) == set(claim["properties"])
+    assert claim["properties"]["claim_id"]["pattern"] == r"^claim-[1-9][0-9]*$"
+    assert claim["properties"]["text"]["pattern"] == r"^[\s\S]{1,2000}$"
+    assert claim["properties"]["citations"]["minItems"] == 1
+    assert claim["properties"]["citations"]["maxItems"] == 16
+    assert schema["properties"]["claims"]["maxItems"] == 32
+    assert schema["properties"]["limitations"]["maxItems"] == 16
+    summary_string = schema["properties"]["summary"]["anyOf"][0]
+    assert summary_string["pattern"] == r"^[\s\S]{1,4000}$"
     assert set(schema["properties"]["limitations"]["items"]["enum"]) == set(
         analysis_sdk.LIMITATIONS
     )

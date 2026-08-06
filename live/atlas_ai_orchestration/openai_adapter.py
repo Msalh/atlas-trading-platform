@@ -363,19 +363,35 @@ class OpenAIProviderAdapter:
 
     @staticmethod
     def _structured_output(request: TrustedProviderRequest) -> dict[str, object]:
-        nullable_string = {"anyOf": [{"type": "string"}, {"type": "null"}]}
+        nullable_string = {
+            "anyOf": [
+                {"type": "string", "pattern": r"^[\s\S]{1,4000}$"},
+                {"type": "null"},
+            ]
+        }
         claim = {
             "type": "object",
             "additionalProperties": False,
             "required": ["claim_id", "kind", "text", "citations"],
             "properties": {
-                "claim_id": {"type": "string"},
+                "claim_id": {
+                    "type": "string",
+                    "pattern": r"^claim-[1-9][0-9]*$",
+                },
                 "kind": {
                     "type": "string",
                     "enum": ["explanation", "attention_guidance"],
                 },
-                "text": {"type": "string"},
-                "citations": {"type": "array", "items": {"type": "string"}},
+                "text": {
+                    "type": "string",
+                    "pattern": r"^[\s\S]{1,2000}$",
+                },
+                "citations": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "minItems": 1,
+                    "maxItems": 16,
+                },
             },
         }
         schema = {
@@ -409,10 +425,11 @@ class OpenAIProviderAdapter:
                     "enum": ["available", "unavailable"],
                 },
                 "summary": nullable_string,
-                "claims": {"type": "array", "items": claim},
+                "claims": {"type": "array", "items": claim, "maxItems": 32},
                 "limitations": {
                     "type": "array",
                     "items": {"type": "string", "enum": list(_LIMITATIONS)},
+                    "maxItems": 16,
                 },
                 "unavailable_reason": {
                     "anyOf": [

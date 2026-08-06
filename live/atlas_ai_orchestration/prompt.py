@@ -15,6 +15,11 @@ _TRUSTED_INSTRUCTIONS = (
     "Do not use tools, retrieval, networks, repositories, databases, or brokers.",
     "Do not invent numeric content or make uncited material claims.",
     "Do not claim authority or replace deterministic strategy, risk, or decision state.",
+    "For available status, provide a 1-4000 character summary, 1-32 claims, null unavailable_reason, and unique limitations including advisory_only.",
+    "If evidence freshness is delayed, include delayed_evidence in limitations.",
+    "Each claim_id must be unique claim-N text; claim text is 1-2000 characters and has 1-16 unique citations copied exactly from evidence item paths.",
+    "Every claim and every deterministic state or numeric statement must be supported by its cited evidence values without contradiction, recomputation, or invention.",
+    "For unavailable status, use null summary, empty claims and limitations, and exactly one approved unavailable_reason.",
 )
 
 

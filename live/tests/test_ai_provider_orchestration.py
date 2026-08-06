@@ -512,28 +512,54 @@ def test_phase18b_rule_classification_is_typed_and_content_free(
 
 
 @pytest.mark.parametrize(
-    "case",
+    ("case", "classification"),
     (
-        "empty_summary",
-        "long_summary",
-        "no_claims",
-        "too_many_claims",
-        "available_reason",
-        "missing_advisory",
-        "duplicate_limitation",
-        "invalid_claim_id",
-        "duplicate_claim_id",
-        "empty_claim_text",
-        "long_claim_text",
-        "unavailable_narrative",
+        ("missing_field", OutputRejectionClassification.OUTPUT_CONTRACT_VIOLATION),
+        ("binding_mismatch", OutputRejectionClassification.TRUSTED_BINDING_MISMATCH),
+        ("empty_summary", OutputRejectionClassification.INVALID_SUMMARY),
+        ("long_summary", OutputRejectionClassification.INVALID_SUMMARY),
+        ("no_claims", OutputRejectionClassification.INVALID_CLAIM_COUNT),
+        ("too_many_claims", OutputRejectionClassification.INVALID_CLAIM_COUNT),
+        (
+            "available_reason",
+            OutputRejectionClassification.INVALID_AVAILABILITY_CONTRACT,
+        ),
+        (
+            "missing_advisory",
+            OutputRejectionClassification.MISSING_ADVISORY_LIMITATION,
+        ),
+        (
+            "duplicate_limitation",
+            OutputRejectionClassification.INVALID_LIMITATIONS,
+        ),
+        ("invalid_limitation_type", OutputRejectionClassification.INVALID_LIMITATIONS),
+        ("invalid_claim_id", OutputRejectionClassification.INVALID_CLAIM_ID),
+        ("duplicate_claim_id", OutputRejectionClassification.DUPLICATE_CLAIM_ID),
+        ("invalid_claim_kind", OutputRejectionClassification.INVALID_CLAIM_KIND),
+        ("empty_claim_text", OutputRejectionClassification.INVALID_CLAIM_TEXT),
+        ("long_claim_text", OutputRejectionClassification.INVALID_CLAIM_TEXT),
+        (
+            "unavailable_narrative",
+            OutputRejectionClassification.INVALID_UNAVAILABLE_CONTRACT,
+        ),
+        (
+            "unavailable_without_reason",
+            OutputRejectionClassification.INVALID_UNAVAILABLE_CONTRACT,
+        ),
     ),
 )
-def test_remaining_cross_field_rules_classify_as_other_semantic_rejection(case):
+def test_every_known_contract_rejection_has_a_specific_classification(
+    case, classification
+):
     diagnostics = ProviderFailureDiagnostics()
 
     def invalid(request):
         value = _available(request)
-        if case == "empty_summary":
+        if case == "missing_field":
+            del value["summary"]
+        elif case == "binding_mismatch":
+            value["analysis_input_id"] = "019c1234-0000-7000-8000-000000000099"
+        elif case == "empty_summary":
             value["summary"] = ""
         elif case == "long_summary":
             value["summary"] = "x" * 4001
@@ -547,10 +573,14 @@ def test_remaining_cross_field_rules_classify_as_other_semantic_rejection(case):
             value["limitations"].remove("advisory_only")
         elif case == "duplicate_limitation":
             value["limitations"].append("advisory_only")
+        elif case == "invalid_limitation_type":
+            value["limitations"] = [{}]
         elif case == "invalid_claim_id":
             value["claims"][0]["claim_id"] = "invalid"
         elif case == "duplicate_claim_id":
             value["claims"][1]["claim_id"] = value["claims"][0]["claim_id"]
+        elif case == "invalid_claim_kind":
+            value["claims"][0]["kind"] = {}
         elif case == "empty_claim_text":
             value["claims"][0]["text"] = ""
         elif case == "long_claim_text":
@@ -560,6 +590,14 @@ def test_remaining_cross_field_rules_classify_as_other_semantic_rejection(case):
                 status="unavailable",
                 unavailable_reason="invalid_output",
             )
+        elif case == "unavailable_without_reason":
+            value.update(
+                status="unavailable",
+                summary=None,
+                claims=[],
+                limitations=[],
+                unavailable_reason=None,
+            )
         return value
 
     core, _, _ = _core(FakeProvider(invalid), diagnostics=diagnostics)
@@ -567,15 +605,13 @@ def test_remaining_cross_field_rules_classify_as_other_semantic_rejection(case):
 
     assert isinstance(result, FailedOutcome)
     semantic_snapshot = diagnostics.phase18b_snapshot()
-    assert semantic_snapshot[
-        OutputRejectionClassification.OTHER_SEMANTIC_REJECTION
-    ] == 1
+    assert semantic_snapshot[classification] == 1
     assert sum(semantic_snapshot.values()) == 1
 
 
 @pytest.mark.parametrize(
     "citations",
-    ([], [PATHS[1], PATHS[1]], [PATHS[1]] * 17),
+    ([], [PATHS[1], PATHS[1]], [PATHS[1]] * 17, [{}]),
 )
 def test_citation_cardinality_rules_classify_as_invalid_reference(citations):
     diagnostics = ProviderFailureDiagnostics()
@@ -863,7 +899,7 @@ def test_delayed_evidence_limitation_is_enforced(include_limitation):
         assert isinstance(result, FailedOutcome)
         assert result.reason == "invalid_output"
         assert diagnostics.phase18b_snapshot()[
-            OutputRejectionClassification.OTHER_SEMANTIC_REJECTION
+            OutputRejectionClassification.MISSING_DELAYED_LIMITATION
         ] == 1
 
 
@@ -885,7 +921,19 @@ def test_trusted_prompt_is_deterministic_and_delimits_injection_like_evidence():
     assert injection in first.untrusted_evidence_json
     assert all(injection not in instruction for instruction in first.trusted_instructions)
     assert first.output_schema_version == "ai_analysis_output.v1"
-    for prohibition in ("tools", "invent numeric", "authority", "uncited"):
+    for prohibition in (
+        "tools",
+        "invent numeric",
+        "authority",
+        "uncited",
+        "1-4000",
+        "1-32",
+        "advisory_only",
+        "delayed_evidence",
+        "unique citations",
+        "cited evidence values",
+        "null summary",
+    ):
         assert any(prohibition in item.lower() for item in first.trusted_instructions)
     with pytest.raises(FrozenInstanceError):
         first.purpose = "changed"
