@@ -14,7 +14,7 @@ from typing import Any
 import httpx
 import pytest
 
-from atlas_ai_orchestration import TrustedProviderRequest
+from atlas_ai_orchestration import ProviderFailureClassification, TrustedProviderRequest
 from atlas_ai_orchestration import openai_adapter as adapter_module
 from atlas_ai_orchestration.errors import (
     ProviderPortError,
@@ -309,17 +309,19 @@ def test_oversized_serialized_request_fails_before_transport():
 
 
 @pytest.mark.parametrize(
-    ("status", "error_type"),
+    ("status", "error_type", "classification"),
     [
-        (400, ProviderPortError),
-        (401, ProviderPortError),
-        (403, ProviderPortError),
-        (408, ProviderUnavailableError),
-        (429, ProviderUnavailableError),
-        (500, ProviderUnavailableError),
+        (199, ProviderPortError, ProviderFailureClassification.UNKNOWN),
+        (400, ProviderPortError, ProviderFailureClassification.HTTP_4XX),
+        (401, ProviderPortError, ProviderFailureClassification.HTTP_4XX),
+        (403, ProviderPortError, ProviderFailureClassification.HTTP_4XX),
+        (408, ProviderUnavailableError, ProviderFailureClassification.HTTP_4XX),
+        (429, ProviderUnavailableError, ProviderFailureClassification.HTTP_429),
+        (500, ProviderUnavailableError, ProviderFailureClassification.HTTP_5XX),
+        (503, ProviderUnavailableError, ProviderFailureClassification.HTTP_5XX),
     ],
 )
-def test_http_failure_is_sanitized(status, error_type):
+def test_http_failure_is_sanitized(status, error_type, classification):
     adapter, client = _adapter(lambda _request: httpx.Response(status, text=SECRET))
     try:
         with pytest.raises(error_type) as captured:
@@ -327,20 +329,45 @@ def test_http_failure_is_sanitized(status, error_type):
     finally:
         client.close()
     assert str(captured.value) == ""
+    assert captured.value.args == ()
+    assert vars(captured.value) == {}
     assert captured.value.__cause__ is None
     assert captured.value.__context__ is None
     assert SECRET not in repr(captured.value)
+    assert captured.value.classification is classification
 
 
 @pytest.mark.parametrize(
-    ("raised", "error_type"),
+    ("raised", "error_type", "classification"),
     [
-        (httpx.ReadTimeout(SECRET), ProviderTimeoutError),
-        (httpx.ConnectError(SECRET), ProviderUnavailableError),
-        (RuntimeError(SECRET), ProviderPortError),
+        *(
+            (
+                timeout_type(SECRET),
+                ProviderTimeoutError,
+                ProviderFailureClassification.TIMEOUT,
+            )
+            for timeout_type in (
+                httpx.ConnectTimeout,
+                httpx.ReadTimeout,
+                httpx.WriteTimeout,
+                httpx.PoolTimeout,
+            )
+        ),
+        (
+            httpx.ConnectError(SECRET),
+            ProviderUnavailableError,
+            ProviderFailureClassification.CONNECTIVITY,
+        ),
+        (
+            RuntimeError(SECRET),
+            ProviderPortError,
+            ProviderFailureClassification.UNKNOWN,
+        ),
     ],
 )
-def test_hostile_transport_exception_is_sanitized(raised, error_type):
+def test_hostile_transport_exception_is_sanitized(
+    raised, error_type, classification
+):
     def handler(_request):
         raise raised
 
@@ -351,9 +378,12 @@ def test_hostile_transport_exception_is_sanitized(raised, error_type):
     finally:
         client.close()
     assert str(captured.value) == ""
+    assert captured.value.args == ()
+    assert vars(captured.value) == {}
     assert captured.value.__cause__ is None
     assert captured.value.__context__ is None
     assert SECRET not in repr(captured.value)
+    assert captured.value.classification is classification
 
 
 def test_oversized_response_is_discarded_and_unavailable():
@@ -362,10 +392,14 @@ def test_oversized_response_is_discarded_and_unavailable():
         policy=_policy(max_response_bytes=1024),
     )
     try:
-        with pytest.raises(ProviderUnavailableError):
+        with pytest.raises(ProviderUnavailableError) as captured:
             adapter.invoke(_request())
     finally:
         client.close()
+    assert (
+        captured.value.classification
+        is ProviderFailureClassification.RESPONSE_TOO_LARGE
+    )
 
 
 def test_deadline_is_checked_while_streaming_and_after_transport():
@@ -375,10 +409,11 @@ def test_deadline_is_checked_while_streaming_and_after_transport():
         monotonic=lambda: next(moments),
     )
     try:
-        with pytest.raises(ProviderTimeoutError):
+        with pytest.raises(ProviderTimeoutError) as captured:
             adapter.invoke(_request())
     finally:
         client.close()
+    assert captured.value.classification is ProviderFailureClassification.TIMEOUT
 
 
 @pytest.mark.parametrize(
@@ -410,6 +445,7 @@ def test_missing_or_malformed_candidate_fails_without_raw_material(content):
     assert captured.value.__cause__ is None
     assert captured.value.__context__ is None
     assert SECRET not in repr(captured.value)
+    assert captured.value.classification is ProviderFailureClassification.RESPONSE_DECODE
 
 
 @pytest.mark.parametrize(
@@ -499,6 +535,8 @@ class HostileStream(httpx.SyncByteStream):
 
 def _assert_clean(error: BaseException) -> None:
     assert str(error) == ""
+    assert error.args == ()
+    assert vars(error) == {}
     assert SECRET not in repr(error)
     assert error.__cause__ is None
     assert error.__context__ is None

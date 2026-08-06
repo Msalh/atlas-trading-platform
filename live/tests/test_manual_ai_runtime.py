@@ -210,6 +210,21 @@ def test_enabled_configuration_constructs_one_exact_manual_service_without_invoc
     assert SECRET not in repr(adapter.policy)
 
 
+def test_each_runtime_service_owns_fresh_nonpersistent_diagnostics():
+    first = build_manual_ai_explanation_service(
+        _settings(), adapter_factory=CapturingAdapter, clock=lambda: NOW
+    )
+    second = build_manual_ai_explanation_service(
+        _settings(), adapter_factory=CapturingAdapter, clock=lambda: NOW
+    )
+
+    first_diagnostics = first._provider_orchestrator._failure_diagnostics
+    second_diagnostics = second._provider_orchestrator._failure_diagnostics
+    assert first_diagnostics is not second_diagnostics
+    assert sum(first_diagnostics.snapshot().values()) == 0
+    assert sum(second_diagnostics.snapshot().values()) == 0
+
+
 @pytest.mark.parametrize(
     "changes",
     [

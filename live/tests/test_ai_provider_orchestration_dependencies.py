@@ -125,6 +125,7 @@ def test_phase18e_adapter_has_only_approved_transport_and_internal_dependencies(
         "collections.abc",
         "dataclasses",
         "datetime",
+        "diagnostics",
         "errors",
         "httpx",
         "json",

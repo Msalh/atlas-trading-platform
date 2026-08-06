@@ -15,7 +15,8 @@ from atlas_ai_analysis import (
 from atlas_ai_analysis.models import FailureReason
 from atlas_ai_service import ServiceFailure
 
-from .errors import ProviderTimeoutError, ProviderUnavailableError
+from .diagnostics import ProviderFailureClassification, ProviderFailureDiagnostics
+from .errors import ProviderPortError, ProviderTimeoutError, ProviderUnavailableError
 from .models import (
     OrchestrationOutcome,
     ServiceUnavailableOutcome,
@@ -43,6 +44,7 @@ class ProviderOrchestrator:
         audit_id_factory: IdentityFactory,
         clock: UTCClock,
         generator: GeneratorIdentity,
+        failure_diagnostics: ProviderFailureDiagnostics | None = None,
     ) -> None:
         self._prompt_builder = prompt_builder
         self._provider = provider
@@ -50,6 +52,34 @@ class ProviderOrchestrator:
         self._audit_id_factory = audit_id_factory
         self._clock = clock
         self._generator = generator
+        self._failure_diagnostics = failure_diagnostics
+
+    def _record_provider_failure(
+        self, classification: ProviderFailureClassification
+    ) -> None:
+        if self._failure_diagnostics is None:
+            return
+        try:
+            self._failure_diagnostics.record(classification)
+        except Exception:
+            try:
+                self._failure_diagnostics.record(
+                    ProviderFailureClassification.UNKNOWN
+                )
+            except Exception:
+                pass
+
+    @staticmethod
+    def _safe_classification(error: ProviderPortError) -> ProviderFailureClassification:
+        try:
+            classification = error.classification
+        except Exception:
+            return ProviderFailureClassification.UNKNOWN
+        return (
+            classification
+            if type(classification) is ProviderFailureClassification
+            else ProviderFailureClassification.UNKNOWN
+        )
 
     def run(
         self,
@@ -112,16 +142,25 @@ class ProviderOrchestrator:
 
         try:
             candidate = self._provider.invoke(request)
-        except ProviderTimeoutError:
+        except ProviderTimeoutError as error:
+            self._record_provider_failure(self._safe_classification(error))
             return self._failure(eligible, "provider_timeout")
-        except ProviderUnavailableError:
+        except ProviderUnavailableError as error:
+            self._record_provider_failure(self._safe_classification(error))
             return self._failure(eligible, "provider_unavailable")
+        except ProviderPortError as error:
+            self._record_provider_failure(self._safe_classification(error))
+            return self._failure(eligible, "internal_unavailable")
         except Exception:
+            self._record_provider_failure(ProviderFailureClassification.UNKNOWN)
             return self._failure(eligible, "internal_unavailable")
 
         try:
             validated = validate_output(candidate, eligible)
         except Exception:
+            self._record_provider_failure(
+                ProviderFailureClassification.PHASE18B_INVALID_OUTPUT
+            )
             return self._failure(eligible, "invalid_output")
 
         if validated.status == "available":
@@ -133,13 +172,23 @@ class ProviderOrchestrator:
                     self._generator,
                 )
             except Exception:
+                self._record_provider_failure(ProviderFailureClassification.UNKNOWN)
                 return self._failure(eligible, "internal_unavailable")
             return _completed_outcome(validated, self._generator, audit)
 
         try:
             reason = validated.unavailable_reason
             if reason is None:
+                self._record_provider_failure(
+                    ProviderFailureClassification.PHASE18B_INVALID_OUTPUT
+                )
                 return self._failure(eligible, "internal_unavailable")
         except Exception:
+            self._record_provider_failure(
+                ProviderFailureClassification.PHASE18B_INVALID_OUTPUT
+            )
             return self._failure(eligible, "internal_unavailable")
+        self._record_provider_failure(
+            ProviderFailureClassification.PHASE18B_INVALID_OUTPUT
+        )
         return self._failure(eligible, reason)

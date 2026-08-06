@@ -14,6 +14,7 @@ from atlas.manual_ai_advisory import ManualAIExplanationService
 from atlas_ai_analysis import GeneratorIdentity
 from atlas_ai_orchestration import (
     DeterministicPromptBuilder,
+    ProviderFailureDiagnostics,
     ProviderOrchestrator,
     ProviderPort,
     TrustedProviderRequest,
@@ -239,6 +240,7 @@ def build_manual_ai_explanation_service(
             audit_id_factory=identifier,
             clock=timestamp,
             generator=identity,
+            failure_diagnostics=ProviderFailureDiagnostics(),
         )
         return ManualAIExplanationService(
             provider_orchestrator=orchestrator,

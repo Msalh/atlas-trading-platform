@@ -1,5 +1,6 @@
 """Phase 18D pure offline provider orchestration core."""
 
+from .diagnostics import ProviderFailureClassification, ProviderFailureDiagnostics
 from .errors import ProviderPortError, ProviderTimeoutError, ProviderUnavailableError
 from .models import (
     CompletedOutcome,
@@ -31,6 +32,8 @@ __all__ = [
     "JSONValue",
     "OrchestrationOutcome",
     "ProviderOrchestrator",
+    "ProviderFailureClassification",
+    "ProviderFailureDiagnostics",
     "ProviderPort",
     "ProviderPortError",
     "ProviderTimeoutError",

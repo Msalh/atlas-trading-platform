@@ -13,6 +13,7 @@ from typing import Protocol
 import httpx
 from atlas_ai_analysis import GeneratorIdentity
 
+from .diagnostics import ProviderFailureClassification
 from .errors import ProviderPortError, ProviderTimeoutError, ProviderUnavailableError
 from .models import JSONValue, TrustedProviderRequest
 from .pricing_authority import ProviderPricingRecord, resolve_authoritative_pricing
@@ -82,11 +83,11 @@ class OpenAIProviderAdapter:
         body = self._prepare_clean(request)
         del request
         if body is None:
-            self._raise_clean(ProviderPortError)
+            self._raise_clean(ProviderPortError())
         credential = self._credential_clean()
         if credential is None:
             body = b""
-            self._raise_clean(ProviderPortError)
+            self._raise_clean(ProviderPortError())
 
         raw, failure = self._dispatch(body, credential)
         body = b""
@@ -152,10 +153,10 @@ class OpenAIProviderAdapter:
         self,
         body: bytes,
         credential: str,
-    ) -> tuple[bytes, type[ProviderPortError] | None]:
+    ) -> tuple[bytes, ProviderPortError | None]:
         client: httpx.Client | None = None
         request: httpx.Request | None = None
-        failure: type[ProviderPortError] | None = None
+        failure: ProviderPortError | None = None
         raw = b""
         try:
             client = self._client()
@@ -170,7 +171,7 @@ class OpenAIProviderAdapter:
             )
             raw, failure = self._send(client, request)
         except Exception:  # noqa: BLE001 - sanitize construction/cleanup boundaries
-            failure = ProviderPortError
+            failure = ProviderPortError()
             raw = b""
         finally:
             request = None
@@ -181,7 +182,7 @@ class OpenAIProviderAdapter:
                     client.close()
                 except Exception:  # noqa: BLE001 - never expose cleanup diagnostics
                     if failure is None:
-                        failure = ProviderPortError
+                        failure = ProviderPortError()
                         raw = b""
             client = None
         return raw, failure
@@ -190,42 +191,61 @@ class OpenAIProviderAdapter:
         self,
         client: httpx.Client,
         request: httpx.Request,
-    ) -> tuple[bytes, type[ProviderPortError] | None]:
+    ) -> tuple[bytes, ProviderPortError | None]:
         started = self._monotonic()
-        failure: type[ProviderPortError] | None = None
+        failure: ProviderPortError | None = None
         raw = bytearray()
         response: httpx.Response | None = None
         try:
             response = client.send(request, stream=True, follow_redirects=False)
-            if response.status_code >= 300:
-                failure = (
-                    ProviderUnavailableError
-                    if response.status_code in {408, 409, 429}
-                    or response.status_code >= 500
-                    else ProviderPortError
-                )
+            if not 200 <= response.status_code < 300:
+                if response.status_code == 429:
+                    failure = ProviderUnavailableError(
+                        ProviderFailureClassification.HTTP_429
+                    )
+                elif 400 <= response.status_code < 500:
+                    error_type = (
+                        ProviderUnavailableError
+                        if response.status_code in {408, 409}
+                        else ProviderPortError
+                    )
+                    failure = error_type(ProviderFailureClassification.HTTP_4XX)
+                elif 500 <= response.status_code < 600:
+                    failure = ProviderUnavailableError(
+                        ProviderFailureClassification.HTTP_5XX
+                    )
+                else:
+                    failure = ProviderPortError()
             else:
                 for chunk in response.iter_bytes():
                     if self._monotonic() - started > self._policy.deadline_seconds:
-                        failure = ProviderTimeoutError
+                        failure = ProviderTimeoutError(
+                            ProviderFailureClassification.TIMEOUT
+                        )
                         break
                     if len(raw) + len(chunk) > self._policy.max_response_bytes:
-                        failure = ProviderUnavailableError
+                        failure = ProviderUnavailableError(
+                            ProviderFailureClassification.RESPONSE_TOO_LARGE
+                        )
                         break
                     raw.extend(chunk)
         except httpx.TimeoutException:
-            failure = ProviderTimeoutError
+            failure = ProviderTimeoutError(ProviderFailureClassification.TIMEOUT)
+        except httpx.ConnectError:
+            failure = ProviderUnavailableError(
+                ProviderFailureClassification.CONNECTIVITY
+            )
         except httpx.RequestError:
-            failure = ProviderUnavailableError
+            failure = ProviderUnavailableError()
         except Exception:  # noqa: BLE001 - sanitize untrusted transport failures
-            failure = ProviderPortError
+            failure = ProviderPortError()
         finally:
             if response is not None:
                 try:
                     response.close()
                 except Exception:  # noqa: BLE001 - sanitize response cleanup
                     if failure is None:
-                        failure = ProviderPortError
+                        failure = ProviderPortError()
                         raw.clear()
             response = None
             request = None
@@ -234,13 +254,13 @@ class OpenAIProviderAdapter:
             return b"", failure
         if self._monotonic() - started > self._policy.deadline_seconds:
             raw.clear()
-            return b"", ProviderTimeoutError
+            return b"", ProviderTimeoutError(ProviderFailureClassification.TIMEOUT)
         return bytes(raw), None
 
     def _decode(
         self,
         raw: bytes,
-    ) -> tuple[JSONValue | None, type[ProviderPortError] | None]:
+    ) -> tuple[JSONValue | None, ProviderPortError | None]:
         response_value: object | None = None
         candidate_text: str | None = None
         try:
@@ -248,9 +268,13 @@ class OpenAIProviderAdapter:
             candidate_text = self._candidate_text(response_value)
             candidate = self._decode_json(candidate_text)
         except ProviderUnavailableError:
-            return None, ProviderUnavailableError
+            return None, ProviderUnavailableError(
+                ProviderFailureClassification.RESPONSE_DECODE
+            )
         except Exception:  # noqa: BLE001 - sanitize decoder/provider payload failures
-            return None, ProviderPortError
+            return None, ProviderPortError(
+                ProviderFailureClassification.RESPONSE_DECODE
+            )
         finally:
             response_value = None
             candidate_text = None
@@ -394,5 +418,5 @@ class OpenAIProviderAdapter:
         return json.loads(value, parse_constant=reject_constant, object_pairs_hook=unique_object)
 
     @staticmethod
-    def _raise_clean(error_type: type[ProviderPortError]) -> None:
-        raise error_type from None
+    def _raise_clean(error: ProviderPortError) -> None:
+        raise error from None

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import FrozenInstanceError
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -26,7 +27,10 @@ from atlas_ai_orchestration import (
     CompletedOutcome,
     DeterministicPromptBuilder,
     FailedOutcome,
+    ProviderFailureClassification,
+    ProviderFailureDiagnostics,
     ProviderOrchestrator,
+    ProviderPortError,
     ProviderTimeoutError,
     ProviderUnavailableError,
     RefusedOutcome,
@@ -177,6 +181,7 @@ def _core(
     audit_id: str = AUDIT_ID,
     recorded_at: str = RECORDED_AT,
     generator: GeneratorIdentity = GENERATOR,
+    diagnostics: ProviderFailureDiagnostics | None = None,
 ):
     actual_builder = builder or RecordingBuilder()
     actual_cost = cost or FixedCostPolicy()
@@ -187,6 +192,7 @@ def _core(
         audit_id_factory=FixedFactory(audit_id),
         clock=FixedFactory(recorded_at),
         generator=generator,
+        failure_diagnostics=diagnostics,
     )
     return core, actual_builder, actual_cost
 
@@ -368,6 +374,136 @@ def test_provider_failures_are_sanitized_and_never_retried(exception, reason):
         assert prohibited not in rendered
     assert not hasattr(result, "__cause__")
     assert not hasattr(result, "__context__")
+
+
+def test_sanitized_failure_counters_aggregate_once_per_invocation():
+    diagnostics = ProviderFailureDiagnostics()
+    cases = (
+        ProviderUnavailableError(ProviderFailureClassification.CONNECTIVITY),
+        ProviderTimeoutError(),
+        ProviderPortError(ProviderFailureClassification.HTTP_4XX),
+        ProviderUnavailableError(ProviderFailureClassification.HTTP_429),
+        ProviderUnavailableError(ProviderFailureClassification.HTTP_5XX),
+        ProviderUnavailableError(
+            ProviderFailureClassification.RESPONSE_TOO_LARGE
+        ),
+        ProviderPortError(ProviderFailureClassification.RESPONSE_DECODE),
+        RuntimeError("exception-message-must-not-be-retained"),
+    )
+    for exception in cases:
+        core, _, _ = _core(FakeProvider(exception), diagnostics=diagnostics)
+        core.run(_eligible())
+
+    core, _, _ = _core(
+        FakeProvider(ProviderTimeoutError()), diagnostics=diagnostics
+    )
+    core.run(_eligible())
+
+    snapshot = diagnostics.snapshot()
+    assert snapshot[ProviderFailureClassification.TIMEOUT] == 2
+    assert snapshot[ProviderFailureClassification.CONNECTIVITY] == 1
+    assert snapshot[ProviderFailureClassification.HTTP_4XX] == 1
+    assert snapshot[ProviderFailureClassification.HTTP_429] == 1
+    assert snapshot[ProviderFailureClassification.HTTP_5XX] == 1
+    assert snapshot[ProviderFailureClassification.RESPONSE_TOO_LARGE] == 1
+    assert snapshot[ProviderFailureClassification.RESPONSE_DECODE] == 1
+    assert snapshot[ProviderFailureClassification.UNKNOWN] == 1
+    assert snapshot[ProviderFailureClassification.PHASE18B_INVALID_OUTPUT] == 0
+    assert sum(snapshot.values()) == len(cases) + 1
+    assert "exception-message-must-not-be-retained" not in repr(diagnostics)
+    assert "exception-message-must-not-be-retained" not in repr(snapshot)
+
+
+def test_success_does_not_increment_diagnostics():
+    diagnostics = ProviderFailureDiagnostics()
+    core, _, _ = _core(FakeProvider(_available), diagnostics=diagnostics)
+
+    result = core.run(_eligible())
+
+    assert isinstance(result, CompletedOutcome)
+    assert sum(diagnostics.snapshot().values()) == 0
+
+
+def test_phase18b_rejection_records_only_sanitized_category():
+    diagnostics = ProviderFailureDiagnostics()
+
+    def invalid(request):
+        value = _available(request)
+        value["summary"] = "invalid-output-sentinel"
+        value["claims"][0]["text"] = "Buy now: invalid-output-sentinel"
+        return value
+
+    core, _, _ = _core(FakeProvider(invalid), diagnostics=diagnostics)
+    result = core.run(_eligible())
+
+    assert isinstance(result, FailedOutcome)
+    assert result.reason == "invalid_output"
+    assert diagnostics.snapshot()[
+        ProviderFailureClassification.PHASE18B_INVALID_OUTPUT
+    ] == 1
+    assert sum(diagnostics.snapshot().values()) == 1
+    assert "invalid-output-sentinel" not in repr(diagnostics)
+    assert "invalid-output-sentinel" not in repr(result)
+
+
+def test_diagnostic_snapshot_is_detached_with_fixed_enum_keys():
+    diagnostics = ProviderFailureDiagnostics()
+    snapshot = diagnostics.snapshot()
+
+    assert set(snapshot) == set(ProviderFailureClassification)
+    snapshot[ProviderFailureClassification.UNKNOWN] = 99
+    assert diagnostics.snapshot()[ProviderFailureClassification.UNKNOWN] == 0
+    diagnostics.record(object())
+    assert diagnostics.snapshot()[ProviderFailureClassification.UNKNOWN] == 1
+    assert set(diagnostics.snapshot()) == set(ProviderFailureClassification)
+
+
+def test_concurrent_counter_increments_are_exact_and_bounded():
+    diagnostics = ProviderFailureDiagnostics()
+
+    def record_many(_worker):
+        for _ in range(250):
+            diagnostics.record(ProviderFailureClassification.CONNECTIVITY)
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        list(executor.map(record_many, range(8)))
+
+    snapshot = diagnostics.snapshot()
+    assert snapshot[ProviderFailureClassification.CONNECTIVITY] == 2_000
+    assert sum(snapshot.values()) == 2_000
+    assert set(snapshot) == set(ProviderFailureClassification)
+
+
+def test_hostile_exception_classification_falls_back_to_unknown_without_retention():
+    sentinel = "hostile-provider-diagnostic-must-not-be-retained"
+
+    class HostileProviderError(ProviderPortError):
+        provider_detail = sentinel
+
+        @property
+        def classification(self):
+            raise RuntimeError(sentinel)
+
+        def __str__(self):
+            raise RuntimeError(sentinel)
+
+        def __repr__(self):
+            raise RuntimeError(sentinel)
+
+    diagnostics = ProviderFailureDiagnostics()
+    core, _, _ = _core(
+        FakeProvider(HostileProviderError()), diagnostics=diagnostics
+    )
+
+    result = core.run(_eligible())
+
+    assert isinstance(result, FailedOutcome)
+    assert result.reason == "internal_unavailable"
+    assert diagnostics.snapshot()[ProviderFailureClassification.UNKNOWN] == 1
+    assert sum(diagnostics.snapshot().values()) == 1
+    assert sentinel not in repr(diagnostics)
+    assert sentinel not in repr(diagnostics.snapshot())
+    assert sentinel not in repr(result)
 
 
 @pytest.mark.parametrize(
