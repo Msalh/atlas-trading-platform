@@ -262,16 +262,18 @@ It does not certify any concrete adapter's transactions, durability, locking,
 scheduler behavior, or rollback implementation. Concrete storage and operational
 enablement remain blocked.
 
-## Proposed Phase 18G — Concrete Persistence Adapter Design and Qualification Specification
+## Phase 18G — Concrete PostgreSQL Persistence Adapter Architecture
 
-No post-18F phase name was previously authoritative. Phase 18G is therefore a
-roadmap proposal, not an approved implementation package. Its proposed scope is
-design-only and is defined in `PHASE_18G_PERSISTENCE_ADAPTER_DESIGN.md`.
+Phase 18G is approved as an architecture decision package only. Implementation
+has not started and remains separately unauthorized. Its design is defined in
+`PHASE_18G_PERSISTENCE_ADAPTER_DESIGN.md`.
 
-The proposal would turn the certified Phase 18F technology-neutral contract into
-a reviewed decision and qualification specification for one future concrete
-adapter. It authorizes no technology selection, schema, migration, adapter code,
-database access, retention/deletion mechanism, runtime binding, or deployment.
+The approved default topology is a dedicated, isolated PostgreSQL database with
+12-month record retention, RPO no greater than one hour, and RTO no greater than
+four hours. These are product architecture decisions, not evidence that a
+database, schema, migration, retention mechanism, backup, adapter, or runtime
+exists. Phase 18G authorizes no implementation, database access, runtime binding,
+Phase 18E activation, deployment, or operational certification.
 
 ## Later work-package boundaries
 

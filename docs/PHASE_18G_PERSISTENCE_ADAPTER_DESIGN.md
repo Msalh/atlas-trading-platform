@@ -1,15 +1,36 @@
-# Proposed Phase 18G — Concrete Persistence Adapter Design and Qualification Specification
+# Phase 18G — Concrete PostgreSQL Persistence Adapter Architecture
 
-Status: roadmap proposal for a design-only work package. Implementation is not
-authorized. No phase after Phase 18F was previously named by the authoritative
-roadmap.
+Status: architecture decisions approved for documentation. Implementation has
+not started and is not authorized. No database, schema, migration, adapter,
+retention process, backup, runtime attachment, or deployment exists by virtue of
+this decision.
 
 ## Objective
 
-Define the reviewed architecture, human decisions, and future qualification plan
-for exactly one concrete persistence adapter implementing the certified Phase 18F
-atomic storage port. The result would be a specification and decision record, not
-adapter code, a storage schema, a migration, or an operational attachment.
+Define the implementation-ready architecture and future qualification plan for a
+PostgreSQL adapter implementing the certified Phase 18F atomic storage port. This
+document is a specification and decision record, not adapter code, SQL, a
+migration, a provisioned database, or an operational attachment.
+
+## Approved product decisions
+
+The following decisions are approved:
+
+1. Use a dedicated, isolated PostgreSQL database for AI-analysis persistence. Do
+   not reuse an application database or a shared schema.
+2. Retain every committed completed, failed, and refused persistence record for
+   12 months from its authoritative audit `recorded_at` timestamp. At the
+   boundary, records become eligible for controlled deletion; approval of a
+   deletion mechanism remains separate.
+3. Design recovery controls for an RPO of no more than one hour and an RTO of no
+   more than four hours.
+4. Separate migration and runtime roles. Runtime authority excludes schema
+   modification.
+5. Require encrypted connections, private networking, and environment isolation.
+
+These decisions do not approve a PostgreSQL version, hosting provider, region,
+schema, migration framework, credential, retention worker, backup configuration,
+or production target.
 
 ## Certified inputs and preserved authorities
 
@@ -51,9 +72,11 @@ The future design must preserve these Phase 18F requirements:
    repair, reconstruction, or semantic revalidation.
 10. A success receipt is issued only after the approved durability boundary.
 
-## Candidate adapter decision criteria
+## PostgreSQL selection and remaining decision criteria
 
-No candidate is approved. A later human decision must compare candidates on:
+PostgreSQL in a dedicated isolated database is the approved default technology
+and topology. Provider and version selection remain unresolved. Candidate
+deployments must be compared on:
 
 - native transaction and constraint capabilities for the complete atomic unit;
 - isolation, locking, concurrency, and deterministic conflict behavior;
@@ -84,7 +107,7 @@ The design and its independent review must approve:
 
 ## Schema and migration decisions requiring human approval
 
-- concrete storage technology, topology, and service owner;
+- PostgreSQL version, provider, region, database owner, and operational owner;
 - representation of outputs, audits, receipts, identities, and canonical encoding;
 - fields, indexes, constraints, and referential integrity;
 - migration framework, version authority, compatibility window, and rollback policy;
@@ -94,12 +117,243 @@ The design and its independent review must approve:
 
 No default may be inferred for any item above.
 
-## Retention and deletion decisions requiring human approval
+## Retention and deletion architecture
 
-Retention duration, deletion and purge authority, legal holds, data residency,
-encryption and key ownership, backup retention, restore authority, RPO, RTO, and
-audit-evidence retention are unresolved. They must precede final schema approval
-because they may affect layout, indexes, partitioning, keys, and recovery.
+The approved retention period is 12 months for completed, failed, and refused
+records. The period starts at the frozen audit `recorded_at` timestamp because it
+is present in every persisted audit and represents the authoritative audit event
+time. A separate database commit timestamp may be retained for operations but
+must not reset or replace the retention clock.
+
+Future controlled deletion must use bounded batches, short transactions,
+throttling, an indexed retention timestamp, deterministic high-water marks, and
+sanitized aggregate evidence. A failed batch may be retried only by the future
+retention mechanism under its separately approved idempotency contract. It must
+not broaden the Phase 18F coordinator's no-retry boundary.
+
+Exact replay after approved deletion is no longer a database replay: it is a new
+commit unless a separately approved deletion ledger or tombstone policy says
+otherwise. No tombstone is approved here. This consequence must be accepted or a
+minimal non-sensitive replay tombstone must receive separate approval before
+retention implementation.
+
+Legal hold, incident preservation, purge authority, backup expiration, data
+residency, encryption-key ownership, and privacy/export obligations remain
+unresolved. A record subject to an approved investigation hold must not be
+deleted, but no hold model is authorized until governance supplies one.
+
+## Logical PostgreSQL model
+
+Use one immutable persistence-record table capable of representing both a
+completed output/audit pair and an audit-only failed or refused outcome. A single
+row is the narrowest model because it makes the Phase 18F logical atomic unit the
+physical visibility unit, supports audit-only records without placeholder output
+rows, and avoids cross-table partial-state and recovery complexity.
+
+### Contract-required fields
+
+- audit/operation identity as the primary identity;
+- nullable output identity, unique when present;
+- outcome classification: completed, failed, or refused;
+- authoritative canonical audit bytes and supplied audit digest;
+- nullable authoritative canonical output bytes and supplied output digest;
+- analysis-input, snapshot, purpose, evidence-digest, contract-version,
+  provider, and exact-model projections required to enforce Phase 18F bindings;
+- audit `recorded_at`, which is also the approved retention timestamp; and
+- a physical persistence-schema version.
+
+### Operationally useful fields
+
+- database commit timestamp for operations and recovery evidence, never as a
+  replacement for `recorded_at`;
+- fixed deletion-eligibility timestamp derived from `recorded_at` plus 12 months;
+  the exact calendar arithmetic must be approved and tested before migration;
+- sanitized migration version and, if approved, a non-secret operational
+  correlation identifier.
+
+### Prohibited fields
+
+- raw prompts or evidence content;
+- provider requests, responses, or transport diagnostics;
+- credentials, authorization headers, endpoints, or secrets;
+- raw exception text, SQL, or backend identifiers;
+- unnecessary personal, user, tenant, or application data; and
+- a duplicate parsed payload treated as authoritative.
+
+Tenant identity, legal-hold state, deletion tombstones, export state, and
+provider-specific recovery metadata remain unresolved. They must not be silently
+added during implementation.
+
+## Canonical representation and integrity
+
+Store the exact Phase 18F canonical audit and output bytes in binary columns.
+Those bytes are authoritative. PostgreSQL `jsonb` normalization must never
+replace them. Parsed JSON projections are unnecessary for the initial model;
+future non-authoritative projections require a documented query purpose and
+readback consistency checks.
+
+Store the Phase 18F supplied SHA-256 digests unchanged, together with frozen
+contract versions and the physical persistence-schema version. The adapter must
+recompute each digest and compare it with the supplied digest before writing as a
+defensive integrity check. A successful comparison does not recreate Phase 18B
+trust, authorize an untrusted mapping, or replace the closed Phase 18F DTO.
+Mismatch maps to sanitized `persistence_integrity` before any write.
+
+Historical readers must dispatch by retained versions and fail closed on an
+unsupported version. They must not silently reserialize historical bytes under a
+new canonicalization implementation.
+
+## Constraints, indexes, and immutability
+
+The future schema must provide:
+
+- primary uniqueness for audit/operation identity;
+- partial uniqueness for non-null output identity;
+- closed outcome-classification checks;
+- completed-shape checks requiring output identity/bytes/digest and applicable
+  provider/model and input bindings;
+- audit-only checks requiring null output identity/bytes/digest;
+- non-empty canonical bytes and lower-case SHA-256 format checks;
+- exact frozen contract-version checks or an explicitly versioned compatibility
+  mechanism; and
+- runtime denial of UPDATE, DELETE, TRUNCATE, DDL, ownership, role management,
+  and trigger administration.
+
+Indexes are limited initially to the primary audit identity, unique output
+identity, and the approved retention/deletion eligibility order. Additional
+snapshot, input, digest, provider, or model indexes require an approved access or
+operational purpose.
+
+Immutability is enforced primarily by privileges and insert-only adapter code. A
+defensive update-rejection trigger is recommended but remains an implementation
+choice because it adds function ownership and migration surface requiring its own
+qualification.
+
+## Transaction, isolation, replay, and collision
+
+Use one explicit PostgreSQL transaction at `READ COMMITTED`, one complete row,
+and database unique constraints. This is the smallest defensible strategy;
+`REPEATABLE READ`, `SERIALIZABLE`, advisory locks, and explicit row locks add
+failure and retry behavior not required by the single-row design.
+
+The adapter performs one insert attempt. On success it commits and returns
+`committed` only after the approved durability acknowledgement. On a uniqueness
+conflict it reads the committed row by audit identity and, when relevant, output
+identity, then compares the complete canonical replay fingerprint. Byte-identical
+records return `replayed`; any different identity, bytes, digest, classification,
+or binding returns sanitized `persistence_conflict`.
+
+Concurrent identical first writers must yield one commit and equivalent replay
+receipts. Concurrent conflicting writers permit at most one commit. Constraint
+losers return conflict after comparing the committed winner. No staged row is
+externally visible.
+
+Deadlock, serialization, timeout, cancellation, connection loss, rollback
+failure, and lost commit acknowledgement fail closed. The adapter and driver may
+not automatically replay the transaction. A driver-level transaction retry is a
+second logical persistence attempt and is prohibited unless a later contract
+explicitly proves it equivalent. After acknowledgement loss, a later independent
+submission may resolve through exact replay; the original call must not claim
+success.
+
+## Recovery architecture
+
+RPO no greater than one hour requires recoverable backup or log-archive points at
+least hourly. Continuous write-ahead-log archiving with verified base backups is
+recommended when supported; otherwise the selected provider must prove that its
+native backup interval and recovery semantics meet the same bound.
+
+RTO no greater than four hours requires a documented, rehearsed restore into an
+isolated environment, including database provisioning, backup selection,
+restore, migration compatibility, integrity verification, sanitized aggregate
+record counts, application-readiness checks, and operator handoff within four
+hours.
+
+Backups must be encrypted, access-separated from runtime and migration roles,
+regionally compliant, and retained consistently with the 12-month lifecycle.
+Expired source records must not remain indefinitely recoverable through backups;
+the exact backup-retention overlap and purge semantics require explicit policy.
+Provider-specific PITR granularity, backup immutability, restoration time,
+encryption, regional placement, and cost must be independently verified later.
+
+Restore testing is required initially and periodically at a frequency still
+requiring Operations approval. A restore cannot target or replace production
+during qualification.
+
+## Least-privilege role model
+
+- A NOLOGIN schema-owner template owns the schema and objects.
+- A separately controlled migration identity may assume schema-owner authority
+  only during an approved migration.
+- The runtime role receives CONNECT, schema USAGE, INSERT, and narrowly necessary
+  SELECT for replay/collision resolution. It receives no DDL, UPDATE, DELETE,
+  TRUNCATE, ownership, role-management, trigger, or administrative privilege.
+- An optional operational reader receives CONNECT, schema USAGE, and SELECT only
+  after a separately approved purpose and evidence boundary.
+- Backup/restore authority belongs to a separate platform role or the selected
+  managed provider and is never inherited by runtime.
+
+All environments use separate credentials and isolated databases. Connections
+must be encrypted and privately networked. Credential ownership, distribution,
+rotation, access logging, and operator access require Security/Operations
+approval. Logs contain only fixed classifications and sanitized aggregate
+metadata; canonical payloads, digests, identifiers where unnecessary, connection
+properties, and diagnostics are excluded.
+
+## Migration architecture
+
+Use version-controlled, checksum-bound migrations owned by the migration role.
+The repository already demonstrates reviewed plain SQL migrations, but this does
+not select a framework for Phase 18G. Framework choice remains open pending a
+comparison of checksum enforcement, transactional DDL, locking, drift detection,
+and dependency policy.
+
+Bootstrap must work deterministically on an empty database. Every non-empty
+upgrade must define the supported prior version, mixed-version compatibility
+window, lock duration, failure behavior, evidence, and rollback limitation.
+Prefer roll-forward after data-bearing changes; permit downgrade only when proven
+lossless. Qualify transactional DDL where PostgreSQL supports it and explicitly
+handle non-transactional operations. Production migration remains a separate
+authorization.
+
+## Disposable qualification environment
+
+Future implementation requires exactly one approved disposable PostgreSQL target
+with a pinned major and minor version, private networking, isolated credentials,
+deterministic bootstrap, and no production data or service binding. Parallel
+tests use separate databases or schemas with unique identities; clean reset must
+be deterministic and target-only.
+
+Ordinary integration qualification covers bootstrap, constraints, privileges,
+completed/audit-only commits, replay, collisions, visibility, concurrent writers,
+migration upgrades, retention eligibility, bounded deletion, and sanitized error
+translation.
+
+Separate infrastructure authorization is required for process termination,
+network interruption, lost-acknowledgement simulation, rollback failure,
+crash/restart durability, deadlock stress, backup creation, isolated restore,
+RPO/RTO measurement, and target cleanup. Evidence is limited to versions,
+migration checksums, aggregate counts, generic classifications, timestamps, and
+sanitized target identity.
+
+## Remaining decision register
+
+| Decision | Logical implementation | Disposable certification | Production deployment | Operational enablement |
+|---|---|---|---|---|
+| PostgreSQL version and provider | Blocks dependency/SQL finalization | Blocks | Blocks | Blocks |
+| Disposable qualification target | Does not block local unit design | Blocks | Does not by itself block | Does not by itself block |
+| Geographic residency | Does not block DTO/adapter skeleton | May block target approval | Blocks | Blocks |
+| Encryption-key ownership/rotation | Does not block offline adapter | Partly blocks security proof | Blocks | Blocks |
+| Tenant/user isolation requirement | Blocks final schema | Blocks | Blocks | Blocks |
+| Legal hold | Does not block core insert path; blocks deletion model | Blocks retention certification | Blocks retention enablement | Blocks deletion operations |
+| Privacy/export obligations | May block schema and read surfaces | May block | Blocks | Blocks |
+| Support/operator access | Does not block core adapter | Partly blocks role proof | Blocks | Blocks |
+| Backup retention and expiry overlap | Does not block insert path | Blocks recovery certification | Blocks | Blocks |
+| Backup provider/topology | Does not block insert path | Blocks RPO/RTO proof | Blocks | Blocks |
+| Database owner and on-call owner | Does not block offline code | Blocks operational evidence | Blocks | Blocks |
+| Production target | Does not block disposable implementation | Does not block disposable tests | Blocks | Blocks |
+
+No legal or business requirement is inferred from this register.
 
 ## Failure, recovery, and security boundaries
 
@@ -134,23 +388,44 @@ isolated target and include:
 The in-memory Phase 18F suite cannot certify a concrete adapter's transactions,
 durability, locking, migration, or recovery behavior.
 
-## Proposed entry and exit gates
+## Architecture and implementation gates
 
-Entry to design requires the certified Phase 18F commit, a clean repository base,
-and explicit documentation/architecture authorization. Later implementation also
-requires approved technology, schema, migration, retention/deletion, security,
-durability, and qualification decisions.
+Architecture closure requires the certified Phase 18F commit, this PostgreSQL
+decision package, and independent documentation review. Later implementation
+also requires approval of the blocking items in the decision register, a pinned
+PostgreSQL version and driver, a reviewed schema and migrations, a disposable
+target, and an exact fault-injection and evidence plan.
 
-The design phase exits only when all decisions are recorded, the adapter and
-schema specification is independently reviewed, the qualification and rollback
-plans are executable, and a separate implementation approval boundary is written.
-Exit grants no implementation or operational authority.
+Architecture closure grants no implementation or operational authority.
+
+## Future narrow implementation authorization
+
+A later approval may authorize only:
+
+- one concrete PostgreSQL implementation of `AtomicPersistencePort`;
+- one reviewed physical schema and version-controlled migration set;
+- adapter unit tests and integration tests against one isolated disposable target;
+- the approved canonical-byte, constraint, transaction, replay, collision,
+  concurrency, privilege, and sanitization behavior; and
+- retention eligibility and deletion code only if separately and explicitly
+  authorized after legal-hold and deletion-governance decisions close.
+
+That approval must exclude production databases, production credentials,
+API/runtime attachment, startup or worker binding, Phase 18E provider enablement,
+deployment, and operational certification.
+
+Implementation prerequisites are: resolved tenancy, residency, legal-hold and
+privacy impacts on the schema; approved PostgreSQL version/provider for the
+disposable target; approved driver/dependency pin; schema and migration review;
+key/credential ownership; disposable-target authorization; and reviewed
+qualification, failure-injection, cleanup, and redaction procedures.
 
 ## Recommended dependency order
 
-1. Approve data classification, retention/deletion, residency, encryption, RPO,
-   RTO, backup, restore, and legal-hold policy.
-2. Select the concrete adapter technology and operational owner.
+1. Resolve data classification, residency, encryption, legal hold, tenancy,
+   privacy/export, backup retention, and operator ownership.
+2. Select and pin the PostgreSQL version, provider for the disposable target,
+   driver, and operational owner.
 3. Approve schema, constraints, migrations, transaction/isolation/locking rules,
    durability boundary, compatibility, and rollback plan.
 4. Separately authorize implementation against an isolated disposable target.
@@ -165,6 +440,13 @@ Exit grants no implementation or operational authority.
 
 ## Authorization boundary
 
-Human approval is required for every decision and transition above. This proposal
-authorizes no implementation, test environment, infrastructure access, credential
-use, migration, runtime attachment, deployment, or operational action.
+Human approval is required for every unresolved decision and transition above.
+This architecture package authorizes no implementation, test environment,
+infrastructure access, credential use, migration, retention execution, runtime
+attachment, deployment, or operational action.
+
+Concrete adapter implementation, adapter certification, runtime dependency
+injection, API exposure, Phase 18E activation, deployment, and operational
+certification are separate ordered gates. Passing one does not authorize the
+next. Nothing in Phase 18G grants provider, trading, broker, order, decision, or
+execution authority.
