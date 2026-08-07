@@ -210,6 +210,10 @@ def test_required_runtime_unavailable_and_post_start_loss_are_sanitized(caplog) 
     assert unavailable.value.__cause__ is unavailable.value.__context__ is None
     assert "phase18g-test-only-password" not in caplog.text
     assert "127.0.0.1" not in caplog.text
+    assert "localhost" not in caplog.text
+    assert "port 1" not in caplog.text
+    assert "connection refused" not in caplog.text
+    assert "postgres_pool_event" in caplog.text
 
     runtime = build_ai_persistence_runtime(_runtime_settings())
     runtime._pool.close()

@@ -20,6 +20,29 @@ from datetime import datetime, timezone
 _STANDARD_ATTRS = set(logging.LogRecord("", 0, "", 0, "", (), None).__dict__.keys())
 
 
+class _PsycopgPoolSanitizer(logging.Filter):
+    """Keep driver connection diagnostics out of the application log boundary."""
+
+    _SAFE_MESSAGE = "postgres_pool_event"
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        # psycopg-pool formats connection details (host, port, and driver
+        # exceptions) in the message before it reaches our handlers. Keep the
+        # level/logger for operator triage, but discard all untrusted payloads.
+        record.msg = self._SAFE_MESSAGE
+        record.args = ()
+        record.exc_info = None
+        record.exc_text = None
+        record.stack_info = None
+        return True
+
+
+def _install_psycopg_pool_sanitizer() -> None:
+    pool_logger = logging.getLogger("psycopg.pool")
+    if not any(isinstance(item, _PsycopgPoolSanitizer) for item in pool_logger.filters):
+        pool_logger.addFilter(_PsycopgPoolSanitizer())
+
+
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
         payload = {
@@ -39,6 +62,7 @@ def configure_logging(level: int = logging.INFO) -> None:
     """Replaces the root logger's handlers with a single JSON-formatted stream
     handler. Idempotent - safe to call more than once (e.g. across repeated test
     imports), always ends with exactly one handler installed."""
+    _install_psycopg_pool_sanitizer()
     handler = logging.StreamHandler()
     handler.setFormatter(JsonFormatter())
     root = logging.getLogger()
