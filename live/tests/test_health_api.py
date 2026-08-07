@@ -12,6 +12,29 @@ def test_health_ok_when_database_reachable(client):
     body = resp.json()
     assert body["ok"] is True
     assert body["database"] == {"ok": True, "reason": None, "detail": "ok"}
+    assert body["ai_persistence"] == {"status": "disabled", "required": False}
+
+
+def test_required_persistence_unavailable_makes_readiness_fail_closed(client):
+    from atlas.main import app
+
+    class Runtime:
+        def refresh_readiness(self):
+            return "unavailable"
+
+        def public_state(self):
+            return {"status": "unavailable", "required": True}
+
+    app.state.ai_persistence_runtime = Runtime()
+    try:
+        response = client.get("/api/v1/health")
+    finally:
+        del app.state.ai_persistence_runtime
+    assert response.status_code == 503
+    assert response.json()["ai_persistence"] == {
+        "status": "unavailable",
+        "required": True,
+    }
 
 
 def test_health_reports_none_uptime_when_started_at_not_set(client):

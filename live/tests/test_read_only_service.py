@@ -137,7 +137,7 @@ def test_smoke_lifecycle_routes_auth_no_data_and_shutdown(configured_service):
     # Fixture shutdown happens after this test body.
 
 
-def test_only_four_approved_routes_are_mounted():
+def test_only_approved_routes_are_mounted():
     def flatten(routes, prefix=""):
         for route in routes:
             original = getattr(route, "original_router", None)
@@ -157,6 +157,7 @@ def test_only_four_approved_routes_are_mounted():
         ("GET", "/readiness"),
         ("GET", "/api/v1/trader-now"),
         ("GET", "/api/v1/operations/status"),
+        ("POST", "/api/v1/trader-now/manual-advisory"),
     }
 
 

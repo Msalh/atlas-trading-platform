@@ -13,6 +13,32 @@ from typing import Optional
 class Settings:
     def __init__(self):
         self.database_url = os.environ.get("DATABASE_URL", "")
+        # Phase 18H-1: AI persistence is a separate database boundary.  The
+        # secret DSN is deliberately not read at all while the feature is
+        # disabled, and is never allowed to fall back to DATABASE_URL.
+        self.atlas_ai_persistence_mode = os.environ.get(
+            "ATLAS_AI_PERSISTENCE_MODE", "disabled"
+        ).strip().lower()
+        self.atlas_ai_persistence_database_url = (
+            os.environ.get("ATLAS_AI_PERSISTENCE_DATABASE_URL", "")
+            if self.atlas_ai_persistence_mode == "required"
+            else ""
+        )
+        self.atlas_ai_persistence_connect_timeout_seconds = os.environ.get(
+            "ATLAS_AI_PERSISTENCE_CONNECT_TIMEOUT_SECONDS", "5"
+        )
+        self.atlas_ai_persistence_pool_min_size = os.environ.get(
+            "ATLAS_AI_PERSISTENCE_POOL_MIN_SIZE", "1"
+        )
+        self.atlas_ai_persistence_pool_max_size = os.environ.get(
+            "ATLAS_AI_PERSISTENCE_POOL_MAX_SIZE", "4"
+        )
+        self.atlas_ai_persistence_pool_acquisition_timeout_seconds = os.environ.get(
+            "ATLAS_AI_PERSISTENCE_POOL_ACQUISITION_TIMEOUT_SECONDS", "5"
+        )
+        self.atlas_ai_persistence_local_disposable_test = os.environ.get(
+            "ATLAS_AI_PERSISTENCE_LOCAL_DISPOSABLE_TEST", "false"
+        ).strip().lower()
         self.webhook_secret = os.environ.get("WEBHOOK_SECRET", "")
         # Sprint 3 (Market Engine): a SEPARATE shared secret from WEBHOOK_SECRET,
         # protecting POST /api/v1/market-state. Deliberately not reused from the
@@ -33,7 +59,35 @@ class Settings:
         # validate_for_startup() below. atlas.main:app (the real entrypoint) reads
         # this; scripts/dev_seed_server.py is a separate, intentionally-unauthenticated
         # local test harness that never calls validate_for_startup() at all.
-        self.environment = os.environ.get("ENVIRONMENT", "production").strip().lower()
+        raw_environment = os.environ.get("ENVIRONMENT", "production")
+        self.environment = raw_environment.strip().lower()
+        # Phase 3 local manual-advisory provider. Disabled, malformed, and
+        # non-development modes deliberately do not read the server-only key.
+        self.atlas_ai_provider_enabled = os.environ.get(
+            "ATLAS_AI_PROVIDER_ENABLED", ""
+        )
+        self.atlas_ai_provider_api_key = (
+            os.environ.get("ATLAS_AI_PROVIDER_API_KEY", "")
+            if raw_environment == "development"
+            and self.atlas_ai_provider_enabled == "true"
+            else ""
+        )
+        self.atlas_ai_provider_model = os.environ.get("ATLAS_AI_PROVIDER_MODEL", "")
+        self.atlas_ai_provider_timeout_seconds = os.environ.get(
+            "ATLAS_AI_PROVIDER_TIMEOUT_SECONDS", ""
+        )
+        self.atlas_ai_provider_max_request_bytes = os.environ.get(
+            "ATLAS_AI_PROVIDER_MAX_REQUEST_BYTES", ""
+        )
+        self.atlas_ai_provider_max_response_bytes = os.environ.get(
+            "ATLAS_AI_PROVIDER_MAX_RESPONSE_BYTES", ""
+        )
+        self.atlas_ai_provider_max_output_tokens = os.environ.get(
+            "ATLAS_AI_PROVIDER_MAX_OUTPUT_TOKENS", ""
+        )
+        self.atlas_ai_provider_max_estimated_cost = os.environ.get(
+            "ATLAS_AI_PROVIDER_MAX_ESTIMATED_COST", ""
+        )
         # Sprint 9: shared API key required on every non-webhook, non-health endpoint
         # (see atlas/api/security.py). Single shared secret, not per-user - this
         # remains a single-user tool, not a multi-tenant system.

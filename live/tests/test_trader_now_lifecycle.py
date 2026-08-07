@@ -91,6 +91,7 @@ async def test_startup_builds_one_application_route_gets_same_instance_and_shutd
         provided = get_trader_now_application(SimpleNamespace(app=main_module.app))
         assert calls == [assembled]
         assert provided is assembled
+        assert not hasattr(main_module.app.state, "manual_ai_explanation_service")
 
         result = await assembled.compose_latest(
             symbol="MNQ",
@@ -115,6 +116,83 @@ async def test_startup_builds_one_application_route_gets_same_instance_and_shutd
         for statement in sql
         for token in ("INSERT ", "UPDATE ", "DELETE ", "TRUNCATE ", "ALTER ")
     )
+
+
+@pytest.mark.asyncio
+async def test_lifespan_attaches_manual_ai_service_only_for_its_existing_dependency(
+    monkeypatch,
+):
+    configure(monkeypatch)
+    pool = FakePool()
+    service = object()
+
+    async def create_pool():
+        return pool
+
+    monkeypatch.setattr(main_module, "create_pool", create_pool)
+    monkeypatch.setattr(
+        main_module, "build_manual_ai_explanation_service", lambda _settings: service
+    )
+
+    async with main_module.lifespan(main_module.app):
+        assert main_module.app.state.manual_ai_explanation_service is service
+
+    assert not hasattr(main_module.app.state, "manual_ai_explanation_service")
+    assert pool.close_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_partial_startup_failure_never_retains_manual_ai_service(monkeypatch):
+    configure(monkeypatch)
+    pool = FakePool()
+    manual_builder_calls = 0
+
+    async def create_pool():
+        return pool
+
+    def build_manual(_settings):
+        nonlocal manual_builder_calls
+        manual_builder_calls += 1
+        return object()
+
+    def fail_persistence(_settings):
+        raise RuntimeError("sanitized startup failure")
+
+    monkeypatch.setattr(main_module, "create_pool", create_pool)
+    monkeypatch.setattr(main_module, "build_manual_ai_explanation_service", build_manual)
+    monkeypatch.setattr(main_module, "build_ai_persistence_runtime", fail_persistence)
+
+    with pytest.raises(RuntimeError, match="sanitized startup failure"):
+        async with main_module.lifespan(main_module.app):
+            pass
+
+    assert manual_builder_calls == 0
+    assert not hasattr(main_module.app.state, "manual_ai_explanation_service")
+    assert pool.close_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_repeated_lifespan_cycles_attach_and_remove_manual_service(monkeypatch):
+    configure(monkeypatch)
+    pools = []
+    service = object()
+
+    async def create_pool():
+        pool = FakePool()
+        pools.append(pool)
+        return pool
+
+    monkeypatch.setattr(main_module, "create_pool", create_pool)
+    monkeypatch.setattr(
+        main_module, "build_manual_ai_explanation_service", lambda _settings: service
+    )
+
+    for _ in range(2):
+        async with main_module.lifespan(main_module.app):
+            assert main_module.app.state.manual_ai_explanation_service is service
+        assert not hasattr(main_module.app.state, "manual_ai_explanation_service")
+
+    assert [pool.close_calls for pool in pools] == [1, 1]
 
 
 @pytest.mark.asyncio

@@ -33,7 +33,7 @@ jobs:
       # unit suite - closing the Sprint 8 audit's finding that this had never been
       # exercised anywhere in this project's history.
       postgres:
-        image: postgres:16
+        image: postgres@sha256:7958605b474b3d264a969cb3a123d6aa00ad1e1fe9da8a69984dabb704d93317
         env:
           POSTGRES_USER: atlas_test
           POSTGRES_PASSWORD: atlas_test
@@ -71,6 +71,16 @@ jobs:
 
       - name: Run unit test suite (in-memory repository) with coverage
         run: pytest tests/ --cov-report=xml --cov-fail-under=80
+
+      - name: Qualify Phase 18G and 18H persistence against PostgreSQL 17.10
+        env:
+          PHASE18G_TEST_DATABASE_URL: postgres://atlas_test:atlas_test@localhost:5432/atlas_test
+        run: |
+          test -n "$PHASE18G_TEST_DATABASE_URL"
+          pytest -v --no-cov \
+            tests/test_ai_persistence_postgres.py \
+            tests/test_ai_persistence_postgres_unit.py \
+            tests/test_ai_persistence_runtime.py
 
       - name: Run integration tests against real Postgres
         env:

@@ -48,11 +48,8 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+from atlas.ai_persistence_runtime import build_ai_persistence_runtime
 from atlas.alerting import ClaudeFailureTracker, alert_on_forward_failure
-from atlas.application.trader_now_production import (
-    TraderNowProductionConfig,
-    build_trader_now_application,
-)
 from atlas.api.security import require_api_key
 from atlas.api.v1 import (
     activity,
@@ -68,12 +65,16 @@ from atlas.api.v1 import (
     rule_engine,
     shadow_results,
     setup_engine,
-    status,
     stats,
+    status,
     stream,
     trader_now,
     trades,
     webhook,
+)
+from atlas.application.trader_now_production import (
+    TraderNowProductionConfig,
+    build_trader_now_application,
 )
 from atlas.config import settings
 from atlas.db import create_pool
@@ -82,6 +83,7 @@ from atlas.events.bus import EventBus
 from atlas.events.subscribers import log_event
 from atlas.events.types import ALL as ALL_EVENT_TYPES
 from atlas.logging_config import configure_logging
+from atlas.manual_ai_runtime import build_manual_ai_explanation_service
 from atlas.market_engine.repositories.postgres import PostgresMarketStateRepository
 from atlas.monitoring import MarketStateStalenessMonitor
 from atlas.rate_limit import limiter
@@ -247,14 +249,41 @@ async def lifespan(app: FastAPI):
         )
     )
 
-    yield
-
-    staleness_task.cancel()
+    # Phase 18H-1 composes only the persistence boundary. Disabled mode reads
+    # no persistence DSN and opens no second pool. Required-mode construction
+    # is bounded startup work; no provider or persistence operation runs here.
     try:
-        await staleness_task
-    except asyncio.CancelledError:
-        pass
-    await pool.close()
+        app.state.ai_persistence_runtime = build_ai_persistence_runtime(settings)
+    except Exception:
+        staleness_task.cancel()
+        try:
+            await staleness_task
+        except asyncio.CancelledError:
+            pass
+        await pool.close()
+        raise
+
+    # Phase 3: construction is default-disabled and performs no provider call.
+    # Attach only after every fallible startup dependency has completed so a
+    # partial startup cannot retain the manual-only service on application state.
+    manual_ai_service = build_manual_ai_explanation_service(settings)
+    if manual_ai_service is not None:
+        app.state.manual_ai_explanation_service = manual_ai_service
+    elif hasattr(app.state, "manual_ai_explanation_service"):
+        del app.state.manual_ai_explanation_service
+
+    try:
+        yield
+    finally:
+        if hasattr(app.state, "manual_ai_explanation_service"):
+            del app.state.manual_ai_explanation_service
+        staleness_task.cancel()
+        try:
+            await staleness_task
+        except asyncio.CancelledError:
+            pass
+        app.state.ai_persistence_runtime.close()
+        await pool.close()
 
 
 # Sprint 9: FastAPI's auto-generated /docs, /redoc, /openapi.json reveal the full API

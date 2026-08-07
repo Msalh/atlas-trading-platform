@@ -15,6 +15,8 @@ from .errors import (
     AIAnalysisAuthorityError,
     AIAnalysisCitationError,
     AIAnalysisValidationError,
+    OutputRejectionClassification,
+    SemanticContradictionSubreason,
 )
 from .models import (
     AnalysisAuditIdentity,
@@ -22,8 +24,11 @@ from .models import (
     EligibleAnalysis,
     FailureReason,
     GeneratorIdentity,
+    JSONValue,
     RefusedAnalysis,
     SnapshotVerification,
+    ValidatedAnalysisOutput,
+    _validated_analysis_output,
 )
 
 INPUT_SCHEMA_VERSION = "ai_analysis_input.v1"
@@ -366,10 +371,41 @@ def validate_input(value: Mapping[str, Any], snapshot: Mapping[str, Any]) -> Non
 
 
 def validate_output(
-    value: Mapping[str, Any],
+    value: JSONValue,
     eligible: EligibleAnalysis,
-) -> None:
+) -> ValidatedAnalysisOutput:
     """Validate structural and semantic output against one eligible input."""
+    try:
+        return _validate_output(value, eligible)
+    except AIAnalysisValidationError as error:
+        if (
+            error.output_rejection
+            is not OutputRejectionClassification.OTHER_SEMANTIC_REJECTION
+        ):
+            raise
+        raise AIAnalysisValidationError(
+            *error.args,
+            output_rejection=(
+                OutputRejectionClassification.OUTPUT_CONTRACT_VIOLATION
+            ),
+        ) from None
+
+
+def _validate_output(
+    value: JSONValue,
+    eligible: EligibleAnalysis,
+) -> ValidatedAnalysisOutput:
+    normalization_failed = False
+    try:
+        value = cast(Mapping[str, Any], _trusted_output_value(value))
+    except AIAnalysisValidationError:
+        raise
+    except Exception:
+        normalization_failed = True
+    if normalization_failed:
+        raise AIAnalysisValidationError("analysis output normalization failed")
+    if not isinstance(value, Mapping):
+        raise AIAnalysisValidationError("analysis output must be an object")
     _closed(value, _OUTPUT_KEYS, "analysis output")
     if value["schema_version"] != OUTPUT_SCHEMA_VERSION:
         raise AIAnalysisValidationError("unsupported analysis output schema")
@@ -387,28 +423,64 @@ def validate_output(
         ("purpose", analysis_input["purpose"]),
     ):
         if value[field] != expected:
-            raise AIAnalysisValidationError(f"output {field} mismatch")
+            raise AIAnalysisValidationError(
+                f"output {field} mismatch",
+                output_rejection=(
+                    OutputRejectionClassification.TRUSTED_BINDING_MISMATCH
+                ),
+            )
 
     status = value["status"]
     claims = value["claims"]
     limitations = value["limitations"]
     if not isinstance(claims, (tuple, list)) or not isinstance(limitations, (tuple, list)):
-        raise AIAnalysisValidationError("claims and limitations must be arrays")
-    if len(limitations) > 16 or len(limitations) != len(set(limitations)) or any(
-        item not in LIMITATIONS for item in limitations
+        raise AIAnalysisValidationError(
+            "claims and limitations must be arrays",
+            output_rejection=(
+                OutputRejectionClassification.OUTPUT_CONTRACT_VIOLATION
+            ),
+        )
+    if (
+        len(limitations) > 16
+        or any(not isinstance(item, str) or item not in LIMITATIONS for item in limitations)
+        or len(limitations) != len(set(cast(Sequence[str], limitations)))
     ):
-        raise AIAnalysisValidationError("invalid or duplicate limitation")
+        raise AIAnalysisValidationError(
+            "invalid or duplicate limitation",
+            output_rejection=OutputRejectionClassification.INVALID_LIMITATIONS,
+        )
     if status == "available":
         if not isinstance(value["summary"], str) or not 1 <= len(value["summary"]) <= 4000:
-            raise AIAnalysisValidationError("available output requires a summary")
+            raise AIAnalysisValidationError(
+                "available output requires a summary",
+                output_rejection=OutputRejectionClassification.INVALID_SUMMARY,
+            )
         if not 1 <= len(claims) <= 32:
-            raise AIAnalysisValidationError("available output requires 1 to 32 claims")
+            raise AIAnalysisValidationError(
+                "available output requires 1 to 32 claims",
+                output_rejection=OutputRejectionClassification.INVALID_CLAIM_COUNT,
+            )
         if value["unavailable_reason"] is not None:
-            raise AIAnalysisValidationError("available output cannot have unavailable_reason")
+            raise AIAnalysisValidationError(
+                "available output cannot have unavailable_reason",
+                output_rejection=(
+                    OutputRejectionClassification.INVALID_AVAILABILITY_CONTRACT
+                ),
+            )
         if "advisory_only" not in limitations:
-            raise AIAnalysisValidationError("available output must be advisory_only")
+            raise AIAnalysisValidationError(
+                "available output must be advisory_only",
+                output_rejection=(
+                    OutputRejectionClassification.MISSING_ADVISORY_LIMITATION
+                ),
+            )
         if eligible.freshness == "delayed" and "delayed_evidence" not in limitations:
-            raise AIAnalysisValidationError("delayed evidence limitation is required")
+            raise AIAnalysisValidationError(
+                "delayed evidence limitation is required",
+                output_rejection=(
+                    OutputRejectionClassification.MISSING_DELAYED_LIMITATION
+                ),
+            )
         _validate_claims(claims, eligible)
         _validate_prohibited_text(value["summary"])
         deterministic_items = [
@@ -430,16 +502,56 @@ def validate_output(
             value["summary"],
             [item[0] for item in deterministic_items],
             [item[1] for item in deterministic_items],
+            summary=True,
         )
     elif status == "unavailable":
         if value["summary"] is not None or claims or limitations:
             raise AIAnalysisValidationError(
-                "unavailable output cannot contain narrative, claims, or limitations"
+                "unavailable output cannot contain narrative, claims, or limitations",
+                output_rejection=(
+                    OutputRejectionClassification.INVALID_UNAVAILABLE_CONTRACT
+                ),
             )
         if value["unavailable_reason"] not in FAILURE_REASONS:
-            raise AIAnalysisValidationError("unavailable output requires a failure reason")
+            raise AIAnalysisValidationError(
+                "unavailable output requires a failure reason",
+                output_rejection=(
+                    OutputRejectionClassification.INVALID_UNAVAILABLE_CONTRACT
+                ),
+            )
     else:
-        raise AIAnalysisValidationError("invalid output status")
+        raise AIAnalysisValidationError(
+            "invalid output status",
+            output_rejection=(
+                OutputRejectionClassification.OUTPUT_CONTRACT_VIOLATION
+            ),
+        )
+    return _validated_analysis_output(value)
+
+
+def _trusted_output_value(value: Any) -> Any:
+    """Copy provider data into exact immutable JSON-domain built-in values."""
+    if isinstance(value, Mapping):
+        copied: dict[str, Any] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise AIAnalysisValidationError("analysis output key must be text")
+            normalized_key = str.__str__(key)
+            if normalized_key in copied:
+                raise AIAnalysisValidationError("analysis output keys collide")
+            copied[normalized_key] = _trusted_output_value(item)
+        return MappingProxyType(copied)
+    if isinstance(value, (list, tuple)):
+        return tuple(_trusted_output_value(item) for item in value)
+    if value is None or type(value) is bool:
+        return value
+    if isinstance(value, str):
+        return str.__str__(value)
+    if isinstance(value, int):
+        return int.__int__(value)
+    if isinstance(value, float):
+        return float.__float__(value)
+    raise AIAnalysisValidationError("analysis output contains a non-JSON value")
 
 
 def resolve_citation(path: str, eligible: EligibleAnalysis) -> Any:
@@ -515,16 +627,29 @@ def completed_audit(
     identity: AnalysisAuditIdentity,
     generator: GeneratorIdentity,
 ) -> Mapping[str, Any]:
-    validate_output(output, eligible)
-    if output["status"] != "available":
+    validated = validate_output(output, eligible)
+    return completed_audit_from_validated_output(eligible, validated, identity, generator)
+
+
+def completed_audit_from_validated_output(
+    eligible: EligibleAnalysis,
+    output: ValidatedAnalysisOutput,
+    identity: AnalysisAuditIdentity,
+    generator: GeneratorIdentity,
+) -> Mapping[str, Any]:
+    """Build a completed audit from the exact trusted Phase 18B output type."""
+    if type(output) is not ValidatedAnalysisOutput:
+        raise TypeError("validated output is required")
+    if output.status != "available":
         raise AIAnalysisValidationError("completed audit requires available output")
+    value = output.value
     return _audit(
         identity=identity,
         analysis_input_id=eligible.analysis_input["analysis_input_id"],
-        analysis_output_id=output["analysis_output_id"],
-        snapshot_id=output["snapshot_id"],
-        evidence_digest=output["evidence_digest"],
-        purpose=output["purpose"],
+        analysis_output_id=value["analysis_output_id"],
+        snapshot_id=value["snapshot_id"],
+        evidence_digest=value["evidence_digest"],
+        purpose=value["purpose"],
         outcome="completed",
         reason_code=None,
         generator=generator,
@@ -653,37 +778,71 @@ def _audit(
 
 
 def _validate_claims(claims: Sequence[Any], eligible: EligibleAnalysis) -> None:
+    deterministic_values = [
+        item["value"]
+        for item in cast(
+            Sequence[Mapping[str, Any]], eligible.analysis_input["evidence_items"]
+        )
+        if any(
+            item["path"] == root or item["path"].startswith(f"{root}/")
+            for root in ("/evidence/strategy", "/evidence/risk", "/evidence/decision")
+        )
+    ]
     claim_ids: set[str] = set()
     for claim_value in claims:
         claim = _mapping(claim_value, "claim")
         _closed(claim, frozenset({"claim_id", "kind", "text", "citations"}), "claim")
         claim_id = claim["claim_id"]
         if not isinstance(claim_id, str) or not _CLAIM_ID.fullmatch(claim_id):
-            raise AIAnalysisValidationError("invalid claim_id")
+            raise AIAnalysisValidationError(
+                "invalid claim_id",
+                output_rejection=OutputRejectionClassification.INVALID_CLAIM_ID,
+            )
         if claim_id in claim_ids:
-            raise AIAnalysisValidationError("claim IDs must be unique")
+            raise AIAnalysisValidationError(
+                "claim IDs must be unique",
+                output_rejection=OutputRejectionClassification.DUPLICATE_CLAIM_ID,
+            )
         claim_ids.add(claim_id)
-        if claim["kind"] not in {"explanation", "attention_guidance"}:
-            raise AIAnalysisValidationError("invalid claim kind")
+        if not isinstance(claim["kind"], str) or claim["kind"] not in {
+            "explanation",
+            "attention_guidance",
+        }:
+            raise AIAnalysisValidationError(
+                "invalid claim kind",
+                output_rejection=OutputRejectionClassification.INVALID_CLAIM_KIND,
+            )
         text = claim["text"]
         if not isinstance(text, str) or not 1 <= len(text) <= 2000:
-            raise AIAnalysisValidationError("invalid claim text")
+            raise AIAnalysisValidationError(
+                "invalid claim text",
+                output_rejection=OutputRejectionClassification.INVALID_CLAIM_TEXT,
+            )
         citations = claim["citations"]
         if (
             not isinstance(citations, (tuple, list))
             or not 1 <= len(citations) <= 16
-            or len(citations) != len(set(citations))
+            or any(not isinstance(path, str) for path in citations)
+            or len(citations) != len(set(cast(Sequence[str], citations)))
         ):
             raise AIAnalysisCitationError("material claim requires unique citations")
         cited_values = [resolve_citation(path, eligible) for path in citations]
         _validate_prohibited_text(text)
-        _validate_deterministic_claim(text, citations, cited_values)
+        _validate_deterministic_claim(
+            text,
+            citations,
+            cited_values,
+            eligible_values=deterministic_values,
+        )
 
 
 def _validate_deterministic_claim(
     text: str,
     citations: Sequence[str],
     cited_values: Sequence[Any],
+    *,
+    eligible_values: Sequence[Any] | None = None,
+    summary: bool = False,
 ) -> None:
     deterministic = any(
         path == root or path.startswith(f"{root}/")
@@ -693,7 +852,12 @@ def _validate_deterministic_claim(
     if not deterministic:
         return
     if any(pattern.search(text) for pattern in _RECOMPUTATION_PATTERNS):
-        raise AIAnalysisAuthorityError("deterministic state recomputation is prohibited")
+        raise AIAnalysisAuthorityError(
+            "deterministic state recomputation is prohibited",
+            output_rejection=(
+                OutputRejectionClassification.DETERMINISTIC_FIELD_MISMATCH
+            ),
+        )
     cited_terms = {
         item.lower()
         for value in cited_values
@@ -705,19 +869,46 @@ def _validate_deterministic_claim(
         for canonical, patterns in _STATE_ALIASES.items()
         if any(pattern.search(text) for pattern in patterns)
     }
-    if not mentioned_terms <= cited_terms:
-        raise AIAnalysisAuthorityError("claim contradicts deterministic state")
+    unsupported_terms = mentioned_terms - cited_terms
+    if unsupported_terms:
+        subreason = SemanticContradictionSubreason.CLASSIFICATION_AMBIGUOUS
+        if summary:
+            subreason = SemanticContradictionSubreason.SUMMARY_STATE_UNSUPPORTED
+        else:
+            eligible_terms = {
+                item.lower()
+                for value in (cited_values if eligible_values is None else eligible_values)
+                for item in _scalar_texts(value)
+                if item.lower() in _STATE_TERMS or item == "null"
+            }
+            globally_unsupported = unsupported_terms - eligible_terms
+            support_omitted = unsupported_terms & eligible_terms
+            if globally_unsupported and not support_omitted:
+                subreason = SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED
+            elif support_omitted and not globally_unsupported:
+                subreason = SemanticContradictionSubreason.CLAIM_STATE_SUPPORT_OMITTED
+        raise AIAnalysisAuthorityError(
+            "claim contradicts deterministic state",
+            output_rejection=OutputRejectionClassification.SEMANTIC_CONTRADICTION,
+            semantic_contradiction_subreason=subreason,
+        )
     cited_scalars = {item for value in cited_values for item in _scalar_texts(value)}
     for token in _DECIMAL_TOKEN.findall(text):
         if token not in cited_scalars:
             raise AIAnalysisAuthorityError(
-                "claim recomputes or invents a deterministic numeric value"
+                "claim recomputes or invents a deterministic numeric value",
+                output_rejection=OutputRejectionClassification.NUMERIC_INVENTION,
             )
 
 
 def _validate_prohibited_text(text: str) -> None:
     if any(pattern.search(text) for pattern in _PROHIBITED_PATTERNS):
-        raise AIAnalysisAuthorityError("output contains prohibited authority or action")
+        raise AIAnalysisAuthorityError(
+            "output contains prohibited authority or action",
+            output_rejection=(
+                OutputRejectionClassification.PROHIBITED_AUTHORITY_CONTENT
+            ),
+        )
 
 
 def _scalar_texts(value: Any) -> Iterable[str]:

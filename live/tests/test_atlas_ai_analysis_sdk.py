@@ -8,7 +8,7 @@ import json
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
+from typing import Any, get_type_hints
 
 import pytest
 
@@ -23,7 +23,9 @@ from atlas_ai_analysis import (
     GeneratorIdentity,
     RefusedAnalysis,
     SnapshotVerification,
+    ValidatedAnalysisOutput,
     completed_audit,
+    completed_audit_from_validated_output,
     failed_audit,
     parse_audit,
     parse_input,
@@ -40,6 +42,11 @@ from atlas_ai_analysis import (
     validate_output,
 )
 from atlas_ai_analysis._json import plain
+from atlas_ai_analysis.errors import (
+    OutputRejectionClassification,
+    SemanticContradictionSubreason,
+)
+from atlas_ai_analysis.models import JSONValue
 
 ROOT = Path(__file__).parents[1]
 SPEC = ROOT / "specs" / "ai_analysis" / "v1"
@@ -158,7 +165,9 @@ def test_public_api_is_small_explicit_and_provider_neutral():
         "SNAPSHOT_ALLOWLIST",
         "SNAPSHOT_SCHEMA_VERSION",
         "SnapshotVerification",
+        "ValidatedAnalysisOutput",
         "completed_audit",
+        "completed_audit_from_validated_output",
         "failed_audit",
         "parse_audit",
         "parse_input",
@@ -379,6 +388,17 @@ def test_available_and_unavailable_representations_are_exclusive():
         validate_output(unavailable, eligible)
 
 
+@pytest.mark.parametrize("candidate", [None, True, 7, 1.5, "text", [], [1]])
+def test_validate_output_recursive_json_contract_rejects_non_objects(candidate):
+    with pytest.raises(AIAnalysisValidationError, match="must be an object"):
+        validate_output(candidate, _eligible())
+
+
+def test_validate_output_annotation_uses_recursive_json_value_contract():
+    assert validate_output.__annotations__["value"] == "JSONValue"
+    assert get_type_hints(validate_output)["value"] is JSONValue
+
+
 def test_every_material_claim_requires_unique_resolving_citations():
     eligible = _eligible()
     output = _golden("output.complete-current.json")
@@ -427,8 +447,12 @@ def test_strategy_state_contradiction_is_rejected():
     output = _golden("output.complete-current.json")
     output["claims"][0]["text"] = "The deterministic strategy rejected this setup."
 
-    with pytest.raises(AIAnalysisAuthorityError, match="contradicts"):
+    with pytest.raises(AIAnalysisAuthorityError, match="contradicts") as raised:
         validate_output(output, eligible)
+    assert (
+        raised.value.semantic_contradiction_subreason
+        is SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED
+    )
 
 
 @pytest.mark.parametrize("contradiction", ("rejected", "declined", "denied"))
@@ -439,8 +463,12 @@ def test_strategy_state_contradiction_synonyms_are_rejected(contradiction):
         f"The deterministic strategy {contradiction} this setup."
     )
 
-    with pytest.raises(AIAnalysisAuthorityError, match="contradicts"):
+    with pytest.raises(AIAnalysisAuthorityError, match="contradicts") as raised:
         validate_output(output, eligible)
+    assert (
+        raised.value.semantic_contradiction_subreason
+        is SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED
+    )
 
 
 def test_summary_cannot_bypass_deterministic_contradiction_detection():
@@ -448,8 +476,111 @@ def test_summary_cannot_bypass_deterministic_contradiction_detection():
     output = _golden("output.complete-current.json")
     output["summary"] = "The deterministic strategy rejected this setup."
 
-    with pytest.raises(AIAnalysisAuthorityError, match="contradicts"):
+    with pytest.raises(AIAnalysisAuthorityError, match="contradicts") as raised:
         validate_output(output, eligible)
+    assert (
+        raised.value.semantic_contradiction_subreason
+        is SemanticContradictionSubreason.SUMMARY_STATE_UNSUPPORTED
+    )
+
+
+def test_claim_state_support_omitted_is_distinct_from_unsupported():
+    eligible = _eligible()
+    output = _golden("output.complete-current.json")
+    output["claims"][0]["citations"] = [
+        "/evidence/strategy/decisions/0/confidence"
+    ]
+    output["claims"][0]["text"] = "The deterministic strategy is a candidate."
+
+    with pytest.raises(AIAnalysisAuthorityError) as raised:
+        validate_output(output, eligible)
+
+    assert (
+        raised.value.semantic_contradiction_subreason
+        is SemanticContradictionSubreason.CLAIM_STATE_SUPPORT_OMITTED
+    )
+
+
+@pytest.mark.parametrize("state", ("no-signal", "not-implemented", "absent"))
+def test_claim_state_unsupported_subreason_is_closed(state):
+    eligible = _eligible()
+    output = _golden("output.complete-current.json")
+    output["claims"][0]["text"] = f"The deterministic strategy is {state}."
+
+    with pytest.raises(AIAnalysisAuthorityError) as raised:
+        validate_output(output, eligible)
+
+    assert (
+        raised.value.semantic_contradiction_subreason
+        in {
+            SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED,
+            SemanticContradictionSubreason.CLAIM_STATE_SUPPORT_OMITTED,
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ("term", "expected"),
+    (
+        ("candidate", SemanticContradictionSubreason.CLAIM_STATE_SUPPORT_OMITTED),
+        ("rejected", SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED),
+        ("no_signal", SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED),
+        ("no-signal", SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED),
+        ("no signal", SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED),
+        ("approved", SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED),
+        (
+            "not_implemented",
+            SemanticContradictionSubreason.CLAIM_STATE_SUPPORT_OMITTED,
+        ),
+        (
+            "not-implemented",
+            SemanticContradictionSubreason.CLAIM_STATE_SUPPORT_OMITTED,
+        ),
+        (
+            "not implemented",
+            SemanticContradictionSubreason.CLAIM_STATE_SUPPORT_OMITTED,
+        ),
+        ("available", SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED),
+        ("unavailable", SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED),
+        ("null", SemanticContradictionSubreason.CLAIM_STATE_SUPPORT_OMITTED),
+        ("declined", SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED),
+        ("denied", SemanticContradictionSubreason.CLAIM_STATE_UNSUPPORTED),
+        ("absent", SemanticContradictionSubreason.CLAIM_STATE_SUPPORT_OMITTED),
+    ),
+)
+def test_complete_semantic_state_term_and_alias_matrix(term, expected):
+    eligible = _eligible()
+    output = _golden("output.complete-current.json")
+    output["claims"][0]["citations"] = [
+        "/evidence/strategy/decisions/0/confidence"
+    ]
+    output["claims"][0]["text"] = f"The deterministic strategy state is {term}."
+
+    with pytest.raises(AIAnalysisAuthorityError) as raised:
+        validate_output(output, eligible)
+
+    assert raised.value.output_rejection is OutputRejectionClassification.SEMANTIC_CONTRADICTION
+    assert raised.value.semantic_contradiction_subreason is expected
+
+
+def test_mixed_supported_and_unsupported_terms_are_ambiguous():
+    eligible = _eligible()
+    output = _golden("output.complete-current.json")
+    output["claims"][0]["citations"] = [
+        "/evidence/strategy/decisions/0/confidence"
+    ]
+    output["claims"][0]["text"] = (
+        "The deterministic strategy state is candidate and rejected."
+    )
+
+    with pytest.raises(AIAnalysisAuthorityError) as raised:
+        validate_output(output, eligible)
+
+    assert raised.value.output_rejection is OutputRejectionClassification.SEMANTIC_CONTRADICTION
+    assert (
+        raised.value.semantic_contradiction_subreason
+        is SemanticContradictionSubreason.CLASSIFICATION_AMBIGUOUS
+    )
 
 
 @pytest.mark.parametrize(
@@ -526,6 +657,299 @@ def test_completed_refused_and_failed_audits_match_contract():
     assert failed["analysis_output_id"] is None
     assert failed["reason_code"] == "provider_timeout"
     validate_audit(failed)
+
+
+def test_validate_output_returns_deeply_immutable_trusted_copy():
+    eligible = _eligible()
+    output = _golden("output.complete-current.json")
+
+    validated = validate_output(output, eligible)
+    original_summary = validated.value["summary"]
+    original_claim_text = validated.value["claims"][0]["text"]
+    original_claim_count = len(validated.value["claims"])
+    output["summary"] = "mutated"
+    output["claims"][0]["text"] = "mutated"
+    output["claims"].append({"untrusted": "new"})
+
+    assert isinstance(validated, ValidatedAnalysisOutput)
+    assert validated.status == "available"
+    assert validated.value["summary"] == original_summary
+    assert validated.value["claims"][0]["text"] == original_claim_text
+    assert len(validated.value["claims"]) == original_claim_count
+    with pytest.raises(TypeError):
+        validated.value["summary"] = "changed"
+    with pytest.raises(TypeError):
+        validated.value["claims"][0]["text"] = "changed"
+
+
+def test_validate_output_normalizes_provider_scalar_subclasses_recursively():
+    class MutableText(str):
+        def __new__(cls, value):
+            instance = super().__new__(cls, value)
+            instance.mutable = []
+            return instance
+
+        def __str__(self):
+            raise AssertionError("provider conversion override must not run")
+
+    eligible = _eligible()
+    output = _golden("output.complete-current.json")
+    originals = []
+
+    def text(value):
+        item = MutableText(value)
+        originals.append(item)
+        return item
+
+    for field in (
+        "schema_version",
+        "analysis_output_id",
+        "analysis_input_id",
+        "snapshot_id",
+        "evidence_digest",
+        "purpose",
+        "status",
+        "summary",
+    ):
+        output[field] = text(output[field])
+    output["claims"] = tuple(
+        {
+            text(key): (
+                tuple(text(item) for item in value)
+                if key == "citations"
+                else text(value)
+            )
+            for key, value in claim.items()
+        }
+        for claim in output["claims"]
+    )
+    output["limitations"] = [text(item) for item in output["limitations"]]
+
+    validated = validate_output(output, eligible)
+
+    def scalars(value):
+        if isinstance(value, dict | MappingProxyType):
+            for key, item in value.items():
+                yield key
+                yield from scalars(item)
+        elif isinstance(value, tuple):
+            for item in value:
+                yield from scalars(item)
+        else:
+            yield value
+
+    trusted_scalars = tuple(scalars(validated.value))
+    assert validated.status == "available"
+    assert type(validated.status) is str
+    assert all(type(item) in {str, bool, int, float, type(None)} for item in trusted_scalars)
+    assert not any(item is original for item in trusted_scalars for original in originals)
+    assert all(not hasattr(item, "mutable") for item in trusted_scalars)
+    for original in originals:
+        original.mutable.append("changed")
+    assert validated.status == "available"
+    assert validated.value["summary"] == _golden("output.complete-current.json")["summary"]
+
+
+def test_validate_output_normalizes_stateful_status_before_validation():
+    class StatefulStatus(str):
+        def __new__(cls):
+            instance = super().__new__(cls, "available")
+            instance.comparisons = 0
+            return instance
+
+        def __eq__(self, other):
+            self.comparisons += 1
+            return self.comparisons == 1 and other == "available"
+
+        __hash__ = str.__hash__
+
+    eligible = _eligible()
+    output = _golden("output.complete-current.json")
+    provider_status = StatefulStatus()
+    output["status"] = provider_status
+
+    validated = validate_output(output, eligible)
+
+    assert provider_status.comparisons == 0
+    assert type(validated.status) is str
+    assert validated.status == "available"
+    assert validated.status == "available"
+
+
+def test_validate_output_normalizes_unavailable_reason_subclass():
+    class MutableReason(str):
+        pass
+
+    eligible = _eligible()
+    output = _golden("output.unavailable.json")
+    reason = MutableReason(output["unavailable_reason"])
+    reason.mutable = []
+    output["unavailable_reason"] = reason
+
+    validated = validate_output(output, eligible)
+    reason.mutable.append("changed")
+
+    assert validated.status == "unavailable"
+    assert type(validated.unavailable_reason) is str
+    assert validated.unavailable_reason == "provider_timeout"
+    assert validated.unavailable_reason is not reason
+    assert not hasattr(validated.unavailable_reason, "mutable")
+
+
+@pytest.mark.parametrize("subclass_first", [False, True])
+def test_validate_output_rejects_exact_and_subclass_key_collision(subclass_first):
+    class DistinctKey(str):
+        __hash__ = object.__hash__
+        __eq__ = object.__eq__
+
+        def __str__(self):
+            raise AssertionError("provider conversion override must not run")
+
+    eligible = _eligible()
+    output = _golden("output.complete-current.json")
+    exact_key = "status"
+    subclass_key = DistinctKey("status")
+    remaining = [(key, value) for key, value in output.items() if key != exact_key]
+    collision = [(exact_key, "unavailable"), (subclass_key, "available")]
+    if subclass_first:
+        collision.reverse()
+    raw = dict([*remaining, *collision])
+
+    assert len(raw) == len(output) + 1
+    assert str.__str__(subclass_key) == exact_key
+    with pytest.raises(AIAnalysisValidationError, match="keys collide"):
+        validate_output(raw, eligible)
+
+
+def test_validate_output_rejects_two_subclass_keys_with_same_normalized_value():
+    class DistinctKey(str):
+        __hash__ = object.__hash__
+        __eq__ = object.__eq__
+
+        def __str__(self):
+            raise AssertionError("provider conversion override must not run")
+
+    eligible = _eligible()
+    output = _golden("output.complete-current.json")
+    first = DistinctKey("status")
+    second = DistinctKey("status")
+    remaining = [(key, value) for key, value in output.items() if key != "status"]
+    raw = dict([*remaining, (first, "unavailable"), (second, "available")])
+
+    assert len(raw) == len(output) + 1
+    assert first is not second
+    assert str.__str__(first) == str.__str__(second) == "status"
+    with pytest.raises(AIAnalysisValidationError, match="keys collide"):
+        validate_output(raw, eligible)
+
+
+def test_validate_output_rejects_nested_normalized_key_collision():
+    class DistinctKey(str):
+        __hash__ = object.__hash__
+        __eq__ = object.__eq__
+
+        def __str__(self):
+            raise AssertionError("provider conversion override must not run")
+
+    eligible = _eligible()
+    output = _golden("output.complete-current.json")
+    claim = output["claims"][0]
+    alias = DistinctKey("text")
+    claim[alias] = "a value that must never replace the exact text field"
+
+    assert len(claim) == 5
+    assert str.__str__(alias) == "text"
+    with pytest.raises(AIAnalysisValidationError, match="keys collide"):
+        validate_output(output, eligible)
+
+
+def test_validate_output_accepts_unique_subclass_keys_as_exact_builtins():
+    class DistinctKey(str):
+        __hash__ = object.__hash__
+        __eq__ = object.__eq__
+
+        def __str__(self):
+            raise AssertionError("provider conversion override must not run")
+
+    eligible = _eligible()
+    output = _golden("output.complete-current.json")
+    provider_keys = tuple(DistinctKey(key) for key in output)
+    raw = dict(zip(provider_keys, output.values(), strict=True))
+
+    validated = validate_output(raw, eligible)
+
+    assert validated.status == "available"
+    assert all(type(key) is str for key in validated.value)
+    assert not any(key is provider_key for key in validated.value for provider_key in provider_keys)
+
+
+def test_validated_output_supported_api_rejects_unchecked_construction():
+    raw = _golden("output.complete-current.json")
+    with pytest.raises(TypeError, match="private"):
+        ValidatedAnalysisOutput(raw, object())
+
+
+def test_completed_audit_from_validated_output_rejects_raw_and_lookalike_values():
+    eligible = _eligible()
+    raw = _golden("output.complete-current.json")
+
+    class Lookalike:
+        status = "available"
+        value = raw
+
+    class Subclass(ValidatedAnalysisOutput):
+        pass
+
+    for unchecked in (raw, Lookalike(), object.__new__(Subclass)):
+        with pytest.raises(TypeError, match="validated output"):
+            completed_audit_from_validated_output(
+                eligible, unchecked, AUDIT_ID, GENERATOR
+            )
+
+
+def test_completed_audit_from_validated_output_matches_legacy_without_revalidation(
+    monkeypatch,
+):
+    eligible = _eligible()
+    raw = _golden("output.complete-current.json")
+    validated = validate_output(raw, eligible)
+    expected = completed_audit(eligible, raw, AUDIT_ID, GENERATOR)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("validation must not run")
+
+    monkeypatch.setattr(atlas_ai_analysis.sdk, "validate_output", forbidden)
+    actual = completed_audit_from_validated_output(
+        eligible, validated, AUDIT_ID, GENERATOR
+    )
+
+    assert actual == expected
+
+
+def test_completed_audit_from_validated_output_rejects_unavailable_result():
+    eligible = _eligible()
+    validated = validate_output(_golden("output.unavailable.json"), eligible)
+    assert validated.status == "unavailable"
+    with pytest.raises(AIAnalysisValidationError, match="requires available"):
+        completed_audit_from_validated_output(
+            eligible, validated, AUDIT_ID, GENERATOR
+        )
+
+
+def test_legacy_completed_audit_still_validates_exactly_once(monkeypatch):
+    eligible = _eligible()
+    raw = _golden("output.complete-current.json")
+    calls = 0
+    original = atlas_ai_analysis.sdk.validate_output
+
+    def counted(value, analysis):
+        nonlocal calls
+        calls += 1
+        return original(value, analysis)
+
+    monkeypatch.setattr(atlas_ai_analysis.sdk, "validate_output", counted)
+    completed_audit(eligible, raw, AUDIT_ID, GENERATOR)
+    assert calls == 1
 
 
 def test_refused_audit_cannot_contain_input_output_or_generator():
@@ -615,6 +1039,7 @@ def test_package_dependency_boundary_is_pure_and_one_way():
         "collections",
         "dataclasses",
         "decimal",
+        "enum",
         "json",
         "re",
         "types",

@@ -53,6 +53,9 @@ export const ALLOWED_PROXY_ROUTES: Readonly<Record<string, ProxyRouteConfig>> = 
   "rule-engine/latest": { GET: { params: ["symbol", "timeframe"] } },
   "setup-engine/latest": { GET: { params: ["symbol", "timeframe"] } },
   "setup-engine/episodes/live": { GET: { params: ["symbol", "timeframe", "window"] } },
+  "trader-now/manual-advisory": {
+    POST: { bodyFields: ["symbol", "timeframe", "strategy_id"] },
+  },
   "research/re1/summary": { GET: { params: [] } },
   "research/re2/summary": { GET: { params: [] } },
   "research/dataset-health": { GET: { params: [] } },

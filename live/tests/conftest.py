@@ -42,6 +42,36 @@ def _reset_rate_limiter():
     limiter.reset()
 
 
+@pytest.fixture(autouse=True)
+def _reset_lifespan_state():
+    """Keep application-lifespan state isolated between tests.
+
+    Lifespan tests exercise the module-level application directly, while route
+    tests intentionally use a TestClient without entering that lifespan.  The
+    production lifespan owns these two state entries, so restore their
+    pre-test presence/value instead of allowing one test's lifecycle to change
+    another test's health contract.
+    """
+    state = app.state
+    names = ("started_at", "ai_persistence_runtime")
+    original = {
+        name: getattr(state, name)
+        for name in names
+        if hasattr(state, name)
+    }
+    for name in names:
+        if hasattr(state, name):
+            delattr(state, name)
+    try:
+        yield
+    finally:
+        for name in names:
+            if hasattr(state, name):
+                delattr(state, name)
+        for name, value in original.items():
+            setattr(state, name, value)
+
+
 @pytest.fixture
 def repository():
     return InMemoryTradeRepository()

@@ -13,6 +13,7 @@ from .models import (
     GeneratorIdentity,
     RefusedAnalysis,
     SnapshotVerification,
+    ValidatedAnalysisOutput,
 )
 from .sdk import (
     AUDIT_SCHEMA_VERSION,
@@ -26,6 +27,7 @@ from .sdk import (
     SNAPSHOT_ALLOWLIST,
     SNAPSHOT_SCHEMA_VERSION,
     completed_audit,
+    completed_audit_from_validated_output,
     failed_audit,
     parse_audit,
     parse_input,
@@ -63,7 +65,9 @@ __all__ = [
     "GeneratorIdentity",
     "RefusedAnalysis",
     "SnapshotVerification",
+    "ValidatedAnalysisOutput",
     "completed_audit",
+    "completed_audit_from_validated_output",
     "failed_audit",
     "parse_audit",
     "parse_input",
