@@ -73,9 +73,9 @@ security-risk acceptance.
 - Backend read-only/manual-advisory regression tests passed: 50 tests.
 - No source, route, provider, trading, Railway, or deployment configuration was
   changed. No provider call, push, deployment, or risk acceptance occurred.
-- The dependency update is uncommitted and requires independent review. Deployment
-  remains outside the scope of this record until that review and a separate release
-  decision are complete.
+- The dependency update was independently reviewed and committed locally as
+  `4a60e3360251df34dfce6dc32e1f0972fad9ad09`. It has not been pushed, merged, or
+  deployed; those actions remain subject to separate review and authorization.
 
 ## Clean Node 22 reproducibility verification
 
