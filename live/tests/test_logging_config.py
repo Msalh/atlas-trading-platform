@@ -9,7 +9,11 @@ import logging
 
 import pytest
 
-from atlas.logging_config import JsonFormatter, configure_logging
+from atlas.logging_config import (
+    JsonFormatter,
+    _install_psycopg_pool_sanitizer,
+    configure_logging,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -90,3 +94,23 @@ def test_configure_logging_is_idempotent():
     configure_logging()
     root = logging.getLogger()
     assert len(root.handlers) == 1  # still exactly one, not accumulating
+
+
+def test_psycopg_pool_records_are_reduced_to_a_safe_operator_event(caplog):
+    _install_psycopg_pool_sanitizer()
+    pool_logger = logging.getLogger("psycopg.pool")
+    pool_logger.warning(
+        'connection to "127.0.0.1", port 1 failed: password=secret',
+    )
+    try:
+        raise RuntimeError("connection refused for postgres://user:secret@localhost:1/db")
+    except RuntimeError:
+        pool_logger.warning("driver failure", exc_info=True)
+
+    assert "postgres_pool_event" in caplog.text
+    assert "127.0.0.1" not in caplog.text
+    assert "localhost" not in caplog.text
+    assert "port 1" not in caplog.text
+    assert "password=secret" not in caplog.text
+    assert "connection refused" not in caplog.text
+    assert "RuntimeError" not in caplog.text
