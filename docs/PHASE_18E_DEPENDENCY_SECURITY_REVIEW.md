@@ -73,9 +73,10 @@ security-risk acceptance.
 - Backend read-only/manual-advisory regression tests passed: 50 tests.
 - No source, route, provider, trading, Railway, or deployment configuration was
   changed. No provider call, push, deployment, or risk acceptance occurred.
-- The dependency update was independently reviewed and committed locally as
-  `4a60e3360251df34dfce6dc32e1f0972fad9ad09`. It has not been pushed, merged, or
-  deployed; those actions remain subject to separate review and authorization.
+- The dependency update was independently reviewed, committed as
+  `4a60e3360251df34dfce6dc32e1f0972fad9ad09`, and subsequently merged through
+  the Phase 18 integration history. The current integrated closure state is
+  recorded below; deployment remains subject to separate review and authorization.
 
 ## Clean Node 22 reproducibility verification
 
@@ -95,5 +96,29 @@ security-risk acceptance.
   `node_modules`, `.next`, TypeScript build metadata, and the portable runtime
   were deleted after verification.
 - This result establishes clean Node 22 reproducibility for the lockfile. It does
-  not constitute risk acceptance, deployment approval, or a push; the remediation
-  remains subject to independent review and a separate release decision.
+  not constitute risk acceptance or deployment approval.
+
+## Final integrated closure state
+
+- PR #2, the PostgreSQL pool log-sanitization repair, was merged into
+  `codex/phase-18-integration`.
+- PR #1, the frontend Phase 18E dependency remediation, was merged into the same
+  branch. Both repairs are integrated at exact commit
+  `0687b5222ebb19de2a86c7971a4a1f8216e4869e`.
+- Final local technical qualification of that exact integration commit passed:
+  frontend `npm ci`, tests (59 files, 464 tests), lint, TypeScript, production
+  build, and production dependency audit; backend full suite (3,189 passed,
+  5 skipped), PostgreSQL qualification and real integration tests, the target
+  sanitization regression, and Ruff `--select=F`.
+- `npm audit --omit=dev --json` reports zero production vulnerabilities. The
+  full audit still reports three development-only findings: `brace-expansion`,
+  `js-yaml`, and `undici`.
+- Current dependency paths and classifications are unchanged from the verified
+  lockfile: `brace-expansion` is under
+  `@typescript-eslint/typescript-estree` and ESLint's `minimatch`; `js-yaml` is
+  under ESLint; and `undici` is under `jsdom`. They affect development/test
+  tooling, not the production bundle or runtime.
+- These three findings remain unresolved and tracked as residual
+  development-tooling findings pending explicit owner acceptance or future
+  upstream remediation. No risk acceptance is recorded by this document.
+- No deployment has occurred.
