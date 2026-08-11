@@ -15,7 +15,10 @@ from psycopg_pool import ConnectionPool
 
 from ai_persistence_migrations import expected_ai_persistence_migrations
 from atlas_ai_persistence import PersistenceCoordinator
-from atlas_ai_persistence_postgres import PostgresAtomicPersistenceAdapter
+from atlas_ai_persistence_postgres import (
+    PostgresAtomicPersistenceAdapter,
+    PostgresShadowAnalysisStore,
+)
 
 if TYPE_CHECKING:
     from atlas.config import Settings
@@ -115,6 +118,7 @@ class AIPersistenceRuntime:
         config: AIPersistenceRuntimeConfig,
         pool: _Pool | None,
         coordinator: PersistenceCoordinator | None,
+        shadow_store: PostgresShadowAnalysisStore | None = None,
         state: PersistenceState,
         verifier: Callable[[_Pool, AIPersistenceRuntimeConfig], PersistenceState]
         | None = None,
@@ -122,6 +126,7 @@ class AIPersistenceRuntime:
         self.config = config
         self._pool = pool
         self.coordinator = coordinator
+        self.shadow_store = shadow_store
         self._state = state
         self._verifier = verifier or _verify_pool
         self._closed = False
@@ -165,6 +170,7 @@ class AIPersistenceRuntime:
             pool = self._pool
             self._pool = None
             self.coordinator = None
+            self.shadow_store = None
         if pool is not None:
             try:
                 pool.close()
@@ -211,15 +217,16 @@ def build_ai_persistence_runtime(
         pool.open(wait=True, timeout=config.connect_timeout_seconds)
         failure = verifier(pool, config)
         if failure == "ready":
-            adapter = PostgresAtomicPersistenceAdapter(
-                lambda: pool.connection(
-                    timeout=config.pool_acquisition_timeout_seconds
-                )
-            )
+
+            def connection_factory():
+                return pool.connection(timeout=config.pool_acquisition_timeout_seconds)
+
+            adapter = PostgresAtomicPersistenceAdapter(connection_factory)
             return AIPersistenceRuntime(
                 config=config,
                 pool=pool,
                 coordinator=PersistenceCoordinator(adapter),
+                shadow_store=PostgresShadowAnalysisStore(connection_factory),
                 state="ready",
                 verifier=verifier,
             )

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Protocol
 
 from atlas.api_models.shadow_results import (
     SHADOW_RESULTS_SCHEMA_VERSION,
@@ -14,6 +15,8 @@ from atlas.api_models.shadow_results import (
     IngestionTelemetryResult,
     MarketStateResult,
     ProcessTelemetryResult,
+    Phase18AnalysisResult,
+    Phase18HistoryResult,
     RiskResult,
     ShadowPhaseResult,
     ShadowResultsResponse,
@@ -25,6 +28,42 @@ from atlas.core.primitives import Symbol, Timeframe
 from atlas.market_engine.ports import MarketStateRepository
 from atlas.repositories.base import TradeRepository
 from atlas.shadow_results.telemetry import ProcessTelemetry
+from atlas_ai_persistence_postgres import ShadowAnalysisRecord
+
+
+class AnalysisReadStore(Protocol):
+    def latest(self) -> ShadowAnalysisRecord | None: ...
+
+    def history(self, *, limit: int) -> tuple[ShadowAnalysisRecord, ...]: ...
+
+
+def _phase18_projection(store: AnalysisReadStore | None) -> Phase18AnalysisResult:
+    if store is None:
+        return Phase18AnalysisResult(
+            "not_integrated", None, None, (), (), None, None, ()
+        )
+    latest = store.latest()
+    if latest is None:
+        return Phase18AnalysisResult("no_result", None, None, (), (), None, None, ())
+    history = tuple(
+        Phase18HistoryResult(
+            state=row.outcome,
+            timestamp=row.recorded_at,
+            analysis_audit_id=row.analysis_audit_id,
+            analysis_output_id=row.analysis_output_id,
+        )
+        for row in store.history(limit=10)
+    )
+    return Phase18AnalysisResult(
+        status="available",
+        state=latest.outcome,
+        summary=latest.summary,
+        citations=latest.citations,
+        limitations=latest.limitations,
+        timestamp=latest.recorded_at,
+        reason=latest.reason,
+        history=history,
+    )
 
 
 def _timestamp(value: datetime | str | None) -> str | None:
@@ -52,6 +91,7 @@ async def build_shadow_results(
     market_symbol: str,
     market_timeframe: str,
     pickmytrade_configured: bool,
+    phase18_store: AnalysisReadStore | None = None,
     now: datetime | None = None,
 ) -> ShadowResultsResponse:
     """Build a fresh allowlisted response without returning stored payload fields."""
@@ -76,6 +116,7 @@ async def build_shadow_results(
         trader_now.strategy.decisions[0] if trader_now.strategy.decisions else None
     )
     telemetry_snapshot = telemetry.snapshot()
+    phase18_analysis = await asyncio.to_thread(_phase18_projection, phase18_store)
     return ShadowResultsResponse(
         schema_version=SHADOW_RESULTS_SCHEMA_VERSION,
         generated_at=_timestamp(generated_at) or "",
@@ -169,4 +210,5 @@ async def build_shadow_results(
             ),
             historical_records_are_current_authority=False,
         ),
+        phase_18_analysis=phase18_analysis,
     )

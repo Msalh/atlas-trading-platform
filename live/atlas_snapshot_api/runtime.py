@@ -10,6 +10,9 @@ from atlas_snapshot_capture import (
     SnapshotCaptureService,
 )
 from atlas_snapshot_store import PostgresSnapshotRepository
+from atlas.ai_persistence_runtime import build_ai_persistence_runtime
+from atlas.config import Settings
+from atlas.shadow_ai_runtime import build_shadow_analysis_runtime
 from psycopg_pool import AsyncConnectionPool
 
 from .app import create_snapshot_app
@@ -45,6 +48,12 @@ reader_pool = AsyncConnectionPool(
 )
 writer_repository = PostgresSnapshotRepository(writer_pool)
 reader_repository = PostgresSnapshotRepository(reader_pool)
+atlas_settings = Settings()
+ai_persistence_runtime = build_ai_persistence_runtime(atlas_settings)
+shadow_analysis_runtime = build_shadow_analysis_runtime(
+    atlas_settings,
+    persistence_runtime=ai_persistence_runtime,
+)
 capture_config = CaptureServiceConfig(
     trader_now_base_url=_required("TRADER_NOW_BASE_URL"),
     trader_now_api_key=_required("TRADER_NOW_API_KEY"),
@@ -54,6 +63,7 @@ capture_service = SnapshotCaptureService(
     config=capture_config,
     client=HttpTraderNowClient(capture_config),
     repository=writer_repository,
+    completed_observer=shadow_analysis_runtime,
 )
 
 
@@ -65,6 +75,15 @@ async def _open_reader() -> None:
     await reader_pool.open(wait=True)
 
 
+async def _start_shadow_runtime() -> None:
+    """Lifecycle marker for the already-composed default-disabled runtime."""
+
+
+async def _close_shadow_runtime() -> None:
+    shadow_analysis_runtime.close()
+    ai_persistence_runtime.close()
+
+
 app = create_snapshot_app(
     capture_service=capture_service,
     reader_repository=reader_repository,
@@ -72,6 +91,10 @@ app = create_snapshot_app(
         reader_token=_required("SNAPSHOT_READER_API_TOKEN"),
         operator_token=_required("SNAPSHOT_OPERATOR_API_TOKEN"),
     ),
-    startup_callbacks=(_open_writer, _open_reader),
-    shutdown_callbacks=(writer_pool.close, reader_pool.close),
+    startup_callbacks=(_open_writer, _open_reader, _start_shadow_runtime),
+    shutdown_callbacks=(
+        writer_pool.close,
+        reader_pool.close,
+        _close_shadow_runtime,
+    ),
 )

@@ -54,6 +54,7 @@ from atlas.api.security import require_api_key
 from atlas.api.v1 import (
     activity,
     ai,
+    ai_analysis,
     analytics,
     health,
     market_state,
@@ -141,9 +142,7 @@ async def lifespan(app: FastAPI):
         else None
     )
     app.state.started_at = datetime.now(timezone.utc)
-    app.state.shadow_results_telemetry = ProcessTelemetry(
-        reset_at=app.state.started_at
-    )
+    app.state.shadow_results_telemetry = ProcessTelemetry(reset_at=app.state.started_at)
     # Production-hardening amendment 3: computed once here, never per-request -
     # does not raise on a missing/invalid snapshot (LIVE endpoints have no
     # dependency on these files), only records the degraded state for
@@ -405,6 +404,12 @@ app.include_router(
 )
 app.include_router(
     ai.router, prefix="/api/v1", tags=["v1"], dependencies=[Depends(require_api_key)]
+)
+app.include_router(
+    ai_analysis.router,
+    prefix="/api/v1",
+    tags=["v1"],
+    dependencies=[Depends(require_api_key)],
 )
 app.include_router(
     activity.router,

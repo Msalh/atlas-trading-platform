@@ -5,10 +5,13 @@ that's what lets the Postgres implementation be swapped for an in-memory test do
 in unit tests, and lets a future implementation (a different database, a sharded
 version, etc.) be added later without touching any calling code.
 """
+
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Optional, Protocol
 
-ForwardResult = tuple[bool, Optional[int], Optional[str]]  # (forwarded, status_code, error)
+ForwardResult = tuple[
+    bool, Optional[int], Optional[str]
+]  # (forwarded, status_code, error)
 ForwardFn = Callable[[], Awaitable[ForwardResult]]
 
 
@@ -31,7 +34,11 @@ class ShadowResultCounts:
 
 class TradeRepository(Protocol):
     async def claim_and_forward(
-        self, correlation_id: str, entry: dict[str, Any], raw_body: str, forward: ForwardFn,
+        self,
+        correlation_id: str,
+        entry: dict[str, Any],
+        raw_body: str,
+        forward: ForwardFn,
     ) -> ClaimResult:
         """
         Atomically resolves idempotency + concurrency safety: if this correlation_id
@@ -45,14 +52,20 @@ class TradeRepository(Protocol):
         ...
 
     async def update_price(
-        self, correlation_id: str, current_price: Optional[float], unrealized_pnl: Optional[float], updated_at: str,
+        self,
+        correlation_id: str,
+        current_price: Optional[float],
+        unrealized_pnl: Optional[float],
+        updated_at: str,
     ) -> int:
         """Applies a price_update event. Returns the number of rows matched (0 if no
         trade exists yet for this correlation_id). Must never touch pmt_forwarded/
         pmt_status_code/pmt_error."""
         ...
 
-    async def update_pmt_diagnostics(self, correlation_id: str, diagnostics: dict[str, Any]) -> int:
+    async def update_pmt_diagnostics(
+        self, correlation_id: str, diagnostics: dict[str, Any]
+    ) -> int:
         """Persists the latest PickMyTrade relay attempt's full diagnostics (url,
         masked payload, status_code, response_body, exception, duration_ms) - see
         atlas/services/pickmytrade.py. Overwrites any previous diagnostics for this
@@ -63,7 +76,12 @@ class TradeRepository(Protocol):
         ...
 
     async def update_exit(
-        self, correlation_id: str, status: str, exit_price: Optional[float], realized_pnl: Optional[float], closed_at: str,
+        self,
+        correlation_id: str,
+        status: str,
+        exit_price: Optional[float],
+        realized_pnl: Optional[float],
+        closed_at: str,
     ) -> int:
         """Applies an exit event. Returns the number of rows matched (0 if no trade
         exists yet for this correlation_id). Must never touch pmt_forwarded/
@@ -109,7 +127,9 @@ class TradeRepository(Protocol):
         """Most recent first. Filters are AND-ed together; both are optional."""
         ...
 
-    async def list_recent(self, limit: int = 100, status: Optional[str] = None) -> list[dict[str, Any]]:
+    async def list_recent(
+        self, limit: int = 100, status: Optional[str] = None
+    ) -> list[dict[str, Any]]:
         """Most recent trades first. `status`, if given, filters to exactly that
         lifecycle status ('open' / 'won' / 'lost')."""
         ...
@@ -124,8 +144,9 @@ class TradeRepository(Protocol):
         query is written to be correct even if that assumption is ever relaxed."""
         ...
 
-    async def get_by_correlation_id(self, correlation_id: str) -> Optional[dict[str, Any]]:
-        ...
+    async def get_by_correlation_id(
+        self, correlation_id: str
+    ) -> Optional[dict[str, Any]]: ...
 
     async def ping(self) -> bool:
         """Raises if the underlying database is not reachable; used by /health."""

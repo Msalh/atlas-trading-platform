@@ -41,7 +41,7 @@ from .models import (
     HealthStatus,
     ReadinessStatus,
 )
-from .ports import TraderNowClient
+from .ports import SnapshotCompletedObserver, TraderNowClient
 from .uuid7 import generate_uuid7
 
 logger = logging.getLogger("atlas.snapshot_capture")
@@ -59,14 +59,14 @@ class SnapshotCaptureService:
         repository: SnapshotRepository,
         clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
         uuid7_factory: Callable[[], str] | None = None,
+        completed_observer: SnapshotCompletedObserver | None = None,
     ) -> None:
         self._config = config
         self._client = client
         self._repository = repository
         self._clock = clock
-        self._uuid7_factory = uuid7_factory or (
-            lambda: generate_uuid7(now=self._clock)
-        )
+        self._uuid7_factory = uuid7_factory or (lambda: generate_uuid7(now=self._clock))
+        self._completed_observer = completed_observer
         self._started = False
 
     async def start(self) -> None:
@@ -136,9 +136,7 @@ class SnapshotCaptureService:
                         idempotency_key=idempotency_key,
                         correlation_id=correlation_id,
                     )
-                raise CaptureFailure(
-                    CaptureFailureCode.IDEMPOTENCY_CONFLICT
-                ) from error
+                raise CaptureFailure(CaptureFailureCode.IDEMPOTENCY_CONFLICT) from error
             except SnapshotStoreError as error:
                 raise CaptureFailure(CaptureFailureCode.STORE_TRANSACTION) from error
 
@@ -160,6 +158,7 @@ class SnapshotCaptureService:
                 metadata=metadata,
             )
             self._log_success(result, started)
+            self._notify_completed(persisted)
             return result
         except CaptureFailure as error:
             logger.warning(
@@ -209,8 +208,7 @@ class SnapshotCaptureService:
     def _validate_source(response: Mapping[str, Any]) -> None:
         if (
             response.get("schema_version") != SOURCE_RESPONSE_SCHEMA_VERSION
-            or response.get("domain_schema_version")
-            != SOURCE_DOMAIN_SCHEMA_VERSION
+            or response.get("domain_schema_version") != SOURCE_DOMAIN_SCHEMA_VERSION
         ):
             raise CaptureFailure(CaptureFailureCode.UNSUPPORTED_SOURCE_SCHEMA)
         required = {
@@ -232,9 +230,7 @@ class SnapshotCaptureService:
         if not required.issubset(response):
             raise CaptureFailure(CaptureFailureCode.TRADER_NOW_RESPONSE)
 
-    def _validate_approved_response_identity(
-        self, response: Mapping[str, Any]
-    ) -> None:
+    def _validate_approved_response_identity(self, response: Mapping[str, Any]) -> None:
         approved = self._config.approved_identity
         identity = response.get("identity")
         market = response.get("market")
@@ -336,6 +332,15 @@ class SnapshotCaptureService:
             },
         )
         return result
+
+    def _notify_completed(self, snapshot: Mapping[str, Any]) -> None:
+        observer = self._completed_observer
+        if observer is None:
+            return
+        try:
+            observer.submit(snapshot)
+        except Exception:  # noqa: BLE001 - analysis cannot affect capture
+            logger.error("shadow_analysis_trigger_failed")
 
     @staticmethod
     def _correlation_id(supplied: str | None) -> str:

@@ -66,8 +66,10 @@ def _timestamp(clock: Callable[[], datetime]) -> str:
     instant = clock()
     if instant.tzinfo is None or instant.utcoffset() is None:
         raise ValueError
-    return instant.astimezone(timezone.utc).isoformat(timespec="microseconds").replace(
-        "+00:00", "Z"
+    return (
+        instant.astimezone(timezone.utc)
+        .isoformat(timespec="microseconds")
+        .replace("+00:00", "Z")
     )
 
 
@@ -111,19 +113,21 @@ class ManualAIProviderConfig:
     max_estimated_cost_usd: float
 
     @classmethod
-    def from_settings(cls, settings: Settings) -> ManualAIProviderConfig | None:
+    def from_settings(
+        cls,
+        settings: Settings,
+        *,
+        allow_production: bool = False,
+    ) -> ManualAIProviderConfig | None:
         if (
-            settings.environment != "development"
-            or settings.atlas_ai_provider_enabled != "true"
-        ):
+            settings.environment != "development" and not allow_production
+        ) or settings.atlas_ai_provider_enabled != "true":
             return None
         try:
             config = cls(
                 api_key=settings.atlas_ai_provider_api_key,
                 model_id=settings.atlas_ai_provider_model,
-                deadline_seconds=_decimal(
-                    settings.atlas_ai_provider_timeout_seconds
-                ),
+                deadline_seconds=_decimal(settings.atlas_ai_provider_timeout_seconds),
                 max_request_bytes=_integer(
                     settings.atlas_ai_provider_max_request_bytes
                 ),
@@ -152,9 +156,7 @@ class ManualAIProviderConfig:
             and type(config.max_output_tokens) is int
             and 0 < config.max_output_tokens <= MAX_OUTPUT_TOKENS
             and math.isfinite(config.max_estimated_cost_usd)
-            and 0
-            < config.max_estimated_cost_usd
-            <= float(MAX_ESTIMATED_COST_USD)
+            and 0 < config.max_estimated_cost_usd <= float(MAX_ESTIMATED_COST_USD)
         ):
             return None
         return config

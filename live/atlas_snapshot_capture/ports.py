@@ -19,3 +19,7 @@ class TraderNowClient(Protocol):
         *,
         correlation_id: str,
     ) -> Mapping[str, Any]: ...
+
+
+class SnapshotCompletedObserver(Protocol):
+    def submit(self, snapshot: Mapping[str, Any]) -> None: ...

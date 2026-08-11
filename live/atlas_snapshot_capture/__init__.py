@@ -10,7 +10,7 @@ from .models import (
     HealthStatus,
     ReadinessStatus,
 )
-from .ports import TraderNowClient
+from .ports import SnapshotCompletedObserver, TraderNowClient
 from .service import SnapshotCaptureService
 from .uuid7 import generate_uuid7
 
@@ -27,6 +27,7 @@ __all__ = [
     "ReadinessStatus",
     "SnapshotCaptureService",
     "TraderNowClient",
+    "SnapshotCompletedObserver",
     "TraderNowClientFailure",
     "generate_uuid7",
 ]

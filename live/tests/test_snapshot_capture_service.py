@@ -42,9 +42,7 @@ def _response(name="complete-current-candidate.canonical.json"):
     golden = json.loads((GOLDEN / name).read_text(encoding="utf-8"))
     return {
         "schema_version": golden["source"]["trader_now_response_schema_version"],
-        "domain_schema_version": golden["source"][
-            "trader_now_domain_schema_version"
-        ],
+        "domain_schema_version": golden["source"]["trader_now_domain_schema_version"],
         "snapshot_id": None,
         **golden["evidence"],
     }
@@ -138,6 +136,7 @@ async def _service(
     client=None,
     repository=None,
     uuid7="019849f0-0000-7000-8000-000000000001",
+    completed_observer=None,
 ):
     client = client or FakeClient(response)
     repository = repository or FakeRepository()
@@ -147,9 +146,27 @@ async def _service(
         repository=repository,
         clock=lambda: NOW,
         uuid7_factory=lambda: uuid7,
+        completed_observer=completed_observer,
     )
     await service.start()
     return service, client, repository
+
+
+class FailingCompletedObserver:
+    def submit(self, snapshot):
+        raise RuntimeError("isolated shadow failure")
+
+
+@pytest.mark.asyncio
+async def test_shadow_observer_failure_cannot_fail_snapshot_capture():
+    service, _, _ = await _service(completed_observer=FailingCompletedObserver())
+
+    result = await service.capture(
+        CaptureRequest("MNQ", "5m", "displacement_volume_context", "corr-shadow")
+    )
+
+    assert result.disposition is CaptureDisposition.CREATED
+    await service.close()
 
 
 @pytest.mark.asyncio
@@ -172,8 +189,9 @@ async def test_successful_capture_preserves_all_approved_snapshot_states(fixture
     assert result.disposition is CaptureDisposition.CREATED
     assert result.correlation_id == "corr-1"
     assert verify(repository.by_id[result.snapshot_id])
-    assert serialize(repository.by_id[result.snapshot_id]) == (
-        repository.payloads[result.snapshot_id]
+    assert (
+        serialize(repository.by_id[result.snapshot_id])
+        == (repository.payloads[result.snapshot_id])
     )
     assert client.calls[0][0].symbol == "MNQ"
     await service.close()
@@ -249,12 +267,13 @@ async def test_concurrent_matching_frozen_evidence_converges_to_one_snapshot():
         service.capture(request),
     )
 
-    assert sum(
-        result.disposition is CaptureDisposition.CREATED for result in results
-    ) == 1
-    assert sum(
-        result.disposition is CaptureDisposition.DUPLICATE for result in results
-    ) == 2
+    assert (
+        sum(result.disposition is CaptureDisposition.CREATED for result in results) == 1
+    )
+    assert (
+        sum(result.disposition is CaptureDisposition.DUPLICATE for result in results)
+        == 2
+    )
     assert {result.snapshot_id for result in results} == {
         "019849f0-0000-7000-8000-000000000001"
     }

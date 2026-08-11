@@ -137,7 +137,7 @@ def test_smoke_lifecycle_routes_auth_no_data_and_shutdown(configured_service):
     # Fixture shutdown happens after this test body.
 
 
-def test_only_approved_routes_are_mounted():
+def test_expected_routes_are_mounted_without_mutating_methods():
     def flatten(routes, prefix=""):
         for route in routes:
             original = getattr(route, "original_router", None)
@@ -158,6 +158,10 @@ def test_only_approved_routes_are_mounted():
         ("GET", "/api/v1/trader-now"),
         ("GET", "/api/v1/operations/status"),
         ("POST", "/api/v1/trader-now/manual-advisory"),
+    }
+    assert not any(method in {"PUT", "PATCH", "DELETE"} for method, _ in routes)
+    assert {path for method, path in routes if method == "POST"} == {
+        "/api/v1/trader-now/manual-advisory"
     }
 
 
@@ -221,9 +225,12 @@ def test_operations_status_sanitizes_database_failure(configured_service):
 @pytest.mark.parametrize("method", ["post", "put", "patch", "delete"])
 def test_operations_status_rejects_mutation_methods(configured_service, method):
     client, _, _ = configured_service
-    assert getattr(client, method)(
-        "/api/v1/operations/status", headers=_auth()
-    ).status_code == 405
+    assert (
+        getattr(client, method)(
+            "/api/v1/operations/status", headers=_auth()
+        ).status_code
+        == 405
+    )
 
 
 @pytest.mark.parametrize(

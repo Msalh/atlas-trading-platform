@@ -16,9 +16,9 @@ class Settings:
         # Phase 18H-1: AI persistence is a separate database boundary.  The
         # secret DSN is deliberately not read at all while the feature is
         # disabled, and is never allowed to fall back to DATABASE_URL.
-        self.atlas_ai_persistence_mode = os.environ.get(
-            "ATLAS_AI_PERSISTENCE_MODE", "disabled"
-        ).strip().lower()
+        self.atlas_ai_persistence_mode = (
+            os.environ.get("ATLAS_AI_PERSISTENCE_MODE", "disabled").strip().lower()
+        )
         self.atlas_ai_persistence_database_url = (
             os.environ.get("ATLAS_AI_PERSISTENCE_DATABASE_URL", "")
             if self.atlas_ai_persistence_mode == "required"
@@ -36,9 +36,11 @@ class Settings:
         self.atlas_ai_persistence_pool_acquisition_timeout_seconds = os.environ.get(
             "ATLAS_AI_PERSISTENCE_POOL_ACQUISITION_TIMEOUT_SECONDS", "5"
         )
-        self.atlas_ai_persistence_local_disposable_test = os.environ.get(
-            "ATLAS_AI_PERSISTENCE_LOCAL_DISPOSABLE_TEST", "false"
-        ).strip().lower()
+        self.atlas_ai_persistence_local_disposable_test = (
+            os.environ.get("ATLAS_AI_PERSISTENCE_LOCAL_DISPOSABLE_TEST", "false")
+            .strip()
+            .lower()
+        )
         self.webhook_secret = os.environ.get("WEBHOOK_SECRET", "")
         # Sprint 3 (Market Engine): a SEPARATE shared secret from WEBHOOK_SECRET,
         # protecting POST /api/v1/market-state. Deliberately not reused from the
@@ -63,13 +65,17 @@ class Settings:
         self.environment = raw_environment.strip().lower()
         # Phase 3 local manual-advisory provider. Disabled, malformed, and
         # non-development modes deliberately do not read the server-only key.
-        self.atlas_ai_provider_enabled = os.environ.get(
-            "ATLAS_AI_PROVIDER_ENABLED", ""
+        self.atlas_ai_provider_enabled = os.environ.get("ATLAS_AI_PROVIDER_ENABLED", "")
+        self.atlas_ai_shadow_enabled = (
+            os.environ.get("ATLAS_AI_SHADOW_ENABLED", "false").strip().lower()
         )
         self.atlas_ai_provider_api_key = (
             os.environ.get("ATLAS_AI_PROVIDER_API_KEY", "")
-            if raw_environment == "development"
-            and self.atlas_ai_provider_enabled == "true"
+            if self.atlas_ai_provider_enabled == "true"
+            and (
+                raw_environment == "development"
+                or self.atlas_ai_shadow_enabled == "true"
+            )
             else ""
         )
         self.atlas_ai_provider_model = os.environ.get("ATLAS_AI_PROVIDER_MODEL", "")
