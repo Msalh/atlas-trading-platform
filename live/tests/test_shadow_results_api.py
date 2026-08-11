@@ -148,7 +148,6 @@ def test_empty_response_has_exact_allowlisted_schema_and_honest_states(
         "ai_note",
         "telemetry",
         "execution_safety",
-        "phase_18_analysis",
     }
     assert body["schema_version"] == "trader_now_results.v1"
     assert body["health"] == {
@@ -174,16 +173,6 @@ def test_empty_response_has_exact_allowlisted_schema_and_honest_states(
     }
     assert body["ai_note"]["latest_status"] == "unavailable"
     assert body["ai_note"]["phase_18_ai_analysis"] == "not_integrated"
-    assert body["phase_18_analysis"] == {
-        "status": "not_integrated",
-        "state": None,
-        "summary": None,
-        "citations": [],
-        "limitations": [],
-        "timestamp": None,
-        "reason": None,
-        "history": [],
-    }
     assert body["execution_safety"]["pickmytrade_configured"] is False
     assert body["execution_safety"]["execution_disabled"] is True
     assert results_client[1].calls == [

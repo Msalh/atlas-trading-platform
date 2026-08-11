@@ -49,11 +49,14 @@ reader_pool = AsyncConnectionPool(
 writer_repository = PostgresSnapshotRepository(writer_pool)
 reader_repository = PostgresSnapshotRepository(reader_pool)
 atlas_settings = Settings()
-ai_persistence_runtime = build_ai_persistence_runtime(atlas_settings)
-shadow_analysis_runtime = build_shadow_analysis_runtime(
-    atlas_settings,
-    persistence_runtime=ai_persistence_runtime,
-)
+ai_persistence_runtime = None
+shadow_analysis_runtime = None
+if atlas_settings.atlas_ai_shadow_enabled == "true":
+    ai_persistence_runtime = build_ai_persistence_runtime(atlas_settings)
+    shadow_analysis_runtime = build_shadow_analysis_runtime(
+        atlas_settings,
+        persistence_runtime=ai_persistence_runtime,
+    )
 capture_config = CaptureServiceConfig(
     trader_now_base_url=_required("TRADER_NOW_BASE_URL"),
     trader_now_api_key=_required("TRADER_NOW_API_KEY"),
@@ -80,8 +83,10 @@ async def _start_shadow_runtime() -> None:
 
 
 async def _close_shadow_runtime() -> None:
-    shadow_analysis_runtime.close()
-    ai_persistence_runtime.close()
+    if shadow_analysis_runtime is not None:
+        shadow_analysis_runtime.close()
+    if ai_persistence_runtime is not None:
+        ai_persistence_runtime.close()
 
 
 app = create_snapshot_app(

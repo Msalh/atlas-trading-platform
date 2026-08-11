@@ -6,26 +6,6 @@ SHADOW_RESULTS_SCHEMA_VERSION = "trader_now_results.v1"
 
 
 @dataclass(frozen=True)
-class Phase18HistoryResult:
-    state: str
-    timestamp: str
-    analysis_audit_id: str
-    analysis_output_id: str | None
-
-
-@dataclass(frozen=True)
-class Phase18AnalysisResult:
-    status: str
-    state: str | None
-    summary: str | None
-    citations: tuple[str, ...]
-    limitations: tuple[str, ...]
-    timestamp: str | None
-    reason: str | None
-    history: tuple[Phase18HistoryResult, ...]
-
-
-@dataclass(frozen=True)
 class HealthResult:
     status: str
     database_status: str
@@ -128,4 +108,3 @@ class ShadowResultsResponse:
     ai_note: AiNoteResult
     telemetry: ProcessTelemetryResult
     execution_safety: ExecutionSafetyResult
-    phase_18_analysis: Phase18AnalysisResult

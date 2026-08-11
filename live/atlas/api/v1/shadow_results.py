@@ -40,8 +40,6 @@ async def read_shadow_results(
             timeframe=TIMEFRAME,
             strategy_id=STRATEGY_ID,
         )
-        persistence_runtime = getattr(request.app.state, "ai_persistence_runtime", None)
-        phase18_store = getattr(persistence_runtime, "shadow_store", None)
         return await build_shadow_results(
             repository=repository,
             market_repository=market_repository,
@@ -50,7 +48,6 @@ async def read_shadow_results(
             market_symbol=settings.trader_now_market_data_series_symbol,
             market_timeframe=TIMEFRAME,
             pickmytrade_configured=bool(settings.pickmytrade_webhook_url),
-            phase18_store=phase18_store,
         )
     except Exception:  # noqa: BLE001 - boundary returns one sanitized failure
         logger.error("Shadow results aggregation failed")

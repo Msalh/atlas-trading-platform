@@ -17,7 +17,6 @@ from atlas.main import app
 from atlas.manual_ai_runtime import MODEL_ID
 from atlas.shadow_ai_runtime import ShadowAnalysisRuntime, build_shadow_analysis_runtime
 from atlas.shadow_results import ProcessTelemetry
-from atlas.shadow_results.service import _phase18_projection
 from atlas_ai_persistence_postgres import ShadowAnalysisRecord
 from atlas_ai_analysis import GeneratorIdentity
 from tests.test_trader_now_response import legacy_trader_now
@@ -159,48 +158,6 @@ def test_worker_failures_are_fully_contained(failure_at):
     assert provider.calls == 1
 
 
-def test_shadow_projection_is_allowlisted_and_history_is_bounded():
-    record = ShadowAnalysisRecord(
-        snapshot_id="019c1234-0000-7000-8000-000000000010",
-        outcome="completed",
-        recorded_at="2026-08-10T10:00:00.000000Z",
-        summary="Bounded summary",
-        citations=("snapshot:/evidence/risk",),
-        limitations=("No prediction",),
-        reason=None,
-        analysis_audit_id="019c1234-0000-7000-8000-000000000011",
-        analysis_output_id="019c1234-0000-7000-8000-000000000012",
-    )
-
-    class ReadStore:
-        def latest(self):
-            return record
-
-        def history(self, *, limit):
-            assert limit == 10
-            return (record,)
-
-    projection = _phase18_projection(ReadStore())
-    assert projection.status == "available"
-    assert projection.state == "completed"
-    assert projection.summary == "Bounded summary"
-    assert not hasattr(projection, "prompt")
-    assert not hasattr(projection, "raw_provider_response")
-
-
-def test_missing_store_and_missing_record_have_stable_states():
-    assert _phase18_projection(None).status == "not_integrated"
-
-    class EmptyStore:
-        def latest(self):
-            return None
-
-        def history(self, *, limit):
-            return ()
-
-    assert _phase18_projection(EmptyStore()).status == "no_result"
-
-
 def test_dedicated_shadow_results_authentication_is_fail_closed(monkeypatch):
     monkeypatch.setattr(settings, "trader_now_results_api_key", "results-key")
     require_trader_now_results_api_key(None, "Bearer results-key")
@@ -208,9 +165,7 @@ def test_dedicated_shadow_results_authentication_is_fail_closed(monkeypatch):
         require_trader_now_results_api_key(None, "Bearer broader-key")
 
 
-def test_shadow_results_endpoint_preserves_v1_and_adds_stable_projection(
-    client, monkeypatch
-):
+def test_shadow_results_endpoint_preserves_frozen_v1_contract(client, monkeypatch):
     class Application:
         async def compose_latest(self, **kwargs):
             return legacy_trader_now()
@@ -230,14 +185,41 @@ def test_shadow_results_endpoint_preserves_v1_and_adds_stable_projection(
     assert response.status_code == 200
     body = response.json()
     assert body["schema_version"] == "trader_now_results.v1"
-    assert body["phase_18_analysis"] == {
-        "status": "not_integrated",
-        "state": None,
-        "summary": None,
-        "citations": [],
-        "limitations": [],
-        "timestamp": None,
-        "reason": None,
-        "history": [],
-    }
+    assert "phase_18_analysis" not in body
     assert body["execution_safety"]["execution_disabled"] is True
+
+
+def test_phase18_read_endpoints_remain_sanitized_and_separate(client):
+    record = ShadowAnalysisRecord(
+        snapshot_id="019c1234-0000-7000-8000-000000000010",
+        outcome="completed",
+        recorded_at="2026-08-10T10:00:00.000000Z",
+        summary="Bounded summary",
+        citations=("snapshot:/evidence/risk",),
+        limitations=("No prediction",),
+        reason=None,
+        analysis_audit_id="019c1234-0000-7000-8000-000000000011",
+        analysis_output_id="019c1234-0000-7000-8000-000000000012",
+    )
+
+    class ReadStore:
+        def latest(self):
+            return record
+
+        def history(self, *, limit):
+            assert limit in {20, 100}
+            return (record,)
+
+    app.state.ai_persistence_runtime = SimpleNamespace(
+        state="ready", shadow_store=ReadStore()
+    )
+    latest = client.get("/api/v1/ai-analysis/latest")
+    history = client.get("/api/v1/ai-analysis/history?limit=100")
+
+    assert latest.status_code == 200
+    assert history.status_code == 200
+    assert latest.json()["latest"]["summary"] == "Bounded summary"
+    assert history.json()["history"][0]["state"] == "completed"
+    serialized = latest.text + history.text
+    assert "prompt" not in serialized
+    assert "raw_provider_response" not in serialized

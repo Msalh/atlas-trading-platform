@@ -1,1 +1,1 @@
-web: uvicorn atlas.main:app --host 0.0.0.0 --port $PORT
+web: uvicorn atlas.service_entrypoint:app --host 0.0.0.0 --port $PORT
